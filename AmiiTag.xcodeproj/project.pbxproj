@@ -1,0 +1,512 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 52;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		6510751024AADCC80065B51F /* locked-secret.bin in Resources */ = {isa = PBXBuildFile; fileRef = 6510750E24AADCC80065B51F /* locked-secret.bin */; };
+		6510751124AADCC80065B51F /* unfixed-info.bin in Resources */ = {isa = PBXBuildFile; fileRef = 6510750F24AADCC80065B51F /* unfixed-info.bin */; };
+		6510751324AAE75C0065B51F /* CryptoSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 6510751224AAE75C0065B51F /* CryptoSwift */; };
+		6510751724AC177A0065B51F /* QrViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6510751624AC177A0065B51F /* QrViewController.swift */; };
+		6510751924AC1F730065B51F /* ScannerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6510751824AC1F730065B51F /* ScannerViewController.swift */; };
+		651614F124B5698E0097A3BC /* images in Resources */ = {isa = PBXBuildFile; fileRef = 651614EF24B5698D0097A3BC /* images */; };
+		651614FC24B56AA20097A3BC /* MiFareTag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651614F824B56AA20097A3BC /* MiFareTag.swift */; };
+		651614FD24B56AA20097A3BC /* TagEncyption.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651614F924B56AA20097A3BC /* TagEncyption.swift */; };
+		651614FE24B56AA20097A3BC /* NTAG215Tag.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651614FA24B56AA20097A3BC /* NTAG215Tag.swift */; };
+		651614FF24B56AA20097A3BC /* TagDump.swift in Sources */ = {isa = PBXBuildFile; fileRef = 651614FB24B56AA20097A3BC /* TagDump.swift */; };
+		6516150124B56EE20097A3BC /* amiibo.json in Resources */ = {isa = PBXBuildFile; fileRef = 6516150024B56EE20097A3BC /* amiibo.json */; };
+		6523DF5224BBF70600A2C305 /* dumps in Resources */ = {isa = PBXBuildFile; fileRef = 6523DF5124BBF70600A2C305 /* dumps */; };
+		652CC73A24B57DD400DE02DF /* AmiiboDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 652CC73924B57DD400DE02DF /* AmiiboDatabase.swift */; };
+		652CC73C24B57DDD00DE02DF /* KeyFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 652CC73B24B57DDD00DE02DF /* KeyFiles.swift */; };
+		656A9CBE24A9A5E600FE58CC /* TagInfoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656A9CBD24A9A5E600FE58CC /* TagInfoViewController.swift */; };
+		656B358D24AC3391009AAF0A /* amiitag.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 656B358C24AC3391009AAF0A /* amiitag.pdf */; };
+		656B358F24AC35A7009AAF0A /* amiitag-dark.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 656B358E24AC35A7009AAF0A /* amiitag-dark.pdf */; };
+		6588CAD624A9736A006EA341 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6588CAD524A9736A006EA341 /* AppDelegate.swift */; };
+		6588CADF24A9736A006EA341 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 6588CADD24A9736A006EA341 /* Main.storyboard */; };
+		6588CAE124A9736A006EA341 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6588CAE024A9736A006EA341 /* Assets.xcassets */; };
+		6588CAE424A9736A006EA341 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 6588CAE224A9736A006EA341 /* LaunchScreen.storyboard */; };
+		6588CAEA24A97927006EA341 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6588CAE924A97927006EA341 /* SceneDelegate.swift */; };
+		6588CAF024A98170006EA341 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6588CAEF24A98170006EA341 /* MainViewController.swift */; };
+		65EBD84524B9689500DDF1B4 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65EBD84424B9689500DDF1B4 /* Extensions.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXBuildRule section */
+		65EBD84224B9504300DDF1B4 /* PBXBuildRule */ = {
+			isa = PBXBuildRule;
+			compilerSpec = com.apple.compilers.proxy.script;
+			fileType = pattern.proxy;
+			inputFiles = (
+			);
+			isEditable = 1;
+			outputFiles = (
+			);
+			script = "# Type a script or drag a script file from your workspace to insert its path.\n";
+		};
+/* End PBXBuildRule section */
+
+/* Begin PBXFileReference section */
+		6510750E24AADCC80065B51F /* locked-secret.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = "locked-secret.bin"; sourceTree = "<group>"; };
+		6510750F24AADCC80065B51F /* unfixed-info.bin */ = {isa = PBXFileReference; lastKnownFileType = archive.macbinary; path = "unfixed-info.bin"; sourceTree = "<group>"; };
+		6510751624AC177A0065B51F /* QrViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrViewController.swift; sourceTree = "<group>"; };
+		6510751824AC1F730065B51F /* ScannerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerViewController.swift; sourceTree = "<group>"; };
+		651614EE24B567AB0097A3BC /* TagWallet */ = {isa = PBXFileReference; lastKnownFileType = folder; path = TagWallet; sourceTree = "<group>"; };
+		651614EF24B5698D0097A3BC /* images */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = images; path = AmiiboAPI/images; sourceTree = SOURCE_ROOT; };
+		651614F824B56AA20097A3BC /* MiFareTag.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = MiFareTag.swift; sourceTree = "<group>"; };
+		651614F924B56AA20097A3BC /* TagEncyption.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TagEncyption.swift; sourceTree = "<group>"; };
+		651614FA24B56AA20097A3BC /* NTAG215Tag.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = NTAG215Tag.swift; sourceTree = "<group>"; };
+		651614FB24B56AA20097A3BC /* TagDump.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TagDump.swift; sourceTree = "<group>"; };
+		6516150024B56EE20097A3BC /* amiibo.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; name = amiibo.json; path = AmiiboAPI/database/amiibo.json; sourceTree = SOURCE_ROOT; };
+		6523DF5124BBF70600A2C305 /* dumps */ = {isa = PBXFileReference; lastKnownFileType = folder; path = dumps; sourceTree = "<group>"; };
+		652CC73924B57DD400DE02DF /* AmiiboDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmiiboDatabase.swift; sourceTree = "<group>"; };
+		652CC73B24B57DDD00DE02DF /* KeyFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyFiles.swift; sourceTree = "<group>"; };
+		656A9CB324A98B2A00FE58CC /* AmiiTag.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AmiiTag.entitlements; sourceTree = "<group>"; };
+		656A9CBD24A9A5E600FE58CC /* TagInfoViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagInfoViewController.swift; sourceTree = "<group>"; };
+		656B358C24AC3391009AAF0A /* amiitag.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = amiitag.pdf; sourceTree = "<group>"; };
+		656B358E24AC35A7009AAF0A /* amiitag-dark.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = "amiitag-dark.pdf"; sourceTree = "<group>"; };
+		6588CAD324A9736A006EA341 /* AmiiTag.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AmiiTag.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		6588CAD524A9736A006EA341 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		6588CADE24A9736A006EA341 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		6588CAE024A9736A006EA341 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		6588CAE324A9736A006EA341 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		6588CAE524A9736A006EA341 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		6588CAE924A97927006EA341 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
+		6588CAEF24A98170006EA341 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
+		65EBD84424B9689500DDF1B4 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		6588CAD024A9736A006EA341 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6510751324AAE75C0065B51F /* CryptoSwift in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		651614F724B56AA20097A3BC /* TagWallet */ = {
+			isa = PBXGroup;
+			children = (
+				651614F824B56AA20097A3BC /* MiFareTag.swift */,
+				651614F924B56AA20097A3BC /* TagEncyption.swift */,
+				651614FA24B56AA20097A3BC /* NTAG215Tag.swift */,
+				651614FB24B56AA20097A3BC /* TagDump.swift */,
+			);
+			name = TagWallet;
+			path = TagWallet/TagWallet;
+			sourceTree = SOURCE_ROOT;
+		};
+		6588CAD424A9736A006EA341 /* AmiiTag */ = {
+			isa = PBXGroup;
+			children = (
+				6516150024B56EE20097A3BC /* amiibo.json */,
+				652CC73924B57DD400DE02DF /* AmiiboDatabase.swift */,
+				656B358E24AC35A7009AAF0A /* amiitag-dark.pdf */,
+				656A9CB324A98B2A00FE58CC /* AmiiTag.entitlements */,
+				656B358C24AC3391009AAF0A /* amiitag.pdf */,
+				6588CAD524A9736A006EA341 /* AppDelegate.swift */,
+				6588CAE024A9736A006EA341 /* Assets.xcassets */,
+				6523DF5124BBF70600A2C305 /* dumps */,
+				65EBD84424B9689500DDF1B4 /* Extensions.swift */,
+				651614EF24B5698D0097A3BC /* images */,
+				6588CAE524A9736A006EA341 /* Info.plist */,
+				652CC73B24B57DDD00DE02DF /* KeyFiles.swift */,
+				6588CAE224A9736A006EA341 /* LaunchScreen.storyboard */,
+				6510750E24AADCC80065B51F /* locked-secret.bin */,
+				6588CADD24A9736A006EA341 /* Main.storyboard */,
+				6588CAEF24A98170006EA341 /* MainViewController.swift */,
+				6510751624AC177A0065B51F /* QrViewController.swift */,
+				6510751824AC1F730065B51F /* ScannerViewController.swift */,
+				6588CAE924A97927006EA341 /* SceneDelegate.swift */,
+				656A9CBD24A9A5E600FE58CC /* TagInfoViewController.swift */,
+				651614F724B56AA20097A3BC /* TagWallet */,
+				6510750F24AADCC80065B51F /* unfixed-info.bin */,
+			);
+			path = AmiiTag;
+			sourceTree = "<group>";
+		};
+		65EDAB8524A6E031008AAC9C /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		67BC1476245205A00028E9FE = {
+			isa = PBXGroup;
+			children = (
+				651614EE24B567AB0097A3BC /* TagWallet */,
+				6588CAD424A9736A006EA341 /* AmiiTag */,
+				67BC1480245205A00028E9FE /* Products */,
+				65EDAB8524A6E031008AAC9C /* Frameworks */,
+			);
+			sourceTree = "<group>";
+		};
+		67BC1480245205A00028E9FE /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				6588CAD324A9736A006EA341 /* AmiiTag.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		6588CAD224A9736A006EA341 /* AmiiTag */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 6588CAE624A9736A006EA341 /* Build configuration list for PBXNativeTarget "AmiiTag" */;
+			buildPhases = (
+				6588CACF24A9736A006EA341 /* Sources */,
+				6588CAD024A9736A006EA341 /* Frameworks */,
+				6588CAD124A9736A006EA341 /* Resources */,
+				65EBD84324B9508E00DDF1B4 /* ShellScript */,
+			);
+			buildRules = (
+				65EBD84224B9504300DDF1B4 /* PBXBuildRule */,
+			);
+			dependencies = (
+				6510751524AAE76A0065B51F /* PBXTargetDependency */,
+			);
+			name = AmiiTag;
+			packageProductDependencies = (
+				6510751224AAE75C0065B51F /* CryptoSwift */,
+			);
+			productName = AmiiTag;
+			productReference = 6588CAD324A9736A006EA341 /* AmiiTag.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		67BC1477245205A00028E9FE /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1150;
+				LastUpgradeCheck = 1140;
+				ORGANIZATIONNAME = "Daniel Radtke";
+				TargetAttributes = {
+					6588CAD224A9736A006EA341 = {
+						CreatedOnToolsVersion = 11.5;
+					};
+				};
+			};
+			buildConfigurationList = 67BC147A245205A00028E9FE /* Build configuration list for PBXProject "AmiiTag" */;
+			compatibilityVersion = "Xcode 9.3";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 67BC1476245205A00028E9FE;
+			packageReferences = (
+				67BC149D245207930028E9FE /* XCRemoteSwiftPackageReference "CryptoSwift" */,
+			);
+			productRefGroup = 67BC1480245205A00028E9FE /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				6588CAD224A9736A006EA341 /* AmiiTag */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		6588CAD124A9736A006EA341 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				656B358F24AC35A7009AAF0A /* amiitag-dark.pdf in Resources */,
+				6510751024AADCC80065B51F /* locked-secret.bin in Resources */,
+				6510751124AADCC80065B51F /* unfixed-info.bin in Resources */,
+				6588CAE424A9736A006EA341 /* LaunchScreen.storyboard in Resources */,
+				651614F124B5698E0097A3BC /* images in Resources */,
+				6588CAE124A9736A006EA341 /* Assets.xcassets in Resources */,
+				6516150124B56EE20097A3BC /* amiibo.json in Resources */,
+				6588CADF24A9736A006EA341 /* Main.storyboard in Resources */,
+				6523DF5224BBF70600A2C305 /* dumps in Resources */,
+				656B358D24AC3391009AAF0A /* amiitag.pdf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		65EBD84324B9508E00DDF1B4 /* ShellScript */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+			);
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = "/bin/sh -e";
+			shellScript = "find AmiiTag/signatures/ -name \"*.bin\" -size 42c -exec cat {} \\; > \"$CODESIGNING_FOLDER_PATH/signatures.bin\"\nexit $?\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6588CACF24A9736A006EA341 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6510751924AC1F730065B51F /* ScannerViewController.swift in Sources */,
+				652CC73C24B57DDD00DE02DF /* KeyFiles.swift in Sources */,
+				6588CAF024A98170006EA341 /* MainViewController.swift in Sources */,
+				651614FD24B56AA20097A3BC /* TagEncyption.swift in Sources */,
+				651614FE24B56AA20097A3BC /* NTAG215Tag.swift in Sources */,
+				652CC73A24B57DD400DE02DF /* AmiiboDatabase.swift in Sources */,
+				651614FF24B56AA20097A3BC /* TagDump.swift in Sources */,
+				6510751724AC177A0065B51F /* QrViewController.swift in Sources */,
+				65EBD84524B9689500DDF1B4 /* Extensions.swift in Sources */,
+				656A9CBE24A9A5E600FE58CC /* TagInfoViewController.swift in Sources */,
+				6588CAD624A9736A006EA341 /* AppDelegate.swift in Sources */,
+				6588CAEA24A97927006EA341 /* SceneDelegate.swift in Sources */,
+				651614FC24B56AA20097A3BC /* MiFareTag.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		6510751524AAE76A0065B51F /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			productRef = 6510751424AAE76A0065B51F /* CryptoSwift */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXVariantGroup section */
+		6588CADD24A9736A006EA341 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				6588CADE24A9736A006EA341 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+		6588CAE224A9736A006EA341 /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				6588CAE324A9736A006EA341 /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		6588CAE724A9736A006EA341 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AmiiTag/AmiiTag.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 7PM929Z8M2;
+				INFOPLIST_FILE = AmiiTag/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.DanTheMan827.AmiiTag;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		6588CAE824A9736A006EA341 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_ENTITLEMENTS = AmiiTag/AmiiTag.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 7PM929Z8M2;
+				INFOPLIST_FILE = AmiiTag/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.DanTheMan827.AmiiTag;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		67BC1491245205A20028E9FE /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		67BC1492245205A20028E9FE /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 13.4;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		6588CAE624A9736A006EA341 /* Build configuration list for PBXNativeTarget "AmiiTag" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				6588CAE724A9736A006EA341 /* Debug */,
+				6588CAE824A9736A006EA341 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		67BC147A245205A00028E9FE /* Build configuration list for PBXProject "AmiiTag" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				67BC1491245205A20028E9FE /* Debug */,
+				67BC1492245205A20028E9FE /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		67BC149D245207930028E9FE /* XCRemoteSwiftPackageReference "CryptoSwift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/krzyzanowskim/CryptoSwift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.3.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		6510751224AAE75C0065B51F /* CryptoSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 67BC149D245207930028E9FE /* XCRemoteSwiftPackageReference "CryptoSwift" */;
+			productName = CryptoSwift;
+		};
+		6510751424AAE76A0065B51F /* CryptoSwift */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 67BC149D245207930028E9FE /* XCRemoteSwiftPackageReference "CryptoSwift" */;
+			productName = CryptoSwift;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 67BC1477245205A00028E9FE /* Project object */;
+}

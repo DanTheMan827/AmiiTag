@@ -1,0 +1,6 @@
+[submodule "TagWallet"]
+	path = TagWallet
+	url = https://github.com/kevinbrewster/TagWallet.git
+[submodule "AmiiboAPI"]
+	path = AmiiboAPI
+	url = https://github.com/N3evin/AmiiboAPI.git
