@@ -49,12 +49,7 @@ public class AmiiboDatabase {
         "2104000000000002": "2104000002520002"  // Roy (SSB)
     ]
     
-    fileprivate static var _database: AmiiboJson?
-    
-    public static var database: AmiiboJson {
-        if _database != nil {
-            return _database!
-        }
+    public static let database: AmiiboJson = {
         guard
             let jsonPath = try? Bundle.main.url(forResource: "amiibo", withExtension: "json"),
             let jsonData = try? Data(contentsOf: jsonPath),
@@ -71,42 +66,56 @@ public class AmiiboDatabase {
             }
         }
         
-        _database = AmiiboJson(AmiiboSeries: resultJson.AmiiboSeries, AmiiboData: newAmiiboData, Characters: resultJson.Characters, GameSeries: resultJson.GameSeries, Types: resultJson.Types)
+        return AmiiboJson(AmiiboSeries: resultJson.AmiiboSeries, AmiiboData: newAmiiboData, Characters: resultJson.Characters, GameSeries: resultJson.GameSeries, Types: resultJson.Types)
+    }()
+    
+    static let amiiboDumps: Dictionary<String, TagDump> = {
+        var dumps: [String : TagDump] = [:]
         
-        return _database!
-    }
-    
-    fileprivate static var _amiiboDumps: Dictionary<String, TagDump>?
-    
-    static var amiiboDumps: Dictionary<String, TagDump> {
-        if _amiiboDumps != nil {
-            return _amiiboDumps!
+        guard
+            let amiiboPath = Bundle.main.url(forResource: "amiibo", withExtension: "bin"),
+            let amiiboData = try? Data(contentsOf: amiiboPath) else {
+                return dumps
         }
         
-        var dumps: [String : TagDump] = [:]
-        let validSizes = [532, 540, 572]
+        let json = database
         
-        if let url = Bundle.main.url(forResource: "dumps", withExtension: nil) {
-            let json = database
-            if let enumerator = FileManager.default.enumerator(at: url, includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey], options: [.skipsPackageDescendants]) {
-                for case let fileURL as URL in enumerator {
-                    let path = fileURL.path
-                    do {
-                        let fileAttributes = try fileURL.resourceValues(forKeys:[.isRegularFileKey, .fileSizeKey])
-                        if fileAttributes.isRegularFile! && validSizes.contains(fileAttributes.fileSize!) {
-                            if let dump = try? TagDump(data: Data(contentsOf: fileURL)) {
-                                if dumps["\(dump.headHex)\(dump.tailHex)"] == nil && json.AmiiboData["0x\(dump.headHex)\(dump.tailHex)"] != nil {
-                                    dumps["\(dump.headHex)\(dump.tailHex)"] = dump
-                                }
-                            }
-                        }
-                    } catch { print(error, fileURL) }
+        
+        json.AmiiboData.keys.forEach { (key) in
+            if fakeAmiibo[String(key.suffix(16))] == nil {
+                var ID = key.suffix(16)
+                var dataId = Data.fromHexString(hex: String(ID))
+                var salt = Data(count: 32)
+                let result = salt.withUnsafeMutableBytes {
+                    SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!)
+                }
+                
+                var dumpData = Data()
+                
+                dumpData.append(Data([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x0f, 0xe0, 0xf1, 0x10, 0xff, 0xee, 0xa5, 0x00, 0x00, 0x00]))
+                dumpData.append(Data(count: 64))
+                dumpData.append(dataId)
+                dumpData.append(Data(count: 4))
+                dumpData.append(salt)
+                dumpData.append(Data(count: 392))
+                dumpData.append(Data([0x01, 0x00, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x04, 0x5F, 0x00, 0x00, 0x00]))
+                
+                if let dump = try? TagDump(data: dumpData) {
+                    dumps[String(ID)] = dump
                 }
             }
         }
         
-        _amiiboDumps = dumps
-        return _amiiboDumps!
-    }
-    
+        /*
+        for index in stride(from: 0, to: amiiboData.count, by: 532) {
+            if let dump = try? TagDump(data: Data(amiiboData[index..<(index + 532)])) {
+                if dumps["\(dump.headHex)\(dump.tailHex)"] == nil && json.AmiiboData["0x\(dump.headHex)\(dump.tailHex)"] != nil && fakeAmiibo[dump.fullHex] == nil {
+                    dumps["\(dump.headHex)\(dump.tailHex)"] = dump
+                }
+            }
+        }
+        */
+        
+        return dumps
+    }()
 }

@@ -45,4 +45,7 @@ class KeyFiles {
         _unfixedInfo = unfixedInfo
         return unfixedInfo
     }
+    
+    static let staticKey = TagKey(data: lockedSecret!)
+    static let dataKey = TagKey(data: unfixedInfo!)
 }

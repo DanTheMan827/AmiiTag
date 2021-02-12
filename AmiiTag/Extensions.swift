@@ -7,19 +7,29 @@
 //
 
 import Foundation
+import UIKit
+import CoreNFC
 
 struct UidSigPair {
     let uid: Data
     let signature: Data
 }
 
-extension NTAG215Tag {
-    fileprivate static var _uidSignatures: [UidSigPair]?
-    static var uidSignatures: [UidSigPair] {
-        if _uidSignatures != nil {
-            return _uidSignatures!
+extension NFCMiFareTag {
+    func checkPuck(completionHandler: @escaping (Result<Data, Error>) -> Void) {
+        sendMiFareCommand(commandPacket: Data([0x3A, 133, 134])) { (data, error) in
+            if let error = error {
+                completionHandler(.failure(error))
+            } else if data.elementsEqual([1, 2, 3, 4, 5, 6, 7, 8]) {
+                completionHandler(.success(data))
+            } else {
+                completionHandler(.failure(NFCMiFareTagError.unknownError))
+            }
         }
-        
+    }
+}
+extension NTAG215Tag {
+    static let uidSignatures: [UidSigPair] = {
         var signatures: [UidSigPair] = []
         
         guard
@@ -30,16 +40,41 @@ extension NTAG215Tag {
         
         for index in stride(from: 0, to: signaturesData.count, by: 42) {
             if signaturesData[index + 9] == 0x48 {
-                signatures.append(UidSigPair(uid: signaturesData[index..<(index + 9)], signature: signaturesData[(index + 10)..<(index + 42)]))
+                signatures.append(UidSigPair(uid: Data(signaturesData[index..<(index + 9)]), signature: Data(signaturesData[(index + 10)..<(index + 42)])))
             }
         }
         
-        _uidSignatures = signatures
+        if signatures.count == 0 {
+            signatures.append(UidSigPair(uid: Data([0x00, 0x00, 0x00, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00]), signature: Data(count: 32)))
+        }
+        
         return signatures
-    }
+    }()
 }
 
 extension TagDump {
+    var decryptedData: Data? {
+        guard
+            let decryptDataKeys = KeyFiles.dataKey?.derivedKey(uid: uid, writeCounter: data.subdata(in: 17..<19), salt: data.subdata(in: 96..<128)),
+            let decryptedData = try? decryptDataKeys.decrypt(data.subdata(in: 20..<52) + data.subdata(in: 160..<520)) else {
+                return nil
+        }
+        
+        return decryptedData
+    }
+    var nickname: String {
+        guard
+            let decryptedData = decryptedData,
+            let name = String(bytes: decryptedData[12..<32], encoding: .utf16BigEndian) else {
+            return ""
+        }
+        
+        if ((UInt16(decryptedData[2]) << 8) | UInt16(decryptedData[3])) == 0 {
+            return ""
+        }
+        
+        return name.trimmingCharacters(in: CharacterSet(["\0"]))
+    }
     var TagUIDSig: Data? {
         if self.data.count == 572 {
             return self.uid + self.data[9...9] + self.signature!
@@ -72,6 +107,19 @@ extension TagDump {
     }
     var typeName: String? {
         return AmiiboDatabase.database.Types["0x\(self.typeHex)"]
+    }
+    var image: UIImage? {
+        var imageFilename = "icon_\(self.headHex)-\(self.tailHex)"
+        if let realId = AmiiboDatabase.fakeAmiibo["\(self.headHex)\(self.tailHex)"] {
+            imageFilename = "icon_\(realId.prefix(8))-\(realId.suffix(8))"
+        }
+        
+        if let imagePath = try? Bundle.main.path(forResource: imageFilename, ofType: "png", inDirectory: "images", forLocalization: nil),
+            let image = UIImage(contentsOfFile: imagePath) {
+            return image
+        }
+        
+        return nil
     }
 }
 

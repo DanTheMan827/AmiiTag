@@ -75,5 +75,6 @@ class QrViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         loaded = true;
+        showQrCode()
     }
 }

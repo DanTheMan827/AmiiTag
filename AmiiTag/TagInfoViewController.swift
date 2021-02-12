@@ -12,8 +12,23 @@ import CryptoKit
 import CoreNFC
 
 class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
+    /*
+    func finishedWriting(puck: PuckPeripheral) {
+        self.dismiss(animated: true, completion: nil)
+        puck.disconnect()
+    }
+    
+    func puckDidReadTag(puck: PuckPeripheral, tag: TagDump) {
+        
+    }
+    
+    func puckReady(puck: PuckPeripheral) {
+        puck.writeTag(tag: self.amiiboData!)
+        
+    }
+    */
+    
     @IBOutlet var amiiboArt: UIImageView!
-    @IBOutlet var characterName: UILabel!
     @IBOutlet var seriesName: UILabel!
     @IBOutlet var typeName: UILabel!
     @IBOutlet var tagUid: UILabel!
@@ -42,7 +57,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
         formatter.timeZone = TimeZone.current
         formatter.dateFormat = "yyyy-MM-dd HH-mm-ss"
         
-        return "\(characterName.text!) \(formatter.string(from: Date()))"
+        return "\(self.title!) \(formatter.string(from: Date()))"
     }
     
     func displayInfo(value: TagDump?) {
@@ -50,24 +65,25 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
             return
         }
         
+        print("Nickname: \(value.nickname)");
+        print("Write Count: \(value.writeCounterInt)")
+        
         tagUid.text = "0x\(value.uid.map { String(format: "%02hhx", $0) }.joined())"
-        characterName.text = "0x\(value.headHex)\(value.tailHex)"
+        self.title = "0x\(value.headHex)\(value.tailHex)"
         typeName.text = "0x\(value.headHex.prefix(8).suffix(2))"
         seriesName.text = "0x\(value.headHex.prefix(3))"
         
-        var imageFilename = "icon_\(value.headHex)-\(value.tailHex)"
-        if let realId = AmiiboDatabase.fakeAmiibo["\(value.headHex)\(value.tailHex)"] {
-            imageFilename = "icon_\(realId.prefix(8))-\(realId.suffix(8))"
-        }
-        
-        if let imagePath = try? Bundle.main.path(forResource: imageFilename, ofType: "png", inDirectory: "images", forLocalization: nil),
-            let image = UIImage(contentsOfFile: imagePath) {
-            amiiboArt.image = image
-        }
+        amiiboArt.image = amiiboData?.image
         
         let json = AmiiboDatabase.database
         if let name = amiiboData?.amiiboName {
-            characterName.text = name
+            self.title = name
+        }
+        
+        if let nickname = amiiboData?.nickname {
+            if nickname.count > 0 {
+                self.title = nickname
+            }
         }
         
         if let type = amiiboData?.typeName {
@@ -77,6 +93,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
         if let series = amiiboData?.amiiboSeriesName {
             seriesName.text = series
         }
+        
     }
     
     @IBAction func saveTagTap(_ sender: Any) {
@@ -101,19 +118,81 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
     }
     
     @IBAction func writeTagTap(_ sender: Any) {
-        tagReaderSession = NFCTagReaderSession(pollingOption: NFCTagReaderSession.PollingOption.iso14443, delegate: self)
-        tagReaderSession?.alertMessage = "Hold blank NTAG215 tag to phone"
-        tagReaderSession?.begin()
+        if (PuckPeripheral.pucks.count > 0) {
+            let alertController = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+            alertController.view.tintColor = self.view.tintColor
+            
+            for puck in PuckPeripheral.pucks.sorted(by: { (a, b) -> Bool in
+                return a.name ?? "Puck" > b.name ?? "Puck"
+            }) {
+                alertController.addAction(UIAlertAction(title: puck.name, style: .default, handler: { (action) in
+                    var alert = UIAlertController(title: "Please Wait", message: "Writing " + (puck.name ?? "Puck"), preferredStyle: .alert)
+                    self.present(alert, animated: true)
+                    puck.writeTag(using: self.dump) { (result) in
+                        var hasError = false
+                        
+                        switch result {
+                        case .success(let tag):
+                            break
+                        case .failure(let error):
+                            hasError = true
+                            self.dismiss(animated: true)
+                            let errorAlert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
+                            errorAlert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+                            self.present(errorAlert, animated: true)
+                            break
+                        }
+                        
+                        puck.changeSlot { (result) in
+                            switch result {
+                            case .success(let _):
+                                break;
+                            case .failure(let error):
+                                hasError = true
+                                self.dismiss(animated: true)
+                                let errorAlert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
+                                errorAlert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+                                self.present(errorAlert, animated: true)
+                                break
+                            }
+                            
+                            puck.disconnect { (result) in
+                                if !hasError {
+                                    self.dismiss(animated: true)
+                                }
+                                PuckPeripheral.startScanning()
+                            }
+                        }
+                    }
+                }))
+            }
+            
+            alertController.addAction(UIAlertAction(title: "NFC", style: .default){ action -> Void in
+                self.tagReaderSession = NFCTagReaderSession(pollingOption: NFCTagReaderSession.PollingOption.iso14443, delegate: self)
+                
+                self.tagReaderSession?.alertMessage = "Hold blank NTAG215 tag to phone"
+                self.tagReaderSession?.begin()
+            })
+            
+            alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel){ action -> Void in })
+            self.present(alertController, animated:true){}
+        } else {
+            self.tagReaderSession = NFCTagReaderSession(pollingOption: NFCTagReaderSession.PollingOption.iso14443, delegate: self)
+            
+            self.tagReaderSession?.alertMessage = "Hold blank NTAG215 tag to phone"
+            self.tagReaderSession?.begin()
+        }
     }
     
     @IBAction func showQrTap(_ sender: Any) {
        let storyboard = UIStoryboard(name: "Main", bundle: nil)
-        guard let vc = storyboard.instantiateViewController(withIdentifier: "QrView") as? QrViewController else {
+        guard let view = storyboard.instantiateViewController(withIdentifier: "QrView") as? QrViewController else {
             return
         }
-        self.present(vc, animated: true)
-        vc.qrData = NSData(data: dump).base64EncodedString(options: .endLineWithLineFeed)
-        vc.fileName = self.fileName
+        view.qrData = NSData(data: dump).base64EncodedString(options: .endLineWithLineFeed)
+        view.fileName = self.fileName
+        view.title = "\(self.title!) QR Code"
+        self.present(UINavigationController(rootViewController: view), animated: true)
     }
     
     func writeDump(to ntag215Tag: NTAG215Tag, appData: Bool = false) {
@@ -166,20 +245,54 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
     }
     
     func handleConnectedTag(tag: NFCMiFareTag) {
-        NTAG215Tag.initialize(tag: tag) { result in
+        var proceed = true
+        tag.checkPuck { result in
             switch result {
-            case .success(let ntag215Tag):
-                if ntag215Tag.dump.isLocked {
-                    if ntag215Tag.dump.isAmiibo {
-                        self.writeDump(to: ntag215Tag, appData: true)
-                    } else {
-                        self.tagReaderSession?.invalidate(errorMessage: "Tag is not an amiibo")
-                    }
-                } else {
-                    self.writeDump(to: ntag215Tag)
+            case .success(let puckResponse):
+                print("Found a puck")
+                var usp = NTAG215Tag.uidSignatures.randomElement()!
+                if self.dump.count == 572 {
+                    usp = UidSigPair(uid: Data(self.dump[0..<9]), signature: Data(self.dump[540..<572]))
                 }
-            case .failure(let error):
-                self.tagReaderSession?.invalidate(errorMessage: error.localizedDescription)
+                
+                var pages: [(page: Int, data: Data)] = []
+                for page in 0...(572/4) {
+                    pages.append((page: page, data: Data(self.dump[(page * 4)..<(min(((page+1) * 4), 572))])))
+                }
+                
+                tag.write(batch: pages) { result in
+                    switch result {
+                    case .success:
+                        tag.sendMiFareCommand(commandPacket: Data([0x88])) { (data, error) in
+                            self.tagReaderSession?.invalidate()
+                            
+                        }
+                    case .failure(let error):
+                        self.tagReaderSession?.invalidate(errorMessage: error.localizedDescription)
+                    }
+                }
+                
+                break
+                
+            case .failure(let _):
+                print("Not a puck")
+                NTAG215Tag.initialize(tag: tag) { result in
+                    switch result {
+                    case .success(let ntag215Tag):
+                        if ntag215Tag.dump.isLocked {
+                            if ntag215Tag.dump.isAmiibo {
+                                self.writeDump(to: ntag215Tag, appData: true)
+                            } else {
+                                self.tagReaderSession?.invalidate(errorMessage: "Tag is not an amiibo")
+                            }
+                        } else {
+                            self.writeDump(to: ntag215Tag)
+                        }
+                    case .failure(let error):
+                        self.tagReaderSession?.invalidate(errorMessage: error.localizedDescription)
+                    }
+                }
+                break
             }
         }
     }
@@ -206,6 +319,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
             tagReaderSession?.invalidate(errorMessage: "Invalid tag type")
             return
         }
+        
         session.connect(to: tags.first!) { (error: Error?) in
             if let error = error {
                 session.invalidate(errorMessage: error.localizedDescription)

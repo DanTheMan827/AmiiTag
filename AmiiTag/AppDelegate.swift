@@ -10,12 +10,18 @@ import UIKit
 
 @UIApplicationMain
 class AppDelegate: UIResponder, UIApplicationDelegate {
-
-
-
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         // Override point for customization after application launch.
+        PuckPeripheral.registerObservers()
         return true
+    }
+    
+    func applicationDidEnterBackground(_ application: UIApplication) {
+        PuckPeripheral.stopScanning()
+    }
+    
+    func applicationWillEnterForeground(_ application: UIApplication) {
+        PuckPeripheral.startScanning()
     }
 
     // MARK: UISceneSession Lifecycle

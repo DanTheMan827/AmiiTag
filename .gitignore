@@ -32,3 +32,5 @@ AmiiTag/signatures/*
 !AmiiTag/signatures/readme.txt
 AmiiTag/dumps/*
 !AmiiTag/dumps/readme.txt
+amiibo.bin
+amiibodump.bin
