@@ -26,14 +26,16 @@ class PuckPeripheral: NSObject {
     fileprivate static let serviceUuid = "78290001-d52e-473f-a9f4-f03da7c67dd1"
     fileprivate static let commandUuid = "78290002-d52e-473f-a9f4-f03da7c67dd1"
     fileprivate static let responseUuid = "78290003-d52e-473f-a9f4-f03da7c67dd1"
+    fileprivate static let nameUuid = "78290004-d52e-473f-a9f4-f03da7c67dd1"
     fileprivate static var observersRegistered = false
     static var pucks: [PuckPeripheral] = []
     static var scanning = false
     
     fileprivate let peripheral: Peripheral
     
+    fileprivate var _name: String? = nil
     var name: String? {
-        return peripheral.name
+        return self._name ?? peripheral.name
     }
     
     init(peripheral: Peripheral){
@@ -46,10 +48,17 @@ class PuckPeripheral: NSObject {
         }
     }
     
-    func changeName(name: String? = nil, completionHandler: @escaping (Result<Void, Error>) -> Void){
-        var command = Data([0xFD] + (name ?? "").data(using: .utf8)!)
+    func changeName(name: String, completionHandler: @escaping (Result<Void, Error>) -> Void){
+        let command = name.data(using: .utf8)!
         
-        peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
+        if command.count > 20 {
+            completionHandler(.failure(AmiiTagError(description: "Name is too long (\(command.count) bytes)")))
+            return
+        }
+        
+        self._name = name
+        
+        peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.nameUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
             self.disconnect { (result) in
                 completionHandler(result)
             }
@@ -112,6 +121,7 @@ class PuckPeripheral: NSObject {
                 self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.responseUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
                     switch result {
                     case .success(let response):
+                        let lastSlot = response[1]
                         let lastStart = response[2]
                         let lastCount = response[3]
                         let nextPage = lastStart + lastCount
@@ -120,7 +130,7 @@ class PuckPeripheral: NSObject {
                         if startPage + count >= 143 {
                             completionHandler(.success(accumulatedData))
                         } else {
-                            self._readTag(slot: slot, startPage: nextPage, count: min(UInt8(143) - startPage - count, count), accumulatedData: accumulatedData, completionHandler: completionHandler)
+                            self._readTag(slot: lastSlot, startPage: nextPage, count: min(UInt8(143) - startPage - count, count), accumulatedData: accumulatedData, completionHandler: completionHandler)
                         }
                         break
                     case .failure(let error):

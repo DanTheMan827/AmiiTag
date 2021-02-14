@@ -36,6 +36,7 @@
 		65DA3F2C25D3804700C83147 /* SwiftyBluetooth in Frameworks */ = {isa = PBXBuildFile; productRef = 65DA3F2B25D3804700C83147 /* SwiftyBluetooth */; };
 		65DE8D8A24D76F0600D67552 /* PuckPeripheral.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DE8D8924D76F0600D67552 /* PuckPeripheral.swift */; };
 		65EBD84524B9689500DDF1B4 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65EBD84424B9689500DDF1B4 /* Extensions.swift */; };
+		65FB460A25D77B2700610EBC /* AmiiTagError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FB460925D77B2700610EBC /* AmiiTagError.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXBuildRule section */
@@ -84,6 +85,7 @@
 		6588CAEF24A98170006EA341 /* MainViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		65DE8D8924D76F0600D67552 /* PuckPeripheral.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuckPeripheral.swift; sourceTree = "<group>"; };
 		65EBD84424B9689500DDF1B4 /* Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Extensions.swift; sourceTree = "<group>"; };
+		65FB460925D77B2700610EBC /* AmiiTagError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmiiTagError.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -140,6 +142,7 @@
 				6523DF5624BC207700A2C305 /* AmiiboCharactersTableViewController.swift */,
 				6523DF5824BD34CA00A2C305 /* AmiiboCharacterTableViewCell.swift */,
 				65064B54252AC78D00BCA905 /* Data+FromHex.swift */,
+				65FB460925D77B2700610EBC /* AmiiTagError.swift */,
 			);
 			path = AmiiTag;
 			sourceTree = "<group>";
@@ -290,6 +293,7 @@
 				65064B55252AC78D00BCA905 /* Data+FromHex.swift in Sources */,
 				652CC73C24B57DDD00DE02DF /* KeyFiles.swift in Sources */,
 				6588CAF024A98170006EA341 /* MainViewController.swift in Sources */,
+				65FB460A25D77B2700610EBC /* AmiiTagError.swift in Sources */,
 				651614FD24B56AA20097A3BC /* TagEncyption.swift in Sources */,
 				651614FE24B56AA20097A3BC /* NTAG215Tag.swift in Sources */,
 				6523DF5924BD34CA00A2C305 /* AmiiboCharacterTableViewCell.swift in Sources */,

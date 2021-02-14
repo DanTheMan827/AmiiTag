@@ -183,19 +183,16 @@ class MainViewController: UIViewController, NFCTagReaderSessionDelegate, UIDocum
                         })
 
                         alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { action in
-
-                            if let name = alert.textFields?.first?.text {
-                                puck.changeName(name: name) { (result) in
-                                    switch result {
-                                    case .success(()):
-                                        break
-                                    case .failure(let error):
-                                        self.dismiss(animated: true)
-                                        let errorAlert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
-                                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-                                        self.present(errorAlert, animated: true)
-                                        break
-                                    }
+                            puck.changeName(name: alert.textFields?.first?.text ?? "") { (result) in
+                                switch result {
+                                case .success(()):
+                                    break
+                                case .failure(let error):
+                                    self.dismiss(animated: true)
+                                    let errorAlert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
+                                    errorAlert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+                                    self.present(errorAlert, animated: true)
+                                    break
                                 }
                             }
                         }))
