@@ -98,7 +98,7 @@ public class AmiiboDatabase {
                 dumpData.append(Data(count: 4))
                 dumpData.append(salt)
                 dumpData.append(Data(count: 392))
-                dumpData.append(Data([0x01, 0x00, 0x0F, 0x00, 0x00, 0x00, 0x00, 0x04, 0x5F, 0x00, 0x00, 0x00]))
+                dumpData.append(Data([0x01, 0x00, 0x0F, 0xBD, 0x00, 0x00, 0x00, 0x04, 0x5F, 0x00, 0x00, 0x00]))
                 
                 if let dump = try? TagDump(data: dumpData) {
                     dumps[String(ID)] = dump
