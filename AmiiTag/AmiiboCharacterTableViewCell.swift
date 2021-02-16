@@ -120,6 +120,18 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol, 
             self.ViewController.present(pickerController, animated: true, completion: nil)
         }))
         
+        alertController.addAction(UIAlertAction(title: "NFC", style: .default, handler: { (action) in
+            NFCTagReader.ReadAmiibo { (result) in
+                switch result {
+                case .success(let tag):
+                    self.dismiss = false
+                    self.AmiiboCharacterPicked(tag: tag)
+                case .failure(let error):
+                    break
+                }
+            }
+        }))
+        
         alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
         
         self.ViewController.present(alertController, animated: true, completion: nil)

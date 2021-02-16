@@ -12,7 +12,7 @@ import CoreNFC
 import MobileCoreServices
 import SwiftyBluetooth
 
-class MainViewController: UIViewController, NFCTagReaderSessionDelegate, UIDocumentPickerDelegate, ScannerViewControllerDelegate, LibraryPickerProtocol {
+class MainViewController: UIViewController, UIDocumentPickerDelegate, ScannerViewControllerDelegate, LibraryPickerProtocol {
     static var main: MainViewController?
     func AmiiboSeriesPicked(series: String) -> Bool {
         return true
@@ -38,7 +38,6 @@ class MainViewController: UIViewController, NFCTagReaderSessionDelegate, UIDocum
         }
     }
     
-    var tagReaderSession: NFCTagReaderSession?
     var pickerController: UIDocumentPickerViewController!
     
     @IBAction func loadTagTap(_ sender: Any) {
@@ -91,9 +90,16 @@ class MainViewController: UIViewController, NFCTagReaderSessionDelegate, UIDocum
     }
     
     func startNfcTagReadingSession() {
-        tagReaderSession = NFCTagReaderSession(pollingOption: NFCTagReaderSession.PollingOption.iso14443, delegate: self)
-        tagReaderSession?.alertMessage = "Hold tag to back of phone!"
-        tagReaderSession?.begin()
+        NFCTagReader.ReadAmiibo { (result) in
+            switch (result) {
+            case .success(let tag):
+                TagInfoViewController.openTagInfo(dump: tag, controller: self)
+                break
+            case .failure(let error):
+                let alert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+            }
+        }
     }
     
     @IBAction func scanQrTap(_ sender: Any) {
@@ -145,38 +151,6 @@ class MainViewController: UIViewController, NFCTagReaderSessionDelegate, UIDocum
         LibraryPicker.ShowPicker(using: self, with: self)
     }
     
-    func handleConnectedTag(tag: NFCMiFareTag) {
-        NTAG215Tag.initialize(tag: tag) { result in
-            switch result {
-            case .success(let ntag215Tag):
-                self.tagReaderSession?.invalidate()
-                DispatchQueue.main.async {
-                    print(ntag215Tag.dump.TagUIDSig)
-                    self.writeUidSig(data: ntag215Tag.dump.TagUIDSig!)
-                    TagInfoViewController.openTagInfo(dump: ntag215Tag.dump, controller: self)
-                }
-            case .failure(let error):
-                self.tagReaderSession?.invalidate(errorMessage: error.localizedDescription)
-            }
-        }
-    }
-    
-    func writeUidSig(data: Data) {
-        let fileManager = FileManager.default
-        let documentsURL =  fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-
-        let sigPath = documentsURL.appendingPathComponent("signatures")
-        do
-        {
-            try FileManager.default.createDirectory(atPath: sigPath.path, withIntermediateDirectories: true, attributes: nil)
-            try data.write(to: sigPath.appendingPathComponent("\(data[0..<9].map { String(format: "%02hhx", $0) }.joined()).bin"))
-        }
-        catch let error as NSError
-        {
-            NSLog("Unable to create directory \(error.debugDescription)")
-        }
-    }
-    
     override func viewDidLoad() {
         super.viewDidLoad()
         
@@ -211,29 +185,6 @@ class MainViewController: UIViewController, NFCTagReaderSessionDelegate, UIDocum
             }
             if shouldStopAccessing {
                 url.stopAccessingSecurityScopedResource()
-            }
-        }
-    }
-    
-    // MARK: NFCTagReaderSessionDelegate
-    func tagReaderSessionDidBecomeActive(_ session: NFCTagReaderSession) {
-        NSLog("tagReaderSessionDidBecomeActive")
-    }
-    
-    func tagReaderSession(_ session: NFCTagReaderSession, didInvalidateWithError error: Error) {
-        NSLog("NFCTagReaderSession, didInvalidateWithError \(error)")
-    }
-    
-    func tagReaderSession(_ session: NFCTagReaderSession, didDetect tags: [NFCTag]) {
-        guard case let NFCTag.miFare(tag) = tags.first! else {
-            tagReaderSession?.invalidate(errorMessage: "Invalid tag type.")
-            return
-        }
-        session.connect(to: tags.first!) { (error: Error?) in
-            if let error = error {
-                session.invalidate(errorMessage: error.localizedDescription)
-            } else {
-                self.handleConnectedTag(tag: tag)
             }
         }
     }

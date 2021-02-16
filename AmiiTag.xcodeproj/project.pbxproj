@@ -27,6 +27,8 @@
 		656A9CBE24A9A5E600FE58CC /* TagInfoViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656A9CBD24A9A5E600FE58CC /* TagInfoViewController.swift */; };
 		656B358D24AC3391009AAF0A /* amiitag.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 656B358C24AC3391009AAF0A /* amiitag.pdf */; };
 		656B358F24AC35A7009AAF0A /* amiitag-dark.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 656B358E24AC35A7009AAF0A /* amiitag-dark.pdf */; };
+		656B83F125DB4CA20024EF5A /* NFCTagReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656B83F025DB4CA20024EF5A /* NFCTagReader.swift */; };
+		656B83F425DB5FD20024EF5A /* NFCMiFareTagError+LocalizedError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656B83F325DB5FD20024EF5A /* NFCMiFareTagError+LocalizedError.swift */; };
 		6588CAD624A9736A006EA341 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6588CAD524A9736A006EA341 /* AppDelegate.swift */; };
 		6588CADF24A9736A006EA341 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 6588CADD24A9736A006EA341 /* Main.storyboard */; };
 		6588CAE124A9736A006EA341 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6588CAE024A9736A006EA341 /* Assets.xcassets */; };
@@ -81,6 +83,8 @@
 		656A9CBD24A9A5E600FE58CC /* TagInfoViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TagInfoViewController.swift; sourceTree = "<group>"; };
 		656B358C24AC3391009AAF0A /* amiitag.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = amiitag.pdf; sourceTree = "<group>"; };
 		656B358E24AC35A7009AAF0A /* amiitag-dark.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = "amiitag-dark.pdf"; sourceTree = "<group>"; };
+		656B83F025DB4CA20024EF5A /* NFCTagReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NFCTagReader.swift; sourceTree = "<group>"; };
+		656B83F325DB5FD20024EF5A /* NFCMiFareTagError+LocalizedError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NFCMiFareTagError+LocalizedError.swift"; sourceTree = "<group>"; };
 		6588CAD324A9736A006EA341 /* AmiiTag.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AmiiTag.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6588CAD524A9736A006EA341 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		6588CADE24A9736A006EA341 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -138,6 +142,7 @@
 		6588CAD424A9736A006EA341 /* AmiiTag */ = {
 			isa = PBXGroup;
 			children = (
+				656B83F325DB5FD20024EF5A /* NFCMiFareTagError+LocalizedError.swift */,
 				658D59DB25DA284600ECA255 /* AwesomeBarButtonItem.swift */,
 				650BBAF425D9F76D0016E3DB /* Resources */,
 				6516150024B56EE20097A3BC /* amiibo.json */,
@@ -169,6 +174,7 @@
 				6523DF5824BD34CA00A2C305 /* AmiiboCharacterTableViewCell.swift */,
 				65064B54252AC78D00BCA905 /* Data+FromHex.swift */,
 				65FB460925D77B2700610EBC /* AmiiTagError.swift */,
+				656B83F025DB4CA20024EF5A /* NFCTagReader.swift */,
 			);
 			path = AmiiTag;
 			sourceTree = "<group>";
@@ -323,8 +329,10 @@
 				65064B55252AC78D00BCA905 /* Data+FromHex.swift in Sources */,
 				652CC73C24B57DDD00DE02DF /* KeyFiles.swift in Sources */,
 				6588CAF024A98170006EA341 /* MainViewController.swift in Sources */,
+				656B83F425DB5FD20024EF5A /* NFCMiFareTagError+LocalizedError.swift in Sources */,
 				658D59DC25DA284600ECA255 /* AwesomeBarButtonItem.swift in Sources */,
 				65FB460A25D77B2700610EBC /* AmiiTagError.swift in Sources */,
+				656B83F125DB4CA20024EF5A /* NFCTagReader.swift in Sources */,
 				651614FD24B56AA20097A3BC /* TagEncyption.swift in Sources */,
 				651614FE24B56AA20097A3BC /* NTAG215Tag.swift in Sources */,
 				6523DF5924BD34CA00A2C305 /* AmiiboCharacterTableViewCell.swift in Sources */,
