@@ -23,6 +23,13 @@ class PuckError: LocalizedError {
 }
 
 class PuckPeripheral: NSObject {
+    struct SlotInfo {
+        var slot: UInt8
+        var name: String
+        var idHex: String
+        var dump: TagDump
+    }
+    
     fileprivate static let serviceUuid = "78290001-d52e-473f-a9f4-f03da7c67dd1"
     fileprivate static let commandUuid = "78290002-d52e-473f-a9f4-f03da7c67dd1"
     fileprivate static let responseUuid = "78290003-d52e-473f-a9f4-f03da7c67dd1"
@@ -34,8 +41,8 @@ class PuckPeripheral: NSObject {
     fileprivate let peripheral: Peripheral
     
     fileprivate var _name: String? = nil
-    var name: String? {
-        return self._name ?? peripheral.name
+    var name: String {
+        return self._name ?? peripheral.name ?? "Puck"
     }
     
     init(peripheral: Peripheral){
@@ -43,6 +50,7 @@ class PuckPeripheral: NSObject {
     }
     
     func disconnect(completionHandler: @escaping (Result<Void, Error>) -> Void) {
+        print("Disconnecting from \(name)")
         peripheral.readValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
             self.peripheral.disconnect(completion: completionHandler)
         }
@@ -73,18 +81,91 @@ class PuckPeripheral: NSObject {
         }
     }
     
-    func getSlotInformation(completionHandler: @escaping (Result<(current: UInt8, total: UInt8), Error>) -> Void){
-        peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: Data([0x01]), type: .withResponse) { (result) in
+    func getSlotSummary(completionHandler: @escaping (Result<(current: UInt8, total: UInt8), Error>) -> Void){
+        let command = Data([0x01])
+        peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
             switch result {
             case .success(()):
                 self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.responseUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
                     switch result {
                     case .success(let response):
-                        completionHandler(.success((current: response[1], total: response[2])))
+                        if response[0] == 0x01 {
+                            completionHandler(.success((current: response[1], total: response[2])))
+                        } else {
+                            completionHandler(.failure(PuckError(description: "Slot summary response invalid")))
+                        }
                         break
                     case .failure(let error):
                         completionHandler(.failure(error))
                         break
+                    }
+                }
+                break
+            case .failure(let error):
+                completionHandler(.failure(error))
+                break
+            }
+        }
+    }
+    
+    func getAllSlotInformation(completionHandler: @escaping (Result<[SlotInfo], Error>) -> Void){
+        getSlotSummary { (result) in
+            switch result {
+            case .success(let summary):
+                self._getAllSlotInformation(current: 0, total: summary.total, data: nil, completionHandler: completionHandler)
+                break
+            case .failure(let error):
+                completionHandler(.failure(error))
+                break
+            }
+        }
+    }
+    
+    fileprivate func _getAllSlotInformation(current: UInt8 = 0, total: UInt8 = 1, data: [SlotInfo]? = nil, completionHandler: @escaping (Result<[SlotInfo], Error>) -> Void){
+        var data: [SlotInfo] = data ?? []
+        if current < total {
+            getSlotInformation(slot: current) { (result) in
+                switch result {
+                case .success(let result):
+                    data.append(result)
+                    self._getAllSlotInformation(current: current + 1, total: total, data: data, completionHandler: completionHandler)
+                    break
+                case .failure(let error):
+                    completionHandler(.failure(error))
+                    break
+                }
+            }
+        } else {
+            completionHandler(.success(data))
+        }
+    }
+    
+    func getSlotInformation(slot: UInt8 = 255, completionHandler: @escaping (Result<SlotInfo, Error>) -> Void){
+        var command = Data([0x01, slot])
+        print("Getting slot information for \(slot)")
+        peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
+            switch (result) {
+            case .success(()):
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.responseUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
+                        switch result {
+                        case .success(let data):
+                            var tagData = Data(count: 572)
+                            let response = Data(data[2..<data.count])
+                            tagData[0..<8] = response[0..<8]
+                            tagData[16..<28] = response[8..<20]
+                            tagData[32..<52] = response[20..<40]
+                            tagData[84..<92] = response[40..<48]
+                            tagData[96..<128] = response[48..<80]
+                            
+                            let data = Data(tagData)
+                            let tag = TagDump(data: data)!
+                            completionHandler(.success(SlotInfo(slot: slot, name: tag.displayName, idHex: "0x\(tag.headHex)\(tag.tailHex)", dump: tag)))
+                            break
+                        case .failure(let error):
+                            completionHandler(.failure(error))
+                            break
+                        }
                     }
                 }
                 break
@@ -104,7 +185,16 @@ class PuckPeripheral: NSObject {
         }
         
         peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
-            completionHandler(result)
+            self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
+                switch result {
+                case .success(let data):
+                    completionHandler(.success(()))
+                    break
+                case .failure(let error):
+                    completionHandler(.failure(error))
+                    break
+                }
+            }
         }
     }
     
@@ -115,7 +205,7 @@ class PuckPeripheral: NSObject {
     fileprivate func _readTag(slot: UInt8, startPage: UInt8 = 0, count: UInt8 = 63, accumulatedData: Data? = nil, completionHandler: @escaping (Result<Data, Error>) -> Void){
         let command = Data([0x02, slot, startPage, count])
         print("Reading from \(peripheral.name ?? "puck") in slot \(slot) at page \(startPage) for \(count) pages")
-        self.peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command) { (result) in
+        self.peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
             switch result {
             case .success():
                 self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.responseUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
@@ -147,7 +237,7 @@ class PuckPeripheral: NSObject {
     }
     
     func readAllTags(completionHandler: @escaping (Result<[Data], Error>) -> Void){
-        getSlotInformation { (result) in
+        getSlotSummary { (result) in
             switch result {
             case .success(let tagInformation):
                 self._readAllTags(slot: 0, count: tagInformation.total, completionHandler: completionHandler)
@@ -188,7 +278,7 @@ class PuckPeripheral: NSObject {
         if startPage < 143 {
             let dataToWrite = Data(data[(Int(startPage) * 4)..<min(((Int(startPage) + 4) * 4), 572)])
             let command = Data([0x03, slot, startPage] + dataToWrite)
-            print("Writing to \(peripheral.name ?? "puck") in slot \(slot) at page \(startPage) for \(dataToWrite.count) bytes")
+            print("Writing to \(peripheral.name) in slot \(slot) at page \(startPage) for \(dataToWrite.count) bytes")
             peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
                 switch result {
                 case .success(let _):
@@ -257,5 +347,24 @@ class PuckPeripheral: NSObject {
                 }
             }
         }
+    }
+    
+    static func getPuckChooser(puckChosen: @escaping(PuckPeripheral) -> Void) -> UIAlertController? {
+        if PuckPeripheral.pucks.count > 0 {
+            let alertController = UIAlertController(title: "Select Puck", message: nil, preferredStyle: .actionSheet)
+            
+            for puck in PuckPeripheral.pucks.sorted(by: { (a, b) -> Bool in
+                return a.name > b.name
+            }) {
+                alertController.addAction(UIAlertAction(title: puck.name, style: .default, handler: { (action) in
+                    puckChosen(puck)
+                }))
+            }
+            
+            alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel){ action -> Void in })
+            return alertController
+        }
+        
+        return nil
     }
 }

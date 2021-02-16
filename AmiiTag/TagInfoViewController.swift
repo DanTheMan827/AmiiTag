@@ -60,6 +60,16 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
         return "\(self.title!) \(formatter.string(from: Date()))"
     }
     
+    static func openTagInfo(dump: TagDump, controller: UIViewController){
+        let storyboard = UIStoryboard(name: "Main", bundle: nil)
+        guard let view = storyboard.instantiateViewController(withIdentifier: "TagInfo") as? TagInfoViewController else {
+            return
+        }
+        let nc = UINavigationController(rootViewController: view)
+        controller.present(nc, animated: true)
+        view.amiiboData = dump
+    }
+    
     func displayInfo(value: TagDump?) {
         guard let value = value else {
             return
@@ -69,28 +79,19 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
         print("Write Count: \(value.writeCounterInt)")
         
         tagUid.text = "0x\(value.uid.map { String(format: "%02hhx", $0) }.joined())"
-        self.title = "0x\(value.headHex)\(value.tailHex)"
         typeName.text = "0x\(value.headHex.prefix(8).suffix(2))"
         seriesName.text = "0x\(value.headHex.prefix(3))"
         
-        amiiboArt.image = amiiboData?.image
+        amiiboArt.image = value.image
         
         let json = AmiiboDatabase.database
-        if let name = amiiboData?.amiiboName {
-            self.title = name
-        }
-        
-        if let nickname = amiiboData?.nickname {
-            if nickname.count > 0 {
-                self.title = nickname
-            }
-        }
+        self.title = value.displayName
         
         if let type = amiiboData?.typeName {
             typeName.text = type
         }
         
-        if let series = amiiboData?.amiiboSeriesName {
+        if let series = value.amiiboSeriesName {
             seriesName.text = series
         }
         
@@ -123,10 +124,10 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
             alertController.view.tintColor = self.view.tintColor
             
             for puck in PuckPeripheral.pucks.sorted(by: { (a, b) -> Bool in
-                return a.name ?? "Puck" > b.name ?? "Puck"
+                return a.name > b.name
             }) {
                 alertController.addAction(UIAlertAction(title: puck.name, style: .default, handler: { (action) in
-                    var alert = UIAlertController(title: "Please Wait", message: "Writing " + (puck.name ?? "Puck"), preferredStyle: .alert)
+                    var alert = UIAlertController(title: "Please Wait", message: "Writing " + (puck.name), preferredStyle: .alert)
                     self.present(alert, animated: true)
                     puck.writeTag(using: self.dump) { (result) in
                         var hasError = false

@@ -2,10 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>NSBluetoothAlwaysUsageDescription</key>
-	<string>To connect to puck.js</string>
-	<key>NSBluetoothPeripheralUsageDescription</key>
-	<string>To connect to puck.js</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleExecutable</key>
@@ -26,10 +22,20 @@
 	<true/>
 	<key>NFCReaderUsageDescription</key>
 	<string>For reading and writing tags</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>To connect to puck.js</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>To connect to puck.js</string>
 	<key>NSCameraUsageDescription</key>
 	<string>For scanning QR codes</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>For saving QR codes</string>
+	<key>UIAppFonts</key>
+	<array>
+        <string>Font Awesome 5 Free-Solid-900.otf</string>
+        <string>Font Awesome 5 Free-Regular-400.otf</string>
+        <string>Font Awesome 5 Brands-Regular-400.otf</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

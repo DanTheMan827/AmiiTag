@@ -11,6 +11,7 @@ import UIKit
 
 class AmiiboSeriesTableViewController: UITableViewController {
     var amiiboSeries: [Dictionary<String, String>.Element] = []
+    var pickerDelegate: LibraryPickerProtocol?
     
     // MARK: UIViewController
     override func viewDidLoad() {
@@ -35,13 +36,17 @@ class AmiiboSeriesTableViewController: UITableViewController {
     
     // MARK: UITableViewDelegate
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
-        let storyboard = UIStoryboard(name: "Main", bundle: nil)
-        guard let view = storyboard.instantiateViewController(withIdentifier: "AmiiboCharacters") as? AmiiboCharactersTableViewController else {
-            return
+        let series = amiiboSeries[indexPath.row]
+        if pickerDelegate?.AmiiboSeriesPicked(series: series.key) ?? false == true {
+            let storyboard = UIStoryboard(name: "Main", bundle: nil)
+            guard let view = storyboard.instantiateViewController(withIdentifier: "AmiiboCharacters") as? AmiiboCharactersTableViewController else {
+                return
+            }
+            view.pickerDelegate = self.pickerDelegate
+            view.seriesFilter = String(amiiboSeries[indexPath.row].key.suffix(2))
+            view.title = amiiboSeries[indexPath.row].value
+            (self.view as? UITableView)?.deselectRow(at: indexPath, animated: true)
+            self.present(UINavigationController(rootViewController: view), animated: true, completion: nil)
         }
-        view.seriesFilter = String(amiiboSeries[indexPath.row].key.suffix(2))
-        view.title = amiiboSeries[indexPath.row].value
-        (self.view as? UITableView)?.deselectRow(at: indexPath, animated: true)
-        self.present(UINavigationController(rootViewController: view), animated: true, completion: nil)
     }
 }

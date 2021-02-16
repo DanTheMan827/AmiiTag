@@ -75,6 +75,18 @@ extension TagDump {
         
         return name.trimmingCharacters(in: CharacterSet(["\0"]))
     }
+    var displayName: String {
+        let nickname = self.nickname
+        if nickname.count > 0 {
+            return nickname
+        }
+        
+        if let name = self.amiiboName {
+            return name
+        }
+        
+        return "0x\(self.headHex)\(self.tailHex)"
+    }
     var TagUIDSig: Data? {
         if self.data.count == 572 {
             return self.uid + self.data[9...9] + self.signature!

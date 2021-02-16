@@ -12,6 +12,7 @@ import UIKit
 class AmiiboCharactersTableViewController: UITableViewController {
     var amiiboCharacters: [TagDump] = []
     var seriesFilter: String? = nil
+    var pickerDelegate: LibraryPickerProtocol? = nil
     
     // MARK: UIViewController
     override func viewDidLoad() {
@@ -56,10 +57,14 @@ class AmiiboCharactersTableViewController: UITableViewController {
     
     // MARK: UITableViewDelegate
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        
         (view as? UITableView)?.deselectRow(at: indexPath, animated: true)
         let randomUidSig = NTAG215Tag.uidSignatures.randomElement()!
         if let patched = try? amiiboCharacters[indexPath.row].patchedDump(withUID: randomUidSig.uid, staticKey: KeyFiles.staticKey!, dataKey: KeyFiles.dataKey!, skipDecrypt: true) {
-            MainViewController.openTagInfo(dump: TagDump(data: Data(patched.data[0..<532] + Data(count: 8) + randomUidSig.signature))!, controller: self)
+            let tag = TagDump(data: Data(patched.data[0..<532] + Data(count: 8) + randomUidSig.signature))!
+            if pickerDelegate?.AmiiboCharacterPicked(tag: tag) ?? false == true {
+                TagInfoViewController.openTagInfo(dump: tag, controller: self)
+            }
         }
     }
 }
