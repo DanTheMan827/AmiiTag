@@ -13,13 +13,12 @@ import CoreBluetooth
 
 class PuckError: LocalizedError {
     var errorDescription: String? { return _description }
-    var failureReason: String? { return _description }
     
     private var _description: String
     
     init(description: String) {
-            self._description = description
-        }
+        self._description = description
+    }
 }
 
 class PuckPeripheral: NSObject {
@@ -38,8 +37,8 @@ class PuckPeripheral: NSObject {
     static var pucks: [PuckPeripheral] = []
     static var scanning = false
     
-    fileprivate let peripheral: Peripheral
-    
+    let peripheral: Peripheral
+    fileprivate var disconnecting = false
     fileprivate var _name: String? = nil
     var name: String {
         return self._name ?? peripheral.name ?? "Puck"
@@ -50,9 +49,19 @@ class PuckPeripheral: NSObject {
     }
     
     func disconnect(completionHandler: @escaping (Result<Void, Error>) -> Void) {
+        if self.disconnecting || self.peripheral.state == .disconnected || self.peripheral.state == .disconnecting {
+            completionHandler(.success(()))
+            
+            return
+        }
+        
+        self.disconnecting = true
         print("Disconnecting from \(name)")
         peripheral.readValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
-            self.peripheral.disconnect(completion: completionHandler)
+            self.peripheral.disconnect { (result) in
+                self.disconnecting = false
+                completionHandler(result)
+            }
         }
     }
     

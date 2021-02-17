@@ -9,39 +9,25 @@
 import Foundation
 import UIKit
 import CoreNFC
+import CoreBluetooth
 import MobileCoreServices
 import SwiftyBluetooth
 
-class MainViewController: UIViewController, UIDocumentPickerDelegate, ScannerViewControllerDelegate, LibraryPickerProtocol {
+class MainViewController: UIViewController, LibraryPickerProtocol {
     static var main: MainViewController?
-    func AmiiboSeriesPicked(series: String) -> Bool {
-        return true
-    }
-    
-    func AmiiboCharacterPicked(tag: TagDump) -> Bool {
-        return true
-    }
-    
     @IBOutlet var logo: UIImageView!
     
-    func scannerCodeFound(code: String) {
-        guard let data = try? Data(base64Encoded: code, options: .ignoreUnknownCharacters) else {
-            return
-        }
-        
-        if (data.count == 532 || data.count == 540 || data.count == 572) {
-            if let dump = TagDump(data: data) {
-                dismiss(animated: true) {
-                    TagInfoViewController.openTagInfo(dump: dump, controller: self)
-                }
+    @IBAction func loadTagTap(_ sender: Any) {
+        AmiiboFilePicker.OpenAmiibo(PresentingViewController: self) { (result) in
+            switch result {
+            case .success(let tag):
+                TagInfoViewController.openTagInfo(dump: tag, controller: self)
+                break
+            case .failure(let error):
+                self.present(error.getAlertController(), animated: true, completion: nil)
+                break
             }
         }
-    }
-    
-    var pickerController: UIDocumentPickerViewController!
-    
-    @IBAction func loadTagTap(_ sender: Any) {
-        self.present(pickerController, animated: true)
     }
     
     @IBAction func startTagReadingSession() {
@@ -64,9 +50,7 @@ class MainViewController: UIViewController, UIDocumentPickerDelegate, ScannerVie
                             break
                         case .failure(let error):
                             self.dismiss(animated: true)
-                            let errorAlert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
-                            errorAlert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-                            self.present(errorAlert, animated: true)
+                            self.present(error.getAlertController(), animated: true)
                             break
                         }
                         
@@ -96,19 +80,21 @@ class MainViewController: UIViewController, UIDocumentPickerDelegate, ScannerVie
                 TagInfoViewController.openTagInfo(dump: tag, controller: self)
                 break
             case .failure(let error):
-                let alert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
-                alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+                self.present(error.getAlertController(), animated: true, completion: nil)
             }
         }
     }
     
     @IBAction func scanQrTap(_ sender: Any) {
-        let storyboard = UIStoryboard(name: "Main", bundle: nil)
-        guard let vc = storyboard.instantiateViewController(withIdentifier: "ScannerView") as? ScannerViewController else {
-            return
+        ScannerViewController.ShowScanner(PresentingViewController: self) { (result) in
+            switch result {
+            case .success(let tag):
+                TagInfoViewController.openTagInfo(dump: tag, controller: self)
+                break
+            case .failure(let error):
+                self.present(error.getAlertController(), animated: true, completion: nil)
+            }
         }
-        vc.delegate = self
-        self.present(vc, animated: true)
     }
     
     @IBAction func managePuckTap(_ sender: Any) {
@@ -135,9 +121,7 @@ class MainViewController: UIViewController, UIDocumentPickerDelegate, ScannerVie
                     
                     break
                 case .failure(let error):
-                    let errorAlert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
-                    errorAlert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-                    self.present(errorAlert, animated: true, completion: nil)
+                    self.present(error.getAlertController(), animated: true, completion: nil)
                     puck.disconnect { (result) in }
                     break
                 }
@@ -159,33 +143,22 @@ class MainViewController: UIViewController, UIDocumentPickerDelegate, ScannerVie
         print("Loaded \(NTAG215Tag.uidSignatures.count) UID/Signature pairs")
         print("Loaded \(AmiiboDatabase.amiiboDumps.count) amiibo dumps")
         
-        pickerController = UIDocumentPickerViewController(documentTypes: [kUTTypeData as String], in: .open)
-        pickerController.delegate = self
-        pickerController.allowsMultipleSelection = false
-    }
-    
-    // MARK: DocumentDelegate
-    public func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
-        guard let url = urls.first else {
-            return
-        }
-        if url.isFileURL {
-            let shouldStopAccessing = url.startAccessingSecurityScopedResource()
-            let path = url.path
-            if let attr = try? FileManager.default.attributesOfItem(atPath: path) as NSDictionary {
-                if attr.fileSize() == 532 || attr.fileSize() == 540 || attr.fileSize() == 572 {
-                    if let data = try? Data(contentsOf: url),
-                       let dump = TagDump(data: data) {
-                        dismiss(animated: true) {
-                            TagInfoViewController.openTagInfo(dump: dump, controller: self)
-                        }
+        NotificationCenter.default.addObserver(forName: Central.CentralStateChange, object: Central.sharedInstance, queue: nil) { (notification) in
+            if let state = notification.userInfo?["state"] as? CBManagerState {
+                if state == .poweredOff {
+                    if AmiiboCharactersPuckTableViewController.showing {
+                        self.dismiss(animated: true, completion: nil)
                     }
-                    
                 }
             }
-            if shouldStopAccessing {
-                url.stopAccessingSecurityScopedResource()
-            }
         }
+    }
+    
+    func AmiiboSeriesPicked(series: String) -> Bool {
+        return true
+    }
+    
+    func AmiiboCharacterPicked(tag: TagDump) -> Bool {
+        return true
     }
 }

@@ -10,8 +10,9 @@ import Foundation
 import AVFoundation
 import UIKit
 
-class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate {
+class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDelegate, ScannerViewControllerDelegate {
     var delegate: ScannerViewControllerDelegate?
+    var completionHandler: ((Result<TagDump, Error>) -> Void)? = nil
     var captureSession: AVCaptureSession!
     var previewLayer: AVCaptureVideoPreviewLayer!
 
@@ -58,10 +59,7 @@ class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDel
     }
 
     func failed() {
-        let ac = UIAlertController(title: "Scanning not supported", message: "Your device does not support scanning a code from an item. Please use a device with a camera.", preferredStyle: .alert)
-        ac.addAction(UIAlertAction(title: "OK", style: .default))
-        present(ac, animated: true)
-        captureSession = nil
+        self.completionHandler?(.failure(AmiiTagError(description: "Unable to activate camera")))
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -99,6 +97,41 @@ class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDel
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
         return .portrait
+    }
+    
+    func scannerCodeFound(code: String) {
+        guard let data = try? Data(base64Encoded: code, options: .ignoreUnknownCharacters) else {
+            dismiss(animated: true) {
+                self.completionHandler?(.failure(AmiiTagError(description: "Failed to decode QR code")))
+            }
+            return
+        }
+        
+        if (data.count == 532 || data.count == 540 || data.count == 572) {
+            if let dump = TagDump(data: data) {
+                dismiss(animated: true) {
+                    self.completionHandler?(.success(dump))
+                }
+            } else {
+                dismiss(animated: true) {
+                    self.completionHandler?(.failure(AmiiTagError(description: "Invalid data in QR code")))
+                }
+            }
+        } else {
+            dismiss(animated: true) {
+                self.completionHandler?(.failure(AmiiTagError(description: "Invalid data in QR code")))
+            }
+        }
+    }
+    
+    static func ShowScanner(PresentingViewController presentingVc: UIViewController, completionHandler: @escaping (Result<TagDump, Error>) -> Void) {
+        let storyboard = UIStoryboard(name: "Main", bundle: nil)
+        guard let vc = storyboard.instantiateViewController(withIdentifier: "ScannerView") as? ScannerViewController else {
+            return
+        }
+        vc.completionHandler = completionHandler
+        vc.delegate = vc
+        presentingVc.present(vc, animated: true)
     }
 }
 

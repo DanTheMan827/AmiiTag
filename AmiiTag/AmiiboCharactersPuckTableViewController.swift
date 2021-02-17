@@ -9,19 +9,34 @@
 import Foundation
 import UIKit
 import MobileCoreServices
+import SwiftyBluetooth
 
 class AmiiboCharactersPuckTableViewController: UITableViewController {
     var puck: PuckPeripheral! = nil
     var puckSlots: [PuckPeripheral.SlotInfo] = []
     var cells: [AmiiboCharacterPuckTableViewCell] = []
+    static var showing = false
     
     // MARK: UIViewController
     override func viewDidLoad() {
         super.viewDidLoad()
+        NotificationCenter.default.addObserver(forName: Peripheral.PeripheralDisconnected, object: puck.peripheral, queue: nil) { (notification) in
+            if AmiiboCharactersPuckTableViewController.showing {
+                MainViewController.main?.dismiss(animated: true, completion: nil)
+            }
+        }
     }
     
     override func viewDidDisappear(_ animated: Bool) {
-        self.puck.disconnect { (result) in }
+        AmiiboCharactersPuckTableViewController.showing = false
+        MainViewController.main?.present(UIAlertController(title: "Please Wait", message: "Disconnecting from \(puck.name)", preferredStyle: .alert), animated: true, completion: nil)
+        self.puck.disconnect { (result) in
+            MainViewController.main?.dismiss(animated: true, completion: nil)
+        }
+    }
+    
+    override func viewDidAppear(_ animated: Bool) {
+        AmiiboCharactersPuckTableViewController.showing = true
     }
     
     // MARK: UITableViewDataSource
@@ -87,9 +102,7 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
                         break
                     case .failure(let error):
                         self.dismiss(animated: true)
-                        let errorAlert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
-                        errorAlert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-                        self.present(errorAlert, animated: true)
+                        self.present(error.getAlertController(), animated: true)
                         break
                     }
                 }
@@ -106,9 +119,7 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
                     break
                 case .failure(let error):
                     self.dismiss(animated: true)
-                    let errorAlert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
-                    errorAlert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-                    self.present(errorAlert, animated: true)
+                    self.present(error.getAlertController(), animated: true)
                     break
                 }
             })

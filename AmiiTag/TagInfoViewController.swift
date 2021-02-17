@@ -138,9 +138,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                         case .failure(let error):
                             hasError = true
                             self.dismiss(animated: true)
-                            let errorAlert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
-                            errorAlert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-                            self.present(errorAlert, animated: true)
+                            self.present(error.getAlertController(), animated: true)
                             break
                         }
                         
@@ -151,9 +149,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                             case .failure(let error):
                                 hasError = true
                                 self.dismiss(animated: true)
-                                let errorAlert = UIAlertController(title: "Oh no!", message: error.localizedDescription, preferredStyle: .alert)
-                                errorAlert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-                                self.present(errorAlert, animated: true)
+                                self.present(error.getAlertController(), animated: true)
                                 break
                             }
                             

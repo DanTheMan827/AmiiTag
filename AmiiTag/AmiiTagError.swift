@@ -10,10 +10,14 @@ import Foundation
 
 class AmiiTagError: Error {
     fileprivate var _localizedDescription: String = ""
-    var localizedDescription: String {
-        return _localizedDescription
-    }
+
     init(description: String) {
         self._localizedDescription = description
+    }
+}
+
+extension AmiiTagError: LocalizedError {
+    public var errorDescription: String? {
+        return self._localizedDescription
     }
 }
