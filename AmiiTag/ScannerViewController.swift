@@ -85,6 +85,7 @@ class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDel
             guard let readableObject = metadataObject as? AVMetadataMachineReadableCodeObject else { return }
             guard let stringValue = readableObject.stringValue else { return }
             AudioServicesPlaySystemSound(SystemSoundID(kSystemSoundID_Vibrate))
+            AudioServicesPlaySystemSound(SystemSoundID(1543))
             delegate?.scannerCodeFound(code: stringValue)
         }
 
