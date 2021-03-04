@@ -7,6 +7,8 @@
 //
 
 import Foundation
+import CoreNFC
+
 extension NFCMiFareTagError: LocalizedError {
     public var errorDescription: String? {
         switch self {

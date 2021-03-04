@@ -84,25 +84,13 @@ public class AmiiboDatabase {
         json.AmiiboData.keys.forEach { (key) in
             if fakeAmiibo[String(key.suffix(16))] == nil {
                 var ID = key.suffix(16)
-                var dataId = Data.fromHexString(hex: String(ID))
-                var salt = Data(count: 32)
-                let result = salt.withUnsafeMutableBytes {
-                    SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!)
+                var dataId = Data.FromHexString(hex: String(ID))
+                
+                guard let dump = try? TagDump.FromID(id: dataId, encrypt: false) else {
+                    return
                 }
                 
-                var dumpData = Data()
-                
-                dumpData.append(Data([0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x48, 0x0f, 0xe0, 0xf1, 0x10, 0xff, 0xee, 0xa5, 0x00, 0x00, 0x00]))
-                dumpData.append(Data(count: 64))
-                dumpData.append(dataId)
-                dumpData.append(Data(count: 4))
-                dumpData.append(salt)
-                dumpData.append(Data(count: 392))
-                dumpData.append(Data([0x01, 0x00, 0x0F, 0xBD, 0x00, 0x00, 0x00, 0x04, 0x5F, 0x00, 0x00, 0x00]))
-                
-                if let dump = try? TagDump(data: dumpData) {
-                    dumps[String(ID)] = dump
-                }
+                dumps[String(ID)] = dump
             }
         }
         

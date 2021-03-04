@@ -9,7 +9,7 @@
 import Foundation
 
 extension Data {
-    static func fromHexString(hex: String) -> Data {
+    static func FromHexString(hex: String) -> Data {
         var hex = hex
         var data = Data()
         while(hex.count > 0) {

@@ -155,7 +155,7 @@ class PuckPeripheral: NSObject {
         peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
             switch (result) {
             case .success(()):
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                //DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
                     self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.responseUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
                         switch result {
                         case .success(let data):
@@ -176,7 +176,7 @@ class PuckPeripheral: NSObject {
                             break
                         }
                     }
-                }
+                //}
                 break
             case .failure(let error):
                 completionHandler(.failure(error))

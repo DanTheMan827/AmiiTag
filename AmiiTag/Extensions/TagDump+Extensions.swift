@@ -10,48 +10,6 @@ import Foundation
 import UIKit
 import CoreNFC
 
-struct UidSigPair {
-    let uid: Data
-    let signature: Data
-}
-
-extension NFCMiFareTag {
-    func checkPuck(completionHandler: @escaping (Result<Data, Error>) -> Void) {
-        sendMiFareCommand(commandPacket: Data([0x3A, 133, 134])) { (data, error) in
-            if let error = error {
-                completionHandler(.failure(error))
-            } else if data.elementsEqual([1, 2, 3, 4, 5, 6, 7, 8]) {
-                completionHandler(.success(data))
-            } else {
-                completionHandler(.failure(NFCMiFareTagError.unknownError))
-            }
-        }
-    }
-}
-extension NTAG215Tag {
-    static let uidSignatures: [UidSigPair] = {
-        var signatures: [UidSigPair] = []
-        
-        guard
-            let signaturesPath = Bundle.main.url(forResource: "signatures", withExtension: "bin"),
-            let signaturesData = try? Data(contentsOf: signaturesPath) else {
-                return signatures
-        }
-        
-        for index in stride(from: 0, to: signaturesData.count, by: 42) {
-            if signaturesData[index + 9] == 0x48 {
-                signatures.append(UidSigPair(uid: Data(signaturesData[index..<(index + 9)]), signature: Data(signaturesData[(index + 10)..<(index + 42)])))
-            }
-        }
-        
-        if signatures.count == 0 {
-            signatures.append(UidSigPair(uid: Data([0x00, 0x00, 0x00, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00]), signature: Data(count: 32)))
-        }
-        
-        return signatures
-    }()
-}
-
 extension TagDump {
     var decryptedData: Data? {
         guard
@@ -132,11 +90,5 @@ extension TagDump {
         }
         
         return nil
-    }
-}
-
-extension Data {
-    func ToHex() -> String {
-        return self.map { String(format: "%02hhx", $0) }.joined()
     }
 }
