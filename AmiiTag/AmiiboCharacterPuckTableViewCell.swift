@@ -107,8 +107,11 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
                 self.ViewController.present(alert, animated: true, completion: nil)
                 
                 
-                self.ViewController.cells[Int(self.Info.slot)].CellImage.image = tag.image
-                self.ViewController.cells[Int(self.Info.slot)].CellLabel.text = tag.displayName
+                self.ViewController.puckSlots[Int(self.Info.slot)].dump = tag
+                self.ViewController.puckSlots[Int(self.Info.slot)].name = tag.displayName
+                self.ViewController.puckSlots[Int(self.Info.slot)].idHex = "0x\(tag.fullHex)"
+                self.CellImage.image = tag.image
+                self.CellLabel.text = tag.displayName
                 self.Puck.getSlotSummary { (result) in
                     switch result {
                     case .success(let summary):
