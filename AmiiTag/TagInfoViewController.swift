@@ -133,6 +133,8 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                         var hasError = false
                         
                         switch result {
+                        case .status(let status):
+                            alert.message = "Writing \(puck.name) (\(status.start)/\(status.total))"
                         case .success(let tag):
                             break
                         case .failure(let error):
@@ -142,22 +144,27 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                             break
                         }
                         
-                        puck.changeSlot { (result) in
-                            switch result {
-                            case .success(let _):
-                                break;
-                            case .failure(let error):
-                                hasError = true
-                                self.dismiss(animated: true)
-                                self.present(error.getAlertController(), animated: true)
-                                break
-                            }
-                            
-                            puck.disconnect { (result) in
-                                if !hasError {
+                        switch result {
+                        case .status(let _):
+                            break
+                        default:
+                            puck.changeSlot { (result) in
+                                switch result {
+                                case .success(let _):
+                                    break;
+                                case .failure(let error):
+                                    hasError = true
                                     self.dismiss(animated: true)
+                                    self.present(error.getAlertController(), animated: true)
+                                    break
                                 }
-                                PuckPeripheral.startScanning()
+                                
+                                puck.disconnect { (result) in
+                                    if !hasError {
+                                        self.dismiss(animated: true)
+                                    }
+                                    PuckPeripheral.startScanning()
+                                }
                             }
                         }
                     }

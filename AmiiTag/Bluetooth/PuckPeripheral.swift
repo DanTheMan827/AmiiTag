@@ -22,6 +22,18 @@ class PuckError: LocalizedError {
 }
 
 class PuckPeripheral: NSObject {
+    struct TagStatus {
+        let slot: UInt8
+        let start: Int
+        let count: Int
+        let total: Int
+    }
+    
+    struct SlotStatus {
+        let current: UInt8
+        let total: UInt8
+    }
+    
     struct SlotInfo {
         var slot: UInt8
         var name: String
@@ -117,7 +129,7 @@ class PuckPeripheral: NSObject {
         }
     }
     
-    func getAllSlotInformation(completionHandler: @escaping (Result<[SlotInfo], Error>) -> Void){
+    func getAllSlotInformation(completionHandler: @escaping (StatusResult<[SlotInfo], SlotStatus, Error>) -> Void){
         getSlotSummary { (result) in
             switch result {
             case .success(let summary):
@@ -130,9 +142,10 @@ class PuckPeripheral: NSObject {
         }
     }
     
-    fileprivate func _getAllSlotInformation(current: UInt8 = 0, total: UInt8 = 1, data: [SlotInfo]? = nil, completionHandler: @escaping (Result<[SlotInfo], Error>) -> Void){
+    fileprivate func _getAllSlotInformation(current: UInt8 = 0, total: UInt8 = 1, data: [SlotInfo]? = nil, completionHandler: @escaping (StatusResult<[SlotInfo], SlotStatus, Error>) -> Void){
         var data: [SlotInfo] = data ?? []
         if current < total {
+            completionHandler(.status(SlotStatus(current: current, total: total)))
             getSlotInformation(slot: current) { (result) in
                 switch result {
                 case .success(let result):
@@ -207,13 +220,14 @@ class PuckPeripheral: NSObject {
         }
     }
     
-    func readTag(slot: UInt8 = 255, completionHandler: @escaping (Result<Data, Error>) -> Void){
+    func readTag(slot: UInt8 = 255, completionHandler: @escaping (StatusResult<Data, TagStatus, Error>) -> Void){
         _readTag(slot: slot, completionHandler: completionHandler)
     }
     
-    fileprivate func _readTag(slot: UInt8, startPage: UInt8 = 0, count: UInt8 = 63, accumulatedData: Data? = nil, completionHandler: @escaping (Result<Data, Error>) -> Void){
+    fileprivate func _readTag(slot: UInt8, startPage: UInt8 = 0, count: UInt8 = 63, accumulatedData: Data? = nil, completionHandler: @escaping (StatusResult<Data, TagStatus, Error>) -> Void){
         let command = Data([0x02, slot, startPage, count])
         print("Reading from \(peripheral.name ?? "puck") in slot \(slot) at page \(startPage) for \(count) pages")
+        completionHandler(.status(TagStatus(slot: slot, start: Int(startPage) * 4, count: Int(count) * 4, total: 572)))
         self.peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
             switch result {
             case .success():
@@ -227,6 +241,7 @@ class PuckPeripheral: NSObject {
                         let accumulatedData = Data((accumulatedData ?? Data(count: 0)) + response[4..<(4 + (Int(lastCount) * 4))])
                         
                         if startPage + count >= 143 {
+                            completionHandler(.status(TagStatus(slot: slot, start: 572, count: 0, total: 572)))
                             completionHandler(.success(accumulatedData))
                         } else {
                             self._readTag(slot: lastSlot, startPage: nextPage, count: min(UInt8(143) - startPage - count, count), accumulatedData: accumulatedData, completionHandler: completionHandler)
@@ -245,7 +260,7 @@ class PuckPeripheral: NSObject {
         }
     }
     
-    func readAllTags(completionHandler: @escaping (Result<[Data], Error>) -> Void){
+    func readAllTags(completionHandler: @escaping (StatusResult<[Data], TagStatus, Error>) -> Void){
         getSlotSummary { (result) in
             switch result {
             case .success(let tagInformation):
@@ -258,10 +273,12 @@ class PuckPeripheral: NSObject {
         }
     }
     
-    fileprivate func _readAllTags(slot: UInt8 = 0, count: UInt8 = 5, tags: [Data] = [], completionHandler: @escaping (Result<[Data], Error>) -> Void){
+    fileprivate func _readAllTags(slot: UInt8 = 0, count: UInt8 = 5, tags: [Data] = [], completionHandler: @escaping (StatusResult<[Data], TagStatus, Error>) -> Void){
         if slot < count {
             readTag(slot: slot) { (result) in
                 switch result {
+                case .status(let status):
+                    completionHandler(.status(status))
                 case .success(let tag):
                     var tags: [Data] = tags
                     tags.append(Data(tag))
@@ -277,17 +294,18 @@ class PuckPeripheral: NSObject {
         }
     }
     
-    func writeTag(toSlot slot: UInt8 = 255, using tag: Data, completionHandler: @escaping (Result<Void, Error>) -> Void){
+    func writeTag(toSlot slot: UInt8 = 255, using tag: Data, completionHandler: @escaping (StatusResult<Void, TagStatus, Error>) -> Void){
         var data = Data(count: 572)
         data[0..<tag.count] = tag[0..<tag.count]
         _writeTag(toSlot: slot, withData: data, completionHandler: completionHandler)
     }
     
-    fileprivate func _writeTag(toSlot slot: UInt8, atPage startPage: UInt8 = 0, withData data: Data, completionHandler: @escaping (Result<Void, Error>) -> Void){
+    fileprivate func _writeTag(toSlot slot: UInt8, atPage startPage: UInt8 = 0, withData data: Data, completionHandler: @escaping (StatusResult<Void, TagStatus, Error>) -> Void){
         if startPage < 143 {
             let dataToWrite = Data(data[(Int(startPage) * 4)..<min(((Int(startPage) + 4) * 4), 572)])
             let command = Data([0x03, slot, startPage] + dataToWrite)
             print("Writing to \(peripheral.name) in slot \(slot) at page \(startPage) for \(dataToWrite.count) bytes")
+            completionHandler(.status(TagStatus(slot: slot, start: Int(startPage) * 4, count: dataToWrite.count, total: 572)))
             peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
                 switch result {
                 case .success(let _):
@@ -299,6 +317,7 @@ class PuckPeripheral: NSObject {
                 }
             }
         } else {
+            completionHandler(.status(TagStatus(slot: slot, start: 572, count: 0, total: 572)))
             completionHandler(.success(()))
         }
     }

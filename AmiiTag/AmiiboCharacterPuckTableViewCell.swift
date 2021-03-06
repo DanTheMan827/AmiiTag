@@ -18,11 +18,13 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
     @IBOutlet var CellImage: UIImageView!
     @IBOutlet var CellLabel: UILabel!
     @IBAction func downloadTapped(_ sender: Any) {
-        let alert = UIAlertController(title: "Please Wait", message: "Reading " + (Puck.name), preferredStyle: .alert)
+        let alert = UIAlertController(title: "Please Wait", message: "Reading \(Puck.name)", preferredStyle: .alert)
         self.ViewController.present(alert, animated: true)
         
         Puck.readTag(slot: Info.slot) { (result) in
             switch result {
+            case .status(let status):
+                alert.message = "Reading \(self.Puck.name) (\(status.start)/\(status.total))"
             case .success(let tag):
                 self.ViewController.dismiss(animated: true)
                 TagInfoViewController.openTagInfo(dump: TagDump(data: tag)!, controller: self.ViewController)
@@ -91,7 +93,7 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
     }
     
     func AmiiboCharacterPicked(tag: TagDump) -> Bool {
-        let alert = UIAlertController(title: "Please Wait", message: "Writing " + (Puck.name), preferredStyle: .alert)
+        let alert = UIAlertController(title: "Please Wait", message: "Writing \(Puck.name)", preferredStyle: .alert)
         if self.dismiss {
             self.ViewController.dismiss(animated: true)
         }
@@ -100,13 +102,9 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
         
         Puck.writeTag(toSlot: Info.slot, using: tag.data) { (result) in
             switch result {
+            case .status(let status):
+                alert.message = "Writing \(self.Puck.name) (\(status.start)/\(status.total))"
             case .success(()):
-                self.ViewController.dismiss(animated: true)
-                
-                let alert = UIAlertController(title: "Please Wait", message: "Changing Slot", preferredStyle: .alert)
-                self.ViewController.present(alert, animated: true, completion: nil)
-                
-                
                 self.ViewController.puckSlots[Int(self.Info.slot)].dump = tag
                 self.ViewController.puckSlots[Int(self.Info.slot)].name = tag.displayName
                 self.ViewController.puckSlots[Int(self.Info.slot)].idHex = "0x\(tag.fullHex)"
@@ -132,6 +130,7 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
                         
                         break
                     case .failure(let error):
+                        self.ViewController.dismiss(animated: true)
                         self.ViewController.present(error.getAlertController(), animated: true)
                         break
                     }
