@@ -146,8 +146,21 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
         super.viewDidLoad()
         
         MainViewController.main = self
+        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let signaturesPath = documentsPath.appendingPathComponent("Signatures")
+        let readmePath = documentsPath.appendingPathComponent("readme.txt")
+        let signaturesReadmePath = signaturesPath.appendingPathComponent("readme.txt")
         
-        KeyFiles.LoadKeys()
+        let _  = try? FileManager.default.createDirectory(at: signaturesPath, withIntermediateDirectories: true)
+        
+        if !FileManager.default.fileExists(atPath: readmePath.path) {
+            let _ = try? Data("Place key_retail.bin in this folder".bytes).write(to: readmePath)
+        }
+        
+        if !FileManager.default.fileExists(atPath: signaturesReadmePath.path) {
+            let _ = try? Data("This folder contains 42 byte binary files containing the first 10 bytes of scanned NTAG 215 tags followed by the 32 byte IC signature.".bytes).write(to: signaturesReadmePath)
+        }
+        
         AmiiboDatabase.LoadJson()
         
         print("Loaded \(NTAG215Tag.uidSignatures.count) UID/Signature pairs")

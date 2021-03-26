@@ -32,10 +32,12 @@ class KeyFiles {
     
     static var staticKey: TagKey? = nil
     static var dataKey: TagKey? = nil
-    static var hasKeys: Bool = false
+    static var hasKeys: Bool {
+        return (staticKey != nil && dataKey != nil) || LoadKeys()
+    }
     
-    static func LoadKeys() -> Bool {
-        if hasKeys {
+    fileprivate static func LoadKeys() -> Bool {
+        if staticKey != nil && dataKey != nil {
             return true
         }
         
@@ -44,12 +46,10 @@ class KeyFiles {
                 dataKey = TagKey(data: Data(keyData[0..<80]))
                 staticKey = TagKey(data: Data(keyData[80..<160]))
                 
-                hasKeys = true
                 return true
             }
         }
         
-        hasKeys = false
         return false
     }
 }
