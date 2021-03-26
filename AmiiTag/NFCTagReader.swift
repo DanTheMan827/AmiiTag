@@ -39,14 +39,21 @@ class NFCTagReader: NSObject, NFCTagReaderSessionDelegate {
     }
     
     func writeUidSig(data: Data) {
+        var uidHex = data[0..<9].map { String(format: "%02hhx", $0) }.joined()
+        
+        if NTAG215Tag.uidSignatures[uidHex] != nil {
+            return
+        }
+        
         let fileManager = FileManager.default
         let documentsURL =  fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
 
-        let sigPath = documentsURL.appendingPathComponent("signatures")
+        let sigPath = documentsURL.appendingPathComponent("Signatures")
         do
         {
+            NTAG215Tag.uidSignatures[uidHex] = Data(data.suffix(32))
             try FileManager.default.createDirectory(atPath: sigPath.path, withIntermediateDirectories: true, attributes: nil)
-            try data.write(to: sigPath.appendingPathComponent("\(data[0..<9].map { String(format: "%02hhx", $0) }.joined()).bin"))
+            try data.write(to: sigPath.appendingPathComponent("\(uidHex).bin"))
         }
         catch let error as NSError
         {

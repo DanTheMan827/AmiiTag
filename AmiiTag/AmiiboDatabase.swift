@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import UIKit
 
 public class AmiiboDatabase {
     public struct AmiiboJsonData: Codable {
@@ -33,6 +34,10 @@ public class AmiiboDatabase {
             case GameSeries = "game_series"
             case Types = "types"
         }
+        
+        public static func GetEmptyData() -> AmiiboJson {
+            return AmiiboJson(AmiiboSeries: [:], AmiiboData: [:], Characters: [:], GameSeries: [:], Types: [:])
+        }
     }
     
     static let fakeAmiibo: Dictionary<String, String> = [
@@ -49,12 +54,16 @@ public class AmiiboDatabase {
         "2104000000000002": "2104000002520002"  // Roy (SSB)
     ]
     
-    public static let database: AmiiboJson = {
+    public static var database: AmiiboJson = AmiiboJson.GetEmptyData()
+    
+    public static func LoadJson(){
         guard
             let jsonPath = try? Bundle.main.url(forResource: "amiibo", withExtension: "json"),
             let jsonData = try? Data(contentsOf: jsonPath),
             let resultJson = try? JSONDecoder().decode(AmiiboJson.self, from: jsonData) else {
-                return AmiiboJson(AmiiboSeries: Dictionary<String, String>(), AmiiboData: Dictionary<String, AmiiboJsonData>(), Characters: Dictionary<String, String>(), GameSeries: Dictionary<String, String>(), Types: Dictionary<String, String>())
+                database = AmiiboJson(AmiiboSeries: Dictionary<String, String>(), AmiiboData: Dictionary<String, AmiiboJsonData>(), Characters: Dictionary<String, String>(), GameSeries: Dictionary<String, String>(), Types: Dictionary<String, String>())
+            
+            return
         }
         
         var newAmiiboData = resultJson.AmiiboData
@@ -66,44 +75,6 @@ public class AmiiboDatabase {
             }
         }
         
-        return AmiiboJson(AmiiboSeries: resultJson.AmiiboSeries, AmiiboData: newAmiiboData, Characters: resultJson.Characters, GameSeries: resultJson.GameSeries, Types: resultJson.Types)
-    }()
-    
-    static let amiiboDumps: Dictionary<String, TagDump> = {
-        var dumps: [String : TagDump] = [:]
-        
-        guard
-            let amiiboPath = Bundle.main.url(forResource: "amiibo", withExtension: "bin"),
-            let amiiboData = try? Data(contentsOf: amiiboPath) else {
-                return dumps
-        }
-        
-        let json = database
-        
-        
-        json.AmiiboData.keys.forEach { (key) in
-            if fakeAmiibo[String(key.suffix(16))] == nil {
-                var ID = key.suffix(16)
-                var dataId = Data.FromHexString(hex: String(ID))
-                
-                guard let dump = try? TagDump.FromID(id: dataId, encrypt: false) else {
-                    return
-                }
-                
-                dumps[String(ID)] = dump
-            }
-        }
-        
-        /*
-        for index in stride(from: 0, to: amiiboData.count, by: 532) {
-            if let dump = try? TagDump(data: Data(amiiboData[index..<(index + 532)])) {
-                if dumps["\(dump.headHex)\(dump.tailHex)"] == nil && json.AmiiboData["0x\(dump.headHex)\(dump.tailHex)"] != nil && fakeAmiibo[dump.fullHex] == nil {
-                    dumps["\(dump.headHex)\(dump.tailHex)"] = dump
-                }
-            }
-        }
-        */
-        
-        return dumps
-    }()
+        database = AmiiboJson(AmiiboSeries: resultJson.AmiiboSeries, AmiiboData: newAmiiboData, Characters: resultJson.Characters, GameSeries: resultJson.GameSeries, Types: resultJson.Types)
+    }
 }

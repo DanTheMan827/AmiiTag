@@ -14,13 +14,25 @@ struct UidSigPair {
 }
 
 extension NTAG215Tag {
-    fileprivate static var _uidSignatures: [UidSigPair]? = nil
-    static let uidSignatures: [UidSigPair] = {
-        if _uidSignatures != nil {
-            return _uidSignatures!
-        }
+    typealias TagSignature = Data
+    static var uidSignatures: Dictionary<String, TagSignature> = {
+        var signatures: Dictionary<String, Data> = [:]
         
-        var signatures: [UidSigPair] = []
+        let folderPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Signatures")
+        let enumerator = FileManager.default.enumerator(atPath: folderPath.path)
+        let emptySig = Data(count: 32)
+        
+        while let element = enumerator?.nextObject() as? String {
+            let filePath = folderPath.appendingPathComponent(element)
+            if let attributes = try? FileManager.default.attributesOfItem(atPath: filePath.path),
+               let size = attributes[FileAttributeKey.size] as? UInt64,
+               size == 42,
+               let signatureData = try? Data(contentsOf: filePath),
+               signatureData[9] == 0x48,
+               !signatureData.suffix(32).elementsEqual(emptySig) {
+                signatures[signatureData[0..<9].ToHexString()] = Data(signatureData.suffix(32))
+            }
+        }
         
         guard
             let signaturesPath = Bundle.main.url(forResource: "signatures", withExtension: "bin"),
@@ -30,16 +42,10 @@ extension NTAG215Tag {
         
         for index in stride(from: 0, to: signaturesData.count, by: 42) {
             if signaturesData[index + 9] == 0x48 {
-                signatures.append(UidSigPair(uid: Data(signaturesData[index..<(index + 9)]), signature: Data(signaturesData[(index + 10)..<(index + 42)])))
+                signatures[signaturesData[index..<(index + 9)].ToHexString()] = Data(signaturesData[(index + 10)..<(index + 42)])
             }
         }
         
-        if signatures.count == 0 {
-            signatures.append(UidSigPair(uid: Data([0x00, 0x00, 0x00, 0x88, 0x00, 0x00, 0x00, 0x00, 0x00]), signature: Data(count: 32)))
-        }
-        
-        _uidSignatures = signatures
-        
-        return _uidSignatures!
+        return signatures
     }()
 }

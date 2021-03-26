@@ -147,8 +147,11 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
         
         MainViewController.main = self
         
+        KeyFiles.LoadKeys()
+        AmiiboDatabase.LoadJson()
+        
         print("Loaded \(NTAG215Tag.uidSignatures.count) UID/Signature pairs")
-        print("Loaded \(AmiiboDatabase.amiiboDumps.count) amiibo dumps")
+        print("Loaded \(AmiiboDatabase.database.AmiiboData.count) amiibo dumps")
         
         NotificationCenter.default.addObserver(forName: Central.CentralStateChange, object: Central.sharedInstance, queue: nil) { (notification) in
             if let state = notification.userInfo?["state"] as? CBManagerState {

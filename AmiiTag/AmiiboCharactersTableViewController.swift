@@ -10,7 +10,8 @@ import Foundation
 import UIKit
 
 class AmiiboCharactersTableViewController: UITableViewController {
-    var amiiboCharacters: [TagDump] = []
+    typealias AmiiboCharacter = (key: String, value: AmiiboDatabase.AmiiboJsonData)
+    var amiiboCharacters: [AmiiboCharacter] = []
     var seriesFilter: String? = nil
     var pickerDelegate: LibraryPickerProtocol? = nil
     
@@ -18,17 +19,16 @@ class AmiiboCharactersTableViewController: UITableViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         
-        amiiboCharacters = AmiiboDatabase.amiiboDumps.values.filter({ (dump: TagDump) -> Bool in
+        amiiboCharacters = AmiiboDatabase.database.AmiiboData.filter({ (entry) -> Bool in
             if seriesFilter == nil {
                 return true
             }
             
-            return dump.amiiboSeriesHex == seriesFilter
+            return !AmiiboDatabase.fakeAmiibo.keys.contains(String(entry.key.suffix(16))) && String(entry.key.prefix(16).suffix(2)) == seriesFilter
+        }).map({ (entry) -> AmiiboCharacter in
+            return entry
         }).sorted(by: { (a, b) -> Bool in
-            if let aName = a.amiiboName, let bName = b.amiiboName {
-                return aName < bName
-            }
-            return false
+            return a.value.Name < b.value.Name
         })
     }
     
@@ -43,8 +43,8 @@ class AmiiboCharactersTableViewController: UITableViewController {
         let index = (indexPath as NSIndexPath).row
         if let tableView = self.view as? UITableView {
             let cell = tableView.dequeueReusableCell(withIdentifier: "CharacterTableCell") as! AmiiboCharacterTableViewCell
-            cell.CellLabel.text = amiiboCharacters[index].amiiboName
-            cell.CellImage.image = amiiboCharacters[index].image
+            cell.CellLabel.text = amiiboCharacters[index].value.Name
+            cell.CellImage.image = TagDump.GetImage(id: amiiboCharacters[index].key)
             
             return cell
         }
@@ -59,11 +59,25 @@ class AmiiboCharactersTableViewController: UITableViewController {
     override func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         
         (view as? UITableView)?.deselectRow(at: indexPath, animated: true)
-        let randomUidSig = NTAG215Tag.uidSignatures.randomElement()!
-        if let patched = try? amiiboCharacters[indexPath.row].patchedDump(withUID: randomUidSig.uid, staticKey: KeyFiles.staticKey!, dataKey: KeyFiles.dataKey!, skipDecrypt: true) {
-            let tag = TagDump(data: Data(patched.data[0..<532] + Data(count: 8) + randomUidSig.signature))!
-            if pickerDelegate?.AmiiboCharacterPicked(tag: tag) ?? false == true {
-                TagInfoViewController.openTagInfo(dump: tag, controller: self)
+        
+        if KeyFiles.hasKeys {
+            let randomUidSig: (key: String, value: Data) = {
+                if NTAG215Tag.uidSignatures.count > 0,
+                   let element = NTAG215Tag.uidSignatures.randomElement() {
+                    return element
+                }
+                
+                // Return a fake uid/sig pair
+                return (key: "0401028f0304050604", value: Data(count: 32))
+            }()
+            let ID = amiiboCharacters[indexPath.row].key.suffix(16)
+            let dataId = Data.FromHexString(hex: String(ID))
+            
+            if let patched = try? TagDump.FromID(id: dataId).patchedDump(withUID: Data.FromHexString(hex: randomUidSig.key), staticKey: KeyFiles.staticKey!, dataKey: KeyFiles.dataKey!) {
+                let tag = TagDump(data: Data(patched.data[0..<532] + Data(count: 8) + randomUidSig.value))!
+                if pickerDelegate?.AmiiboCharacterPicked(tag: tag) ?? false == true {
+                    TagInfoViewController.openTagInfo(dump: tag, controller: self)
+                }
             }
         }
     }

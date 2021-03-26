@@ -13,39 +13,43 @@ class KeyFiles {
         case FileError
     }
     
-    fileprivate static var _lockedSecret: Data?
-    fileprivate static var _unfixedInfo: Data?
+    fileprivate static let documentsKeyPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("key_retail.bin")
+    fileprivate static let internalKeyPath = Bundle.main.url(forResource: "key_retail", withExtension: "bin")
     
-    static var lockedSecret: Data? {
-        if _lockedSecret != nil {
-            return _lockedSecret!
+    fileprivate static var keyRetail: Data? {
+        if internalKeyPath != nil && FileManager.default.fileExists(atPath: internalKeyPath!.path) {
+            print("Loaded key_retail.bin from app bundle")
+            
+            return try? Data(contentsOf: internalKeyPath!)
+        } else if FileManager.default.fileExists(atPath: documentsKeyPath.path) {
+            print("Loaded key_retail.bin from documents")
+            
+            return try? Data(contentsOf: documentsKeyPath)
         }
         
-        guard
-            let lockedSecretPath = Bundle.main.url(forResource: "locked-secret", withExtension: "bin"),
-            let lockedSecret = try? Data(contentsOf: lockedSecretPath) else {
-                return nil
-        }
-        
-        _lockedSecret = lockedSecret
-        return lockedSecret
+        return nil
     }
     
-    static var unfixedInfo: Data? {
-        if _unfixedInfo != nil {
-            return _unfixedInfo!
-        }
-        
-        guard
-            let unfixedInfoPath = Bundle.main.url(forResource: "unfixed-info", withExtension: "bin"),
-            let unfixedInfo = try? Data(contentsOf: unfixedInfoPath) else {
-                return nil
-        }
-        
-        _unfixedInfo = unfixedInfo
-        return unfixedInfo
-    }
+    static var staticKey: TagKey? = nil
+    static var dataKey: TagKey? = nil
+    static var hasKeys: Bool = false
     
-    static let staticKey = TagKey(data: lockedSecret!)
-    static let dataKey = TagKey(data: unfixedInfo!)
+    static func LoadKeys() -> Bool {
+        if hasKeys {
+            return true
+        }
+        
+        if let keyData = keyRetail {
+            if keyData.count == 160 {
+                dataKey = TagKey(data: Data(keyData[0..<80]))
+                staticKey = TagKey(data: Data(keyData[80..<160]))
+                
+                hasKeys = true
+                return true
+            }
+        }
+        
+        hasKeys = false
+        return false
+    }
 }

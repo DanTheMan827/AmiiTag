@@ -35,7 +35,5 @@ extension TagDump {
         } else {
             throw AmiiTagError(description: "ID is not 8 bytes")
         }
-        
-        
     }
 }

@@ -174,7 +174,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
             alertController.addAction(UIAlertAction(title: "NFC", style: .default){ action -> Void in
                 self.tagReaderSession = NFCTagReaderSession(pollingOption: NFCTagReaderSession.PollingOption.iso14443, delegate: self)
                 
-                self.tagReaderSession?.alertMessage = "Hold blank NTAG215 tag to phone"
+                self.tagReaderSession?.alertMessage = "Hold tag to phone"
                 self.tagReaderSession?.begin()
             })
             
@@ -183,7 +183,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
         } else {
             self.tagReaderSession = NFCTagReaderSession(pollingOption: NFCTagReaderSession.PollingOption.iso14443, delegate: self)
             
-            self.tagReaderSession?.alertMessage = "Hold blank NTAG215 tag to phone"
+            self.tagReaderSession?.alertMessage = "Hold tag to phone"
             self.tagReaderSession?.begin()
         }
     }
@@ -200,37 +200,61 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
     }
     
     func writeDump(to ntag215Tag: NTAG215Tag, appData: Bool = false) {
-        guard
-            let lockedSecret = KeyFiles.lockedSecret,
-            let unfixedInfo = KeyFiles.unfixedInfo,
-            let staticKey = TagKey(data: lockedSecret),
-            let dataKey = TagKey(data: unfixedInfo) else {
-            return
-        }
+        let dump = ntag215Tag.dump
         
         if appData {
-            let dump = ntag215Tag.dump
             if "\(dump.headHex)\(dump.tailHex)" == "\(amiiboData!.headHex)\(amiiboData!.tailHex)" {
-                ntag215Tag.patchAndWriteAppData(amiiboData!, staticKey: staticKey, dataKey: dataKey) {result in
-                    switch result {
-                    case .success:
-                        self.tagReaderSession?.invalidate()
-                        
-                        let alert = UIAlertController(title: "Tag app data successfully written", message: nil, preferredStyle: .alert)
-                        alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
-                        DispatchQueue.main.async {
-                            self.present(alert, animated: true, completion: nil)
+                if dump.data[0..<9].elementsEqual(amiiboData!.data[0..<9]) {
+                    // Same tag, we don't need to re-encrypt anything
+                    
+                    ntag215Tag.writeAppData(dump) { (result) in
+                        switch result {
+                        case .success:
+                            self.tagReaderSession?.invalidate()
+                            
+                            let alert = UIAlertController(title: "Tag app data successfully written", message: nil, preferredStyle: .alert)
+                            alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+                            DispatchQueue.main.async {
+                                self.present(alert, animated: true, completion: nil)
+                            }
+                            
+                        case .failure(let error):
+                            self.tagReaderSession?.invalidate(errorMessage: error.localizedDescription)
                         }
-                        
-                    case .failure(let error):
-                        self.tagReaderSession?.invalidate(errorMessage: error.localizedDescription)
+                    }
+                } else {
+                    // Not the same tag, we need to re-encrypt
+                    if !KeyFiles.hasKeys {
+                        self.tagReaderSession?.invalidate(errorMessage: "Tag does not match the dump")
+                        return
+                    }
+                    
+                    ntag215Tag.patchAndWriteAppData(amiiboData!, staticKey: KeyFiles.staticKey!, dataKey: KeyFiles.dataKey!) {result in
+                        switch result {
+                        case .success:
+                            self.tagReaderSession?.invalidate()
+                            
+                            let alert = UIAlertController(title: "Tag app data successfully written", message: nil, preferredStyle: .alert)
+                            alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
+                            DispatchQueue.main.async {
+                                self.present(alert, animated: true, completion: nil)
+                            }
+                            
+                        case .failure(let error):
+                            self.tagReaderSession?.invalidate(errorMessage: error.localizedDescription)
+                        }
                     }
                 }
             } else {
                 self.tagReaderSession?.invalidate(errorMessage: "Tag character doesn't match")
             }
         } else {
-            ntag215Tag.patchAndWriteDump(amiiboData!, staticKey: staticKey, dataKey: dataKey) {result in
+            if !KeyFiles.hasKeys {
+                self.tagReaderSession?.invalidate(errorMessage: "No keys loaded")
+                return
+            }
+            
+            ntag215Tag.patchAndWriteDump(amiiboData!, staticKey: KeyFiles.staticKey!, dataKey: KeyFiles.dataKey!) {result in
                 switch result {
                 case .success:
                     self.tagReaderSession?.invalidate()
@@ -254,11 +278,6 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
             switch result {
             case .success(let puckResponse):
                 print("Found a puck")
-                var usp = NTAG215Tag.uidSignatures.randomElement()!
-                if self.dump.count == 572 {
-                    usp = UidSigPair(uid: Data(self.dump[0..<9]), signature: Data(self.dump[540..<572]))
-                }
-                
                 var pages: [(page: Int, data: Data)] = []
                 for page in 0...(572/4) {
                     pages.append((page: page, data: Data(self.dump[(page * 4)..<(min(((page+1) * 4), 572))])))

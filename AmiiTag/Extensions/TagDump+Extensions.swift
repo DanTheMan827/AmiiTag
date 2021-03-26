@@ -20,6 +20,7 @@ extension TagDump {
         
         return decryptedData
     }
+    
     var nickname: String {
         guard
             let decryptedData = decryptedData,
@@ -33,6 +34,7 @@ extension TagDump {
         
         return name.trimmingCharacters(in: CharacterSet(["\0"]))
     }
+    
     var displayName: String {
         let nickname = self.nickname
         if nickname.count > 0 {
@@ -45,18 +47,22 @@ extension TagDump {
         
         return "0x\(self.headHex)\(self.tailHex)"
     }
+    
     var TagUIDSig: Data? {
         if self.data.count == 572 {
             return self.uid + self.data[9...9] + self.signature!
         }
         return nil
     }
+    
     var amiiboInfo: AmiiboDatabase.AmiiboJsonData? {
         return AmiiboDatabase.database.AmiiboData["0x\(self.fullHex)"]
     }
+    
     var amiiboName: String? {
         return amiiboInfo?.Name
     }
+    
     var gameSeriesName: String? {
         if let name = self.amiiboName {
             if name.suffix(4) == "(N2)" {
@@ -66,6 +72,7 @@ extension TagDump {
         }
         return nil
     }
+    
     var amiiboSeriesName: String? {
         if let name = self.amiiboName {
             if name.suffix(4) == "(N2)" {
@@ -75,20 +82,12 @@ extension TagDump {
         }
         return nil
     }
+    
     var typeName: String? {
         return AmiiboDatabase.database.Types["0x\(self.typeHex)"]
     }
+    
     var image: UIImage? {
-        var imageFilename = "icon_\(self.headHex)-\(self.tailHex)"
-        if let realId = AmiiboDatabase.fakeAmiibo["\(self.headHex)\(self.tailHex)"] {
-            imageFilename = "icon_\(realId.prefix(8))-\(realId.suffix(8))"
-        }
-        
-        if let imagePath = try? Bundle.main.path(forResource: imageFilename, ofType: "png", inDirectory: "images", forLocalization: nil),
-            let image = UIImage(contentsOfFile: imagePath) {
-            return image
-        }
-        
-        return nil
+        return TagDump.GetImage(id: self.fullHex)
     }
 }
