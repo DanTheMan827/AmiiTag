@@ -12,8 +12,6 @@
 		6510751324AAE75C0065B51F /* CryptoSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 6510751224AAE75C0065B51F /* CryptoSwift */; };
 		6510751724AC177A0065B51F /* QrViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6510751624AC177A0065B51F /* QrViewController.swift */; };
 		6510751924AC1F730065B51F /* ScannerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6510751824AC1F730065B51F /* ScannerViewController.swift */; };
-		651614F124B5698E0097A3BC /* images in Resources */ = {isa = PBXBuildFile; fileRef = 651614EF24B5698D0097A3BC /* images */; };
-		6516150124B56EE20097A3BC /* amiibo.json in Resources */ = {isa = PBXBuildFile; fileRef = 6516150024B56EE20097A3BC /* amiibo.json */; };
 		6523DF5524BC1D6200A2C305 /* AmiiboSeriesTableViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6523DF5424BC1D6200A2C305 /* AmiiboSeriesTableViewController.swift */; };
 		6523DF5724BC207700A2C305 /* AmiiboCharactersTableViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6523DF5624BC207700A2C305 /* AmiiboCharactersTableViewController.swift */; };
 		6523DF5924BD34CA00A2C305 /* AmiiboCharacterTableViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6523DF5824BD34CA00A2C305 /* AmiiboCharacterTableViewCell.swift */; };
@@ -74,8 +72,6 @@
 		6510751624AC177A0065B51F /* QrViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrViewController.swift; sourceTree = "<group>"; };
 		6510751824AC1F730065B51F /* ScannerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerViewController.swift; sourceTree = "<group>"; };
 		651614EE24B567AB0097A3BC /* TagWallet */ = {isa = PBXFileReference; lastKnownFileType = folder; path = TagWallet; sourceTree = "<group>"; };
-		651614EF24B5698D0097A3BC /* images */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = images; path = AmiiboAPI/images; sourceTree = SOURCE_ROOT; };
-		6516150024B56EE20097A3BC /* amiibo.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; name = amiibo.json; path = AmiiboAPI/database/amiibo.json; sourceTree = SOURCE_ROOT; };
 		6523DF5424BC1D6200A2C305 /* AmiiboSeriesTableViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmiiboSeriesTableViewController.swift; sourceTree = "<group>"; };
 		6523DF5624BC207700A2C305 /* AmiiboCharactersTableViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmiiboCharactersTableViewController.swift; sourceTree = "<group>"; };
 		6523DF5824BD34CA00A2C305 /* AmiiboCharacterTableViewCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmiiboCharacterTableViewCell.swift; sourceTree = "<group>"; };
@@ -172,7 +168,6 @@
 		6588CAD424A9736A006EA341 /* AmiiTag */ = {
 			isa = PBXGroup;
 			children = (
-				6516150024B56EE20097A3BC /* amiibo.json */,
 				65551BDD25DCC64D004368DF /* AmiiboCharacterPuckTableViewCell.swift */,
 				658D59D725DA01EF00ECA255 /* AmiiboCharactersPuckTableViewController.swift */,
 				6523DF5624BC207700A2C305 /* AmiiboCharactersTableViewController.swift */,
@@ -189,7 +184,6 @@
 				658D59DB25DA284600ECA255 /* AwesomeBarButtonItem.swift */,
 				65DE8D8B24D76F3200D67552 /* Bluetooth */,
 				65551BE925F098AD004368DF /* Extensions */,
-				651614EF24B5698D0097A3BC /* images */,
 				6588CAE524A9736A006EA341 /* Info.plist */,
 				652CC73B24B57DDD00DE02DF /* KeyFiles.swift */,
 				6588CAE224A9736A006EA341 /* LaunchScreen.storyboard */,
@@ -312,11 +306,9 @@
 			files = (
 				656B358F24AC35A7009AAF0A /* amiitag-dark.pdf in Resources */,
 				6588CAE424A9736A006EA341 /* LaunchScreen.storyboard in Resources */,
-				651614F124B5698E0097A3BC /* images in Resources */,
 				6588CAE124A9736A006EA341 /* Assets.xcassets in Resources */,
 				658D59D325D9FBFB00ECA255 /* Font Awesome 5 Free-Solid-900.otf in Resources */,
 				658D59D425D9FBFB00ECA255 /* Font Awesome 5 Brands-Regular-400.otf in Resources */,
-				6516150124B56EE20097A3BC /* amiibo.json in Resources */,
 				658D59D525D9FBFB00ECA255 /* Font Awesome 5 Free-Regular-400.otf in Resources */,
 				6588CADF24A9736A006EA341 /* Main.storyboard in Resources */,
 				656B358D24AC3391009AAF0A /* amiitag.pdf in Resources */,

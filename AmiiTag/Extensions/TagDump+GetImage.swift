@@ -24,8 +24,9 @@ extension TagDump {
             imageFilename = "icon_\(realId.prefix(8))-\(realId.suffix(8))"
         }
         
-        if let imagePath = try? Bundle.main.path(forResource: imageFilename, ofType: "png", inDirectory: "images", forLocalization: nil),
-            let image = UIImage(contentsOfFile: imagePath) {
+        let imagePath = AmiiboDatabase.imagesPath.appendingPathComponent(imageFilename)
+        
+        if let image = UIImage(contentsOfFile: imagePath.path) {
             return image
         }
         

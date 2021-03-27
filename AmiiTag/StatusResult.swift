@@ -8,7 +8,7 @@
 
 import Foundation
 
-enum StatusResult<Result, Status, Error> {
+public enum StatusResult<Result, Status, Error> {
     case success(Result)
     case failure(Error)
     case status(Status)
