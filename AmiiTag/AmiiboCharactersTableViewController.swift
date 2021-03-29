@@ -71,9 +71,9 @@ class AmiiboCharactersTableViewController: UITableViewController {
                 return (key: "0401028f0304050604", value: Data(count: 32))
             }()
             let ID = amiiboCharacters[indexPath.row].key.suffix(16)
-            let dataId = Data.FromHexString(hex: String(ID))
+            let dataId = Data(hex: String(ID))
             
-            if let patched = try? TagDump.FromID(id: dataId).patchedDump(withUID: Data.FromHexString(hex: randomUidSig.key), staticKey: KeyFiles.staticKey!, dataKey: KeyFiles.dataKey!) {
+            if let patched = try? TagDump.FromID(id: dataId).patchedDump(withUID: Data(hex: randomUidSig.key), staticKey: KeyFiles.staticKey!, dataKey: KeyFiles.dataKey!) {
                 let tag = TagDump(data: Data(patched.data[0..<532] + Data(count: 8) + randomUidSig.value))!
                 if pickerDelegate?.AmiiboCharacterPicked(tag: tag) ?? false == true {
                     TagInfoViewController.openTagInfo(dump: tag, controller: self)

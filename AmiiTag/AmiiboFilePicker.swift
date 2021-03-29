@@ -49,7 +49,7 @@ class AmiiboFilePicker: UIDocumentPickerViewController, UIDocumentPickerDelegate
     }
     
     static func OpenAmiibo(PresentingViewController presentingVc: UIViewController, completionHandler: @escaping (Result<TagDump, Error>) -> Void){
-        var pickerController = AmiiboFilePicker(documentTypes: [kUTTypeData as String], in: .open)
+        let pickerController = AmiiboFilePicker(documentTypes: [kUTTypeData as String], in: .open)
         pickerController.completionHandler = completionHandler
         pickerController.delegate = pickerController
         pickerController.allowsMultipleSelection = false

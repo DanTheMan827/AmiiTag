@@ -51,7 +51,7 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
                 switch result {
                 case .success(let tag):
                     self.dismiss = false
-                    self.AmiiboCharacterPicked(tag: tag)
+                    _ = self.AmiiboCharacterPicked(tag: tag)
                 case .failure(let error):
                     self.ViewController.present(error.getAlertController(), animated: true)
                     break
@@ -64,8 +64,8 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
                 switch result {
                 case .success(let tag):
                     self.dismiss = false
-                    self.AmiiboCharacterPicked(tag: tag)
-                case .failure(let error):
+                    _ = self.AmiiboCharacterPicked(tag: tag)
+                case .failure(_):
                     break
                 }
             }
@@ -76,7 +76,7 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
                 switch result {
                 case .success(let tag):
                     self.dismiss = false
-                    self.AmiiboCharacterPicked(tag: tag)
+                    _ = self.AmiiboCharacterPicked(tag: tag)
                 case .failure(let error):
                     self.ViewController.present(error.getAlertController(), animated: true)
                     break

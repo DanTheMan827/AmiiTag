@@ -39,7 +39,7 @@ class NFCTagReader: NSObject, NFCTagReaderSessionDelegate {
     }
     
     func writeUidSig(data: Data) {
-        var uidHex = data[0..<9].map { String(format: "%02hhx", $0) }.joined()
+        let uidHex = data[0..<9].map { String(format: "%02hhx", $0) }.joined()
         
         if NTAG215Tag.uidSignatures[uidHex] != nil {
             return

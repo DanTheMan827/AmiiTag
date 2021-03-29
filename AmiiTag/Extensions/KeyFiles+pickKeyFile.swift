@@ -26,7 +26,6 @@ extension KeyFiles {
                     }
                 }
                 
-                let path = url.path
                 if  KeyFiles.validateKeyFile(url: url) {
                     do {
                         if FileManager.default.fileExists(atPath: KeyFiles.documentsKeyPath.path) {
@@ -59,7 +58,7 @@ extension KeyFiles {
     }
     
     static func pickKeyFile(PresentingViewController presentingVc: UIViewController, completionHandler: @escaping (Result<Void, Error>) -> Void){
-        var pickerController = KeyFilePicker(documentTypes: [kUTTypeData as String], in: .open)
+        let pickerController = KeyFilePicker(documentTypes: [kUTTypeData as String], in: .open)
         pickerController.completionHandler = completionHandler
         pickerController.delegate = pickerController
         pickerController.allowsMultipleSelection = false

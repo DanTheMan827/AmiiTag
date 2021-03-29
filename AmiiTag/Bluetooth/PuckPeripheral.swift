@@ -95,7 +95,7 @@ class PuckPeripheral: NSObject {
     }
     
     func enableUart(completionHandler: @escaping (Result<Void, Error>) -> Void){
-        var command = Data([0xFE])
+        let command = Data([0xFE])
         
         peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
             self.disconnect(completionHandler: completionHandler)
@@ -168,6 +168,7 @@ class PuckPeripheral: NSObject {
             case .success(let data):
                 if data.count != 82 || !(data[0] == 0x01 && data[1] == slot) {
                     if attempts < 3 {
+                        print("Retry read of tag info for slot \(slot), attempt \(attempts)")
                         self.handleSlotInformationRead(slot: slot, attempts: attempts + 1, completionHandler: completionHandler)
                     } else {
                         completionHandler(.failure(AmiiTagError(description: "Failed to read slot \(slot) after \(attempts) attempts")))
@@ -194,7 +195,7 @@ class PuckPeripheral: NSObject {
     }
     
     func getSlotInformation(slot: UInt8 = 255, completionHandler: @escaping (Result<SlotInfo, Error>) -> Void){
-        var command = Data([0x01, slot])
+        let command = Data([0x01, slot])
         print("Getting slot information for \(slot)")
         peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
             switch (result) {
@@ -219,7 +220,7 @@ class PuckPeripheral: NSObject {
         peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
             self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
                 switch result {
-                case .success(let data):
+                case .success(_):
                     completionHandler(.success(()))
                     break
                 case .failure(let error):
@@ -314,11 +315,11 @@ class PuckPeripheral: NSObject {
         if startPage < 143 {
             let dataToWrite = Data(data[(Int(startPage) * 4)..<min(((Int(startPage) + 4) * 4), 572)])
             let command = Data([0x03, slot, startPage] + dataToWrite)
-            print("Writing to \(peripheral.name) in slot \(slot) at page \(startPage) for \(dataToWrite.count) bytes")
+            print("Writing to \(self.name) in slot \(slot) at page \(startPage) for \(dataToWrite.count) bytes")
             completionHandler(.status(TagStatus(slot: slot, start: Int(startPage) * 4, count: dataToWrite.count, total: 572)))
             peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
                 switch result {
-                case .success(let _):
+                case .success(_):
                     self._writeTag(toSlot: slot, atPage: startPage + 4, withData: data, completionHandler: completionHandler)
                     break
                 case .failure(let error):
@@ -341,14 +342,14 @@ class PuckPeripheral: NSObject {
                     // The scan started meaning CBCentralManager scanForPeripherals(...) was called
                     pucks.removeAll()
                     break
-                case .scanResult(let peripheral, let advertisementData, let RSSI):
+                case .scanResult(let peripheral, _, _):
                     // A peripheral was found, your closure may be called multiple time with a .ScanResult enum case.
                     // You can save that peripheral for future use, or call some of its functions directly in this closure.
                     pucks.append(PuckPeripheral(peripheral: peripheral))
                     break
-                case .scanStopped(let error):
+                case .scanStopped(peripherals: _, error: let error):
                     // The scan stopped, an error is passed if the scan stopped unexpectedly
-                    if error.error == nil && scanning {
+                    if error == nil && scanning {
                         startScanning()
                     } else {
                         scanning = false

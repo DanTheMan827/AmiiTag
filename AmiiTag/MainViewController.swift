@@ -243,7 +243,7 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
                 switch result {
                 case .success(let needsUpdate):
                     if needsUpdate {
-                        var alert = UIAlertController(title: "Database Update", message: "There is a new database version available, would you like to update?", preferredStyle: .alert)
+                        let alert = UIAlertController(title: "Database Update", message: "There is a new database version available, would you like to update?", preferredStyle: .alert)
                         alert.addAction(UIAlertAction(title: "Yes", style: .default, handler: { (action) in
                             self.updateDatabase()
                         }))

@@ -16,7 +16,7 @@ extension TagDump {
         }
         
         let fullHex = String(id.suffix(16))
-        var headHex = fullHex.prefix(8)
+        let headHex = fullHex.prefix(8)
         let tailHex = fullHex.suffix(8)
         
         var imageFilename = "icon_\(headHex)-\(tailHex)"

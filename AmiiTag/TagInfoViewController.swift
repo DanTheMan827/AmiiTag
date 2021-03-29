@@ -84,7 +84,6 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
         
         amiiboArt.image = value.image
         
-        let json = AmiiboDatabase.database
         self.title = value.displayName
         
         if let type = amiiboData?.typeName {
@@ -127,7 +126,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                 return a.name > b.name
             }) {
                 alertController.addAction(UIAlertAction(title: puck.name, style: .default, handler: { (action) in
-                    var alert = UIAlertController(title: "Please Wait", message: "Writing " + (puck.name), preferredStyle: .alert)
+                    let alert = UIAlertController(title: "Please Wait", message: "Writing " + (puck.name), preferredStyle: .alert)
                     self.present(alert, animated: true)
                     puck.writeTag(using: self.dump) { (result) in
                         var hasError = false
@@ -135,7 +134,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                         switch result {
                         case .status(let status):
                             alert.message = "Writing \(puck.name) (\(status.start)/\(status.total))"
-                        case .success(let tag):
+                        case .success(_):
                             break
                         case .failure(let error):
                             hasError = true
@@ -146,12 +145,12 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                         }
                         
                         switch result {
-                        case .status(let _):
+                        case .status(_):
                             break
                         default:
                             puck.changeSlot { (result) in
                                 switch result {
-                                case .success(let _):
+                                case .success(_):
                                     break;
                                 case .failure(let error):
                                     hasError = true
@@ -275,10 +274,9 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
     }
     
     func handleConnectedTag(tag: NFCMiFareTag) {
-        var proceed = true
         tag.checkPuck { result in
             switch result {
-            case .success(let puckResponse):
+            case .success(_):
                 print("Found a puck")
                 var pages: [(page: Int, data: Data)] = []
                 for page in 0...(572/4) {
@@ -299,7 +297,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                 
                 break
                 
-            case .failure(let _):
+            case .failure(_):
                 print("Not a puck")
                 NTAG215Tag.initialize(tag: tag) { result in
                     switch result {

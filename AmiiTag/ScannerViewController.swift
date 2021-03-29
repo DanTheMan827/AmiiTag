@@ -101,7 +101,7 @@ class ScannerViewController: UIViewController, AVCaptureMetadataOutputObjectsDel
     }
     
     func scannerCodeFound(code: String) {
-        guard let data = try? Data(base64Encoded: code, options: .ignoreUnknownCharacters) else {
+        guard let data = Data(base64Encoded: code, options: .ignoreUnknownCharacters) else {
             dismiss(animated: true) {
                 self.completionHandler?(.failure(AmiiTagError(description: "Failed to decode QR code")))
             }

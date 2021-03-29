@@ -80,7 +80,7 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
     }
     
     @IBAction func settingsTapped(_ sender: Any) {
-        let alertController = UIAlertController(title: puck.name ?? "Puck", message: nil, preferredStyle: .actionSheet)
+        let alertController = UIAlertController(title: puck.name , message: nil, preferredStyle: .actionSheet)
         
         alertController.addAction(UIAlertAction(title: "Change Name", style: .default, handler: { (action) in
             let alert = UIAlertController(title: self.puck.name, message: nil, preferredStyle: .alert)

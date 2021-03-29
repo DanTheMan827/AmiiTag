@@ -10,7 +10,6 @@
 		650292CB260D73A4002289AC /* TagDump+GetImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 650292CA260D73A4002289AC /* TagDump+GetImage.swift */; };
 		650292D3260FAF54002289AC /* KeyFiles+pickKeyFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 650292D2260FAF54002289AC /* KeyFiles+pickKeyFile.swift */; };
 		650292D6260FB00C002289AC /* URL+sha256.swift in Sources */ = {isa = PBXBuildFile; fileRef = 650292D5260FB00C002289AC /* URL+sha256.swift */; };
-		65064B55252AC78D00BCA905 /* Data+FromHexString.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65064B54252AC78D00BCA905 /* Data+FromHexString.swift */; };
 		6510751324AAE75C0065B51F /* CryptoSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 6510751224AAE75C0065B51F /* CryptoSwift */; };
 		6510751724AC177A0065B51F /* QrViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6510751624AC177A0065B51F /* QrViewController.swift */; };
 		6510751924AC1F730065B51F /* ScannerViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6510751824AC1F730065B51F /* ScannerViewController.swift */; };
@@ -73,7 +72,6 @@
 		650292D2260FAF54002289AC /* KeyFiles+pickKeyFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeyFiles+pickKeyFile.swift"; sourceTree = "<group>"; };
 		650292D5260FB00C002289AC /* URL+sha256.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+sha256.swift"; sourceTree = "<group>"; };
 		650292DA260FB087002289AC /* bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bridge.h; sourceTree = "<group>"; };
-		65064B54252AC78D00BCA905 /* Data+FromHexString.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data+FromHexString.swift"; sourceTree = "<group>"; };
 		6510751624AC177A0065B51F /* QrViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrViewController.swift; sourceTree = "<group>"; };
 		6510751824AC1F730065B51F /* ScannerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerViewController.swift; sourceTree = "<group>"; };
 		651614EE24B567AB0097A3BC /* TagWallet */ = {isa = PBXFileReference; lastKnownFileType = folder; path = TagWallet; sourceTree = "<group>"; };
@@ -145,7 +143,6 @@
 		65551BE925F098AD004368DF /* Extensions */ = {
 			isa = PBXGroup;
 			children = (
-				65064B54252AC78D00BCA905 /* Data+FromHexString.swift */,
 				65551BED25F0997B004368DF /* Data+ToHexString.swift */,
 				65551BE125DCC7F8004368DF /* Error+getAlertController.swift */,
 				650292D2260FAF54002289AC /* KeyFiles+pickKeyFile.swift */,
@@ -277,7 +274,7 @@
 			isa = PBXProject;
 			attributes = {
 				LastSwiftUpdateCheck = 1150;
-				LastUpgradeCheck = 1140;
+				LastUpgradeCheck = 1240;
 				ORGANIZATIONNAME = "Daniel Radtke";
 				TargetAttributes = {
 					6588CAD224A9736A006EA341 = {
@@ -355,7 +352,6 @@
 				65551C0B25F0AB0E004368DF /* TagDump.swift in Sources */,
 				650292D3260FAF54002289AC /* KeyFiles+pickKeyFile.swift in Sources */,
 				6523DF5524BC1D6200A2C305 /* AmiiboSeriesTableViewController.swift in Sources */,
-				65064B55252AC78D00BCA905 /* Data+FromHexString.swift in Sources */,
 				65551BFC25F0A01C004368DF /* TagDump+FromID.swift in Sources */,
 				652CC73C24B57DDD00DE02DF /* KeyFiles.swift in Sources */,
 				65551C0825F0AB0E004368DF /* MiFareTag.swift in Sources */,
@@ -487,6 +483,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
@@ -547,6 +544,7 @@
 				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
 				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
 				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
 				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
 				CLANG_WARN_STRICT_PROTOTYPES = YES;
 				CLANG_WARN_SUSPICIOUS_MOVE = YES;
