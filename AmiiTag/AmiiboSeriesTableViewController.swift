@@ -46,7 +46,7 @@ class AmiiboSeriesTableViewController: UITableViewController {
             view.seriesFilter = String(amiiboSeries[indexPath.row].key.suffix(2))
             view.title = amiiboSeries[indexPath.row].value
             (self.view as? UITableView)?.deselectRow(at: indexPath, animated: true)
-            self.present(UINavigationController(rootViewController: view), animated: true, completion: nil)
+            self.present(UINavigationController(rootViewController: view), animated: true)
         }
     }
 }

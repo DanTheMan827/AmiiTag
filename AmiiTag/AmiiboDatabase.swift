@@ -234,6 +234,8 @@ public class AmiiboDatabase {
             }
             
             database = AmiiboJson(AmiiboSeries: resultJson.AmiiboSeries, AmiiboData: newAmiiboData, Characters: resultJson.Characters, GameSeries: resultJson.GameSeries, Types: resultJson.Types)
+            
+            print("Loaded \(AmiiboDatabase.database.AmiiboData.count) amiibo dumps")
         }
     }
 }

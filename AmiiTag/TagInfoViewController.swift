@@ -139,8 +139,9 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                             break
                         case .failure(let error):
                             hasError = true
-                            self.dismiss(animated: true)
-                            self.present(error.getAlertController(), animated: true)
+                            self.dismiss(animated: true) {
+                                self.present(error.getAlertController(), animated: true)
+                            }
                             break
                         }
                         
@@ -154,8 +155,9 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                                     break;
                                 case .failure(let error):
                                     hasError = true
-                                    self.dismiss(animated: true)
-                                    self.present(error.getAlertController(), animated: true)
+                                    self.dismiss(animated: true) {
+                                        self.present(error.getAlertController(), animated: true)
+                                    }
                                     break
                                 }
                                 
@@ -215,7 +217,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                             let alert = UIAlertController(title: "Tag app data successfully written", message: nil, preferredStyle: .alert)
                             alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
                             DispatchQueue.main.async {
-                                self.present(alert, animated: true, completion: nil)
+                                self.present(alert, animated: true)
                             }
                             
                         case .failure(let error):
@@ -237,7 +239,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                             let alert = UIAlertController(title: "Tag app data successfully written", message: nil, preferredStyle: .alert)
                             alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
                             DispatchQueue.main.async {
-                                self.present(alert, animated: true, completion: nil)
+                                self.present(alert, animated: true)
                             }
                             
                         case .failure(let error):
@@ -262,7 +264,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                     let alert = UIAlertController(title: "Tag successfully written", message: nil, preferredStyle: .alert)
                     alert.addAction(UIAlertAction(title: "OK", style: .default, handler: nil))
                     DispatchQueue.main.async {
-                        self.present(alert, animated: true, completion: nil)
+                        self.present(alert, animated: true)
                     }
                     
                 case .failure(let error):

@@ -26,12 +26,14 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
             case .status(let status):
                 alert.message = "Reading \(self.Puck.name) (\(status.start)/\(status.total))"
             case .success(let tag):
-                self.ViewController.dismiss(animated: true)
-                TagInfoViewController.openTagInfo(dump: TagDump(data: tag)!, controller: self.ViewController)
+                self.ViewController.dismiss(animated: true) {
+                    TagInfoViewController.openTagInfo(dump: TagDump(data: tag)!, controller: self.ViewController)
+                }
                 break
             case .failure(let error):
-                self.ViewController.dismiss(animated: true)
-                self.ViewController.present(error.getAlertController(), animated: true)
+                self.ViewController.dismiss(animated: true) {
+                    self.ViewController.present(error.getAlertController(), animated: true)
+                }
                 break
             }
         }
@@ -51,7 +53,7 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
                     self.dismiss = false
                     self.AmiiboCharacterPicked(tag: tag)
                 case .failure(let error):
-                    self.ViewController.present(error.getAlertController(), animated: true, completion: nil)
+                    self.ViewController.present(error.getAlertController(), animated: true)
                     break
                 }
             }
@@ -76,7 +78,7 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
                     self.dismiss = false
                     self.AmiiboCharacterPicked(tag: tag)
                 case .failure(let error):
-                    self.ViewController.present(error.getAlertController(), animated: true, completion: nil)
+                    self.ViewController.present(error.getAlertController(), animated: true)
                     break
                 }
             }
@@ -84,7 +86,7 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
         
         alertController.addAction(UIAlertAction(title: "Cancel", style: .cancel, handler: nil))
         
-        self.ViewController.present(alertController, animated: true, completion: nil)
+        self.ViewController.present(alertController, animated: true)
     }
     
     // LibraryPickerProtocol
@@ -115,13 +117,14 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
                     case .success(let summary):
                         if summary.current == self.Info.slot {
                             self.Puck.changeSlot { (result) in
-                                self.ViewController.dismiss(animated: true)
-                                switch result {
-                                case .success(()):
-                                    break
-                                case .failure(let error):
-                                    self.ViewController.present(error.getAlertController(), animated: true)
-                                    break
+                                self.ViewController.dismiss(animated: true) {
+                                    switch result {
+                                    case .success(()):
+                                        break
+                                    case .failure(let error):
+                                        self.ViewController.present(error.getAlertController(), animated: true)
+                                        break
+                                    }
                                 }
                             }
                         } else {
@@ -130,15 +133,17 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
                         
                         break
                     case .failure(let error):
-                        self.ViewController.dismiss(animated: true)
-                        self.ViewController.present(error.getAlertController(), animated: true)
+                        self.ViewController.dismiss(animated: true) {
+                            self.ViewController.present(error.getAlertController(), animated: true)
+                        }
                         break
                     }
                 }
                 break
             case .failure(let error):
-                self.ViewController.dismiss(animated: true)
-                self.ViewController.present(error.getAlertController(), animated: true)
+                self.ViewController.dismiss(animated: true) {
+                    self.ViewController.present(error.getAlertController(), animated: true)
+                }
                 break
             }
         }

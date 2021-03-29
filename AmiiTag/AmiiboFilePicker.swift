@@ -53,6 +53,6 @@ class AmiiboFilePicker: UIDocumentPickerViewController, UIDocumentPickerDelegate
         pickerController.completionHandler = completionHandler
         pickerController.delegate = pickerController
         pickerController.allowsMultipleSelection = false
-        presentingVc.present(pickerController, animated: true, completion: nil)
+        presentingVc.present(pickerController, animated: true)
     }
 }

@@ -22,16 +22,16 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
         super.viewDidLoad()
         NotificationCenter.default.addObserver(forName: Peripheral.PeripheralDisconnected, object: puck.peripheral, queue: nil) { (notification) in
             if AmiiboCharactersPuckTableViewController.showing {
-                MainViewController.main?.dismiss(animated: true, completion: nil)
+                MainViewController.main?.dismiss(animated: true)
             }
         }
     }
     
     override func viewDidDisappear(_ animated: Bool) {
         AmiiboCharactersPuckTableViewController.showing = false
-        MainViewController.main?.present(UIAlertController(title: "Please Wait", message: "Disconnecting from \(puck.name)", preferredStyle: .alert), animated: true, completion: nil)
+        MainViewController.main?.present(UIAlertController(title: "Please Wait", message: "Disconnecting from \(puck.name)", preferredStyle: .alert), animated: true)
         self.puck.disconnect { (result) in
-            MainViewController.main?.dismiss(animated: true, completion: nil)
+            MainViewController.main?.dismiss(animated: true)
         }
     }
     
@@ -72,9 +72,9 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
         if let cell = (self.view as? UITableView)?.cellForRow(at: indexPath) as? AmiiboCharacterPuckTableViewCell {
             (self.view as? UITableView)?.deselectRow(at: indexPath, animated: true)
             let alert = UIAlertController(title: "Please Wait", message: "Changing Slot", preferredStyle: .alert)
-            self.present(alert, animated: true, completion: nil)
+            self.present(alert, animated: true)
             puck.changeSlot(slot: cell.Info.slot) { (result) in
-                self.dismiss(animated: true, completion: nil)
+                self.dismiss(animated: true)
             }
         }
     }
@@ -91,18 +91,19 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
             })
 
             alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { action in
-                self.present(UIAlertController(title: "Please Wait", message: "Changing Name", preferredStyle: .alert), animated: true, completion: nil)
+                self.present(UIAlertController(title: "Please Wait", message: "Changing Name", preferredStyle: .alert), animated: true)
                 self.puck.changeName(name: alert.textFields?.first?.text ?? "") { (result) in
                     switch result {
                     case .success(()):
-                        self.dismiss(animated: true, completion: nil)
-                        MainViewController.main?.dismiss(animated: true, completion: nil)
+                        self.dismiss(animated: true)
+                        MainViewController.main?.dismiss(animated: true)
                         PuckPeripheral.stopScanning()
                         PuckPeripheral.startScanning()
                         break
                     case .failure(let error):
-                        self.dismiss(animated: true)
-                        self.present(error.getAlertController(), animated: true)
+                        self.dismiss(animated: true) {
+                            self.present(error.getAlertController(), animated: true)
+                        }
                         break
                     }
                 }
@@ -118,8 +119,9 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
                     self.puck.disconnect { (result) in }
                     break
                 case .failure(let error):
-                    self.dismiss(animated: true)
-                    self.present(error.getAlertController(), animated: true)
+                    self.dismiss(animated: true) {
+                        self.present(error.getAlertController(), animated: true)
+                    }
                     break
                 }
             })

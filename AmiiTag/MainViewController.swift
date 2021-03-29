@@ -24,7 +24,7 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
                 TagInfoViewController.openTagInfo(dump: tag, controller: self)
                 break
             case .failure(let error):
-                self.present(error.getAlertController(), animated: true, completion: nil)
+                self.present(error.getAlertController(), animated: true)
                 break
             }
         }
@@ -47,14 +47,16 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
                         case .status(let status):
                             alert.message = "Reading \(puck.name) (\(status.start)/\(status.total))"
                         case .success(let tag):
-                            self.dismiss(animated: true)
-                            TagInfoViewController.openTagInfo(dump: TagDump(data: tag)!, controller: self)
+                            self.dismiss(animated: true) {
+                                TagInfoViewController.openTagInfo(dump: TagDump(data: tag)!, controller: self)
+                            }
                             puck.disconnect { (result) in
                                 PuckPeripheral.startScanning()
                             }
                         case .failure(let error):
-                            self.dismiss(animated: true)
-                            self.present(error.getAlertController(), animated: true)
+                            self.dismiss(animated: true) {
+                                self.present(error.getAlertController(), animated: true)
+                            }
                             puck.disconnect { (result) in
                                 PuckPeripheral.startScanning()
                             }
@@ -84,7 +86,7 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
                 TagInfoViewController.openTagInfo(dump: tag, controller: self)
                 break
             case .failure(let error):
-                self.present(error.getAlertController(), animated: true, completion: nil)
+                self.present(error.getAlertController(), animated: true)
             }
         }
     }
@@ -96,7 +98,7 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
                 TagInfoViewController.openTagInfo(dump: tag, controller: self)
                 break
             case .failure(let error):
-                self.present(error.getAlertController(), animated: true, completion: nil)
+                self.present(error.getAlertController(), animated: true)
             }
         }
     }
@@ -111,30 +113,31 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
                 case .status(let status):
                     alert.message = "Reading \(puck.name) (\(status.current + 1)/\(status.total))"
                 case .success(let data):
-                    self.dismiss(animated: true, completion: nil)
-                    let storyboard = UIStoryboard(name: "Main", bundle: nil)
-                    guard let view = storyboard.instantiateViewController(withIdentifier: "AmiiboCharactersPuck") as? AmiiboCharactersPuckTableViewController else {
-                        puck.disconnect { (result) in }
-                        return
+                    self.dismiss(animated: true) {
+                        let storyboard = UIStoryboard(name: "Main", bundle: nil)
+                        guard let view = storyboard.instantiateViewController(withIdentifier: "AmiiboCharactersPuck") as? AmiiboCharactersPuckTableViewController else {
+                            puck.disconnect { (result) in }
+                            return
+                        }
+                        
+                        view.puck = puck
+                        view.puckSlots = data
+                        view.title = puck.name
+                        let navigationController = UINavigationController(rootViewController: view)
+                        navigationController.setToolbarHidden(false, animated: false)
+                        self.present(navigationController, animated: true)
                     }
-                    
-                    view.puck = puck
-                    view.puckSlots = data
-                    view.title = puck.name
-                    let navigationController = UINavigationController(rootViewController: view)
-                    navigationController.setToolbarHidden(false, animated: false)
-                    self.present(navigationController, animated: true, completion: nil)
-                    
                     break
                 case .failure(let error):
-                    self.dismiss(animated: true, completion: nil)
-                    self.present(error.getAlertController(), animated: true, completion: nil)
+                    self.dismiss(animated: true) {
+                        self.present(error.getAlertController(), animated: true)
+                    }
                     puck.disconnect { (result) in }
                     break
                 }
             }
         }) {
-            present(alertController, animated: true, completion: nil)
+            present(alertController, animated: true)
         }
     }
     
@@ -164,13 +167,12 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
         AmiiboDatabase.LoadJson()
         
         print("Loaded \(NTAG215Tag.uidSignatures.count) UID/Signature pairs")
-        print("Loaded \(AmiiboDatabase.database.AmiiboData.count) amiibo dumps")
         
         NotificationCenter.default.addObserver(forName: Central.CentralStateChange, object: Central.sharedInstance, queue: nil) { (notification) in
             if let state = notification.userInfo?["state"] as? CBManagerState {
                 if state == .poweredOff {
                     if AmiiboCharactersPuckTableViewController.showing {
-                        self.dismiss(animated: true, completion: nil)
+                        self.dismiss(animated: true)
                     }
                 }
             }
@@ -204,7 +206,7 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
         
         alert.addAction(UIAlertAction(title: "Cancel", style: .default, handler: nil))
         
-        self.present(alert, animated: true, completion: nil)
+        self.present(alert, animated: true)
     }
 
     
@@ -227,8 +229,9 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
                     alert.message = "\(status.total - status.remaining) / \(status.total)\n\(status.url.remote.lastPathComponent)"
                     
                 case .failure(let error):
-                    self.dismiss(animated: true)
-                    self.present(error.getAlertController(), animated: true)
+                    self.dismiss(animated: true) {
+                        self.present(error.getAlertController(), animated: true)
+                    }
                 }
             }
         }
