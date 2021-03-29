@@ -67,7 +67,6 @@ class NFCTagReader: NSObject, NFCTagReaderSessionDelegate {
             case .success(let ntag215Tag):
                 self.tagReaderSession?.invalidate()
                 DispatchQueue.main.async {
-                    print(ntag215Tag.dump.TagUIDSig)
                     self.writeUidSig(data: ntag215Tag.dump.TagUIDSig!)
                     self.completionHandler?(.success(ntag215Tag.dump))
                     self.completionHandler = nil

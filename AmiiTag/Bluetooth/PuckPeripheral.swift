@@ -162,34 +162,44 @@ class PuckPeripheral: NSObject {
         }
     }
     
+    func handleSlotInformationRead(slot: UInt8, attempts: Int = 0, completionHandler: @escaping (Result<SlotInfo, Error>) -> Void) {
+        self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.responseUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
+            switch result {
+            case .success(let data):
+                if data.count != 82 || !(data[0] == 0x01 && data[1] == slot) {
+                    if attempts < 3 {
+                        self.handleSlotInformationRead(slot: slot, attempts: attempts + 1, completionHandler: completionHandler)
+                    } else {
+                        completionHandler(.failure(AmiiTagError(description: "Failed to read slot \(slot) after \(attempts) attempts")))
+                    }
+                    return
+                }
+                var tagData = Data(count: 572)
+                let response = Data(data[2..<data.count])
+                tagData[0..<8] = response[0..<8]
+                tagData[16..<28] = response[8..<20]
+                tagData[32..<52] = response[20..<40]
+                tagData[84..<92] = response[40..<48]
+                tagData[96..<128] = response[48..<80]
+                
+                let data = Data(tagData)
+                let tag = TagDump(data: data)!
+                completionHandler(.success(SlotInfo(slot: slot, name: tag.displayName, idHex: "0x\(tag.headHex)\(tag.tailHex)", dump: tag)))
+                break
+            case .failure(let error):
+                completionHandler(.failure(error))
+                break
+            }
+        }
+    }
+    
     func getSlotInformation(slot: UInt8 = 255, completionHandler: @escaping (Result<SlotInfo, Error>) -> Void){
         var command = Data([0x01, slot])
         print("Getting slot information for \(slot)")
         peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
             switch (result) {
             case .success(()):
-                //DispatchQueue.main.asyncAfter(deadline: .now() + 0.01) {
-                    self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.responseUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
-                        switch result {
-                        case .success(let data):
-                            var tagData = Data(count: 572)
-                            let response = Data(data[2..<data.count])
-                            tagData[0..<8] = response[0..<8]
-                            tagData[16..<28] = response[8..<20]
-                            tagData[32..<52] = response[20..<40]
-                            tagData[84..<92] = response[40..<48]
-                            tagData[96..<128] = response[48..<80]
-                            
-                            let data = Data(tagData)
-                            let tag = TagDump(data: data)!
-                            completionHandler(.success(SlotInfo(slot: slot, name: tag.displayName, idHex: "0x\(tag.headHex)\(tag.tailHex)", dump: tag)))
-                            break
-                        case .failure(let error):
-                            completionHandler(.failure(error))
-                            break
-                        }
-                    }
-                //}
+                self.handleSlotInformationRead(slot: slot, completionHandler: completionHandler)
                 break
             case .failure(let error):
                 completionHandler(.failure(error))

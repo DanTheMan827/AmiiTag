@@ -189,6 +189,19 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
             self.updateDatabase()
         }))
         
+        if !KeyFiles.hasKeys {
+            alert.addAction(UIAlertAction(title: "Load key file", style: .default, handler: { (action) in
+                KeyFiles.pickKeyFile(PresentingViewController: self) { (result) in
+                    switch result {
+                    case .success(()):
+                        break
+                    case .failure(let error):
+                        self.present(error.getAlertController(), animated: true)
+                    }
+                }
+            }))
+        }
+        
         alert.addAction(UIAlertAction(title: "Cancel", style: .default, handler: nil))
         
         self.present(alert, animated: true, completion: nil)
@@ -223,20 +236,22 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
     
     func checkUpdate() {
         AmiiboDatabase.NeedsUpdate { (result) in
-            switch result {
-            case .success(let needsUpdate):
-                if needsUpdate {
-                    var alert = UIAlertController(title: "Database Update", message: "There is a new database version available, would you like to update?", preferredStyle: .alert)
-                    alert.addAction(UIAlertAction(title: "Yes", style: .default, handler: { (action) in
-                        self.updateDatabase()
-                    }))
-                    alert.addAction(UIAlertAction(title: "No", style: .cancel))
+            DispatchQueue.main.async {
+                switch result {
+                case .success(let needsUpdate):
+                    if needsUpdate {
+                        var alert = UIAlertController(title: "Database Update", message: "There is a new database version available, would you like to update?", preferredStyle: .alert)
+                        alert.addAction(UIAlertAction(title: "Yes", style: .default, handler: { (action) in
+                            self.updateDatabase()
+                        }))
+                        alert.addAction(UIAlertAction(title: "No", style: .cancel))
+                        
+                        self.present(alert, animated: true)
+                    }
                     
-                    self.present(alert, animated: true)
+                case .failure(let error):
+                    print(error)
                 }
-                
-            case .failure(let error):
-                print(error)
             }
         }
     }

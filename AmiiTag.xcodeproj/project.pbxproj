@@ -8,6 +8,8 @@
 
 /* Begin PBXBuildFile section */
 		650292CB260D73A4002289AC /* TagDump+GetImage.swift in Sources */ = {isa = PBXBuildFile; fileRef = 650292CA260D73A4002289AC /* TagDump+GetImage.swift */; };
+		650292D3260FAF54002289AC /* KeyFiles+pickKeyFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 650292D2260FAF54002289AC /* KeyFiles+pickKeyFile.swift */; };
+		650292D6260FB00C002289AC /* URL+sha256.swift in Sources */ = {isa = PBXBuildFile; fileRef = 650292D5260FB00C002289AC /* URL+sha256.swift */; };
 		65064B55252AC78D00BCA905 /* Data+FromHexString.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65064B54252AC78D00BCA905 /* Data+FromHexString.swift */; };
 		6510751324AAE75C0065B51F /* CryptoSwift in Frameworks */ = {isa = PBXBuildFile; productRef = 6510751224AAE75C0065B51F /* CryptoSwift */; };
 		6510751724AC177A0065B51F /* QrViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6510751624AC177A0065B51F /* QrViewController.swift */; };
@@ -68,6 +70,9 @@
 
 /* Begin PBXFileReference section */
 		650292CA260D73A4002289AC /* TagDump+GetImage.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TagDump+GetImage.swift"; sourceTree = "<group>"; };
+		650292D2260FAF54002289AC /* KeyFiles+pickKeyFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "KeyFiles+pickKeyFile.swift"; sourceTree = "<group>"; };
+		650292D5260FB00C002289AC /* URL+sha256.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+sha256.swift"; sourceTree = "<group>"; };
+		650292DA260FB087002289AC /* bridge.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bridge.h; sourceTree = "<group>"; };
 		65064B54252AC78D00BCA905 /* Data+FromHexString.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Data+FromHexString.swift"; sourceTree = "<group>"; };
 		6510751624AC177A0065B51F /* QrViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QrViewController.swift; sourceTree = "<group>"; };
 		6510751824AC1F730065B51F /* ScannerViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ScannerViewController.swift; sourceTree = "<group>"; };
@@ -143,12 +148,14 @@
 				65064B54252AC78D00BCA905 /* Data+FromHexString.swift */,
 				65551BED25F0997B004368DF /* Data+ToHexString.swift */,
 				65551BE125DCC7F8004368DF /* Error+getAlertController.swift */,
+				650292D2260FAF54002289AC /* KeyFiles+pickKeyFile.swift */,
 				65551BF225F09A52004368DF /* NFCMiFareTag+checkPuck.swift */,
 				656B83F325DB5FD20024EF5A /* NFCMiFareTagError+LocalizedError.swift */,
 				65551BEA25F098EA004368DF /* NTAG215Tag+uidSignatures.swift */,
 				65EBD84424B9689500DDF1B4 /* TagDump+Extensions.swift */,
 				65551BFB25F0A01C004368DF /* TagDump+FromID.swift */,
 				650292CA260D73A4002289AC /* TagDump+GetImage.swift */,
+				650292D5260FB00C002289AC /* URL+sha256.swift */,
 			);
 			path = Extensions;
 			sourceTree = "<group>";
@@ -220,6 +227,7 @@
 		67BC1476245205A00028E9FE = {
 			isa = PBXGroup;
 			children = (
+				650292DA260FB087002289AC /* bridge.h */,
 				651614EE24B567AB0097A3BC /* TagWallet */,
 				6588CAD424A9736A006EA341 /* AmiiTag */,
 				67BC1480245205A00028E9FE /* Products */,
@@ -345,6 +353,7 @@
 				658D59D825DA01EF00ECA255 /* AmiiboCharactersPuckTableViewController.swift in Sources */,
 				6510751924AC1F730065B51F /* ScannerViewController.swift in Sources */,
 				65551C0B25F0AB0E004368DF /* TagDump.swift in Sources */,
+				650292D3260FAF54002289AC /* KeyFiles+pickKeyFile.swift in Sources */,
 				6523DF5524BC1D6200A2C305 /* AmiiboSeriesTableViewController.swift in Sources */,
 				65064B55252AC78D00BCA905 /* Data+FromHexString.swift in Sources */,
 				65551BFC25F0A01C004368DF /* TagDump+FromID.swift in Sources */,
@@ -364,6 +373,7 @@
 				6523DF5924BD34CA00A2C305 /* AmiiboCharacterTableViewCell.swift in Sources */,
 				652CC73A24B57DD400DE02DF /* AmiiboDatabase.swift in Sources */,
 				65DE8D8A24D76F0600D67552 /* PuckPeripheral.swift in Sources */,
+				650292D6260FB00C002289AC /* URL+sha256.swift in Sources */,
 				65FB460D25D98A9800610EBC /* LibraryPicker.swift in Sources */,
 				6510751724AC177A0065B51F /* QrViewController.swift in Sources */,
 				65551C0A25F0AB0E004368DF /* NTAG215Tag.swift in Sources */,
@@ -423,6 +433,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.DanTheMan827.AmiiTag;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTS_MACCATALYST = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = bridge.h;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -444,6 +455,7 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.DanTheMan827.AmiiTag;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTS_MACCATALYST = NO;
+				SWIFT_OBJC_BRIDGING_HEADER = bridge.h;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = 1;
 			};

@@ -140,27 +140,29 @@ public class AmiiboDatabase {
     
     public static func UpdateDatabase(completionHandler: @escaping (StatusResult<Void, DownloadStatus, Error>) -> Void) {
         DownloadUrls(urls: [(remote: amiiboJsonUrl, local: amiiboJsonPath), (remote: lastUpdatedUrl, local: lastUpdatedPath)]) { result in
-            switch result {
-            case .success():
-                LoadJson()
-                var urls: [RemoteLocalUrlPair] = []
-                for image in database.AmiiboData.keys.map({ (input) -> String in
-                    return "icon_\(input.suffix(16).prefix(8))-\(input.suffix(8)).png"
-                }) {
-                    let localPath = imagesPath.appendingPathComponent(image)
-                    
-                    if !FileManager.default.fileExists(atPath: localPath.path) {
-                        urls.append((remote: imagesBase.appendingPathComponent(image), local: localPath))
+            DispatchQueue.main.async {
+                switch result {
+                case .success():
+                    LoadJson()
+                    var urls: [RemoteLocalUrlPair] = []
+                    for image in database.AmiiboData.keys.map({ (input) -> String in
+                        return "icon_\(input.suffix(16).prefix(8))-\(input.suffix(8)).png"
+                    }) {
+                        let localPath = imagesPath.appendingPathComponent(image)
+                        
+                        if !FileManager.default.fileExists(atPath: localPath.path) {
+                            urls.append((remote: imagesBase.appendingPathComponent(image), local: localPath))
+                        }
                     }
+                    
+                    if urls.count > 0 {
+                        DownloadUrls(urls: urls, completionHandler: completionHandler)
+                    } else {
+                        completionHandler(.success(()))
+                    }
+                    
+                default: completionHandler(result)
                 }
-                
-                if urls.count > 0 {
-                    DownloadUrls(urls: urls, completionHandler: completionHandler)
-                } else {
-                    completionHandler(.success(()))
-                }
-                
-            default: completionHandler(result)
             }
         }
     }

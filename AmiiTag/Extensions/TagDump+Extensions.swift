@@ -13,6 +13,7 @@ import CoreNFC
 extension TagDump {
     var decryptedData: Data? {
         guard
+            KeyFiles.hasKeys,
             let decryptDataKeys = KeyFiles.dataKey?.derivedKey(uid: uid, writeCounter: data.subdata(in: 17..<19), salt: data.subdata(in: 96..<128)),
             let decryptedData = try? decryptDataKeys.decrypt(data.subdata(in: 20..<52) + data.subdata(in: 160..<520)) else {
                 return nil
