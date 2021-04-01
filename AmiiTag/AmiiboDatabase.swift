@@ -12,6 +12,7 @@ import UIKit
 public class AmiiboDatabase {
     public typealias RemoteLocalUrlPair = (remote: URL, local: URL)
     public typealias DownloadStatus = (total: Int, remaining: Int, url: RemoteLocalUrlPair)
+    public typealias Sha1sum = Dictionary<String, String>
     
     public struct AmiiboJsonData: Codable {
         public let Name: String
@@ -51,6 +52,14 @@ public class AmiiboDatabase {
         }
     }
     
+    static func decodeSha1sumJson(json: Data) -> Sha1sum? {
+        guard let resultJson = try? JSONDecoder().decode(Sha1sum.self, from: json) else {
+            return nil
+        }
+        
+        return resultJson
+    }
+    
     public struct LastUpdated: Codable {
         public let AmiiboSha1: String
         public let GameInfoSha1: String
@@ -71,10 +80,10 @@ public class AmiiboDatabase {
         }
     }
     
-    static var lastUpdated: LastUpdated? {
+    static var sha1sum: Sha1sum? {
         guard
-            let jsonData = try? Data(contentsOf: lastUpdatedPath),
-            let resultJson = LastUpdated.decodeJson(json: jsonData) else {
+            let jsonData = try? Data(contentsOf: Sha1sumPath),
+            let resultJson = decodeSha1sumJson(json: jsonData) else {
             return nil
         }
         
@@ -97,13 +106,14 @@ public class AmiiboDatabase {
     
     public static var database: AmiiboJson = AmiiboJson.GetEmptyData()
     public static let databasePath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Database")
-    public static let amiiboJsonPath = databasePath.appendingPathComponent("amiibo.json")
-    public static let lastUpdatedPath = databasePath.appendingPathComponent("last-updated.json")
-    public static let imagesPath = databasePath.appendingPathComponent("images")
+    public static let apiPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("AmiiboAPI")
+    public static let amiiboJsonPath = apiPath.appendingPathComponent("database").appendingPathComponent("amiibo.json")
+    public static let gamesInfoJsonPath = apiPath.appendingPathComponent("database").appendingPathComponent("games_info.json")
+    public static let Sha1sumPath = apiPath.appendingPathComponent("sha1sum.json")
+    public static let imagesPath = apiPath.appendingPathComponent("images")
     
-    private static let lastUpdatedUrl = URL(string: "https://raw.githubusercontent.com/N3evin/AmiiboAPI/master/last-updated.json")!
-    private static let amiiboJsonUrl = URL(string: "https://raw.githubusercontent.com/N3evin/AmiiboAPI/master/database/amiibo.json")!
-    private static let imagesBase = URL(string: "https://raw.githubusercontent.com/N3evin/AmiiboAPI/master/images/")!
+    private static let sha1sumUrl = URL(string: "https://raw.githubusercontent.com/N3evin/AmiiboAPI/master/sha1sum.json")!
+    private static let apiBase = URL(string: "https://raw.githubusercontent.com/N3evin/AmiiboAPI/master/")!
     
     public static func NeedsUpdate(completionHandler: @escaping (Result<Bool, Error>) -> Void) {
         if !FileManager.default.fileExists(atPath: amiiboJsonPath.path) {
@@ -112,46 +122,48 @@ public class AmiiboDatabase {
             return
         }
         
-        if !FileManager.default.fileExists(atPath: lastUpdatedPath.path) {
-            // No last-updated.json
+        if !FileManager.default.fileExists(atPath: Sha1sumPath.path) {
+            // No sha1sum.json
             completionHandler(.success(true))
             return
         }
         
-        URLSession.shared.dataTask(with: lastUpdatedUrl) { (data, response, error) in
+        URLSession.shared.dataTask(with: sha1sumUrl) { (data, response, error) in
             if error != nil {
                 completionHandler(.failure(error!))
             }
             
             guard let data = data,
-                  let localLastUpdated = AmiiboDatabase.lastUpdated,
-                  let remoteLastUpdated = LastUpdated.decodeJson(json: data) else {
-                completionHandler(.failure(AmiiTagError(description: "Failed to decode last updated json")))
+                  let localSha1sum = AmiiboDatabase.sha1sum,
+                  let remoteSha1sum = decodeSha1sumJson(json: data) else {
+                completionHandler(.failure(AmiiTagError(description: "Failed to decode sha1sum.json")))
                 return
             }
             
-            if localLastUpdated.Timestamp != remoteLastUpdated.Timestamp {
-                completionHandler(.success(true))
-            } else {
+            if NSDictionary(dictionary: localSha1sum).isEqual(to: remoteSha1sum) {
                 completionHandler(.success(false))
+            } else {
+                completionHandler(.success(true))
             }
         }.resume()
     }
     
     public static func UpdateDatabase(completionHandler: @escaping (StatusResult<Void, DownloadStatus, Error>) -> Void) {
-        DownloadUrls(urls: [(remote: amiiboJsonUrl, local: amiiboJsonPath), (remote: lastUpdatedUrl, local: lastUpdatedPath)]) { result in
+        DownloadUrls(urls: [(remote: sha1sumUrl, local: Sha1sumPath)]) { result in
             DispatchQueue.main.async {
                 switch result {
                 case .success():
-                    LoadJson()
                     var urls: [RemoteLocalUrlPair] = []
-                    for image in database.AmiiboData.keys.map({ (input) -> String in
-                        return "icon_\(input.suffix(16).prefix(8))-\(input.suffix(8)).png"
-                    }) {
-                        let localPath = imagesPath.appendingPathComponent(image)
+                    let sha1sum = AmiiboDatabase.sha1sum!
+                    
+                    for hash in sha1sum {
+                        let localPath = apiPath.appendingPathComponent(hash.key)
                         
-                        if !FileManager.default.fileExists(atPath: localPath.path) {
-                            urls.append((remote: imagesBase.appendingPathComponent(image), local: localPath))
+                        if FileManager.default.fileExists(atPath: localPath.path),
+                           localPath.sha1()?.toHexString().lowercased() == hash.value.lowercased() {
+                            // The file exists and the hash matches
+                        } else {
+                            urls.append((remote: apiBase.appendingPathComponent(hash.key), local: localPath))
                         }
                     }
                     
@@ -206,10 +218,14 @@ public class AmiiboDatabase {
     
     public static func LoadJson(){
         do {
-            try FileManager.default.createDirectory(at: databasePath, withIntermediateDirectories: true, attributes: nil)
+            if FileManager.default.fileExists(atPath: databasePath.path) && !FileManager.default.fileExists(atPath: apiPath.path) {
+                try FileManager.default.moveItem(at: databasePath, to: apiPath)
+            }
+            
+            try FileManager.default.createDirectory(at: apiPath, withIntermediateDirectories: true, attributes: nil)
             var resourceValues = URLResourceValues()
             resourceValues.isExcludedFromBackup = true
-            var databasePath = AmiiboDatabase.databasePath
+            var databasePath = AmiiboDatabase.apiPath
             try databasePath.setResourceValues(resourceValues)
         } catch {
             print(error)
