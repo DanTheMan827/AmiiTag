@@ -21,6 +21,9 @@
 		652CC73A24B57DD400DE02DF /* AmiiboDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 652CC73924B57DD400DE02DF /* AmiiboDatabase.swift */; };
 		652CC73C24B57DDD00DE02DF /* KeyFiles.swift in Sources */ = {isa = PBXBuildFile; fileRef = 652CC73B24B57DDD00DE02DF /* KeyFiles.swift */; };
 		654FBE0426154F53008D4E5A /* URL+sha1.swift in Sources */ = {isa = PBXBuildFile; fileRef = 654FBE0326154F53008D4E5A /* URL+sha1.swift */; };
+		65551744261D2E3E000E170B /* AppDataID.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65551743261D2E3E000E170B /* AppDataID.swift */; };
+		65551747261D3110000E170B /* AppData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65551746261D3110000E170B /* AppData.swift */; };
+		6555174C261D3354000E170B /* TwilightPrincessAppData.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6555174B261D3354000E170B /* TwilightPrincessAppData.swift */; };
 		65551BDA25DCBFB6004368DF /* AmiiboFilePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65551BD925DCBFB6004368DF /* AmiiboFilePicker.swift */; };
 		65551BDE25DCC64D004368DF /* AmiiboCharacterPuckTableViewCell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65551BDD25DCC64D004368DF /* AmiiboCharacterPuckTableViewCell.swift */; };
 		65551BE225DCC7F8004368DF /* Error+getAlertController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65551BE125DCC7F8004368DF /* Error+getAlertController.swift */; };
@@ -86,6 +89,9 @@
 		652CC73924B57DD400DE02DF /* AmiiboDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmiiboDatabase.swift; sourceTree = "<group>"; };
 		652CC73B24B57DDD00DE02DF /* KeyFiles.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeyFiles.swift; sourceTree = "<group>"; };
 		654FBE0326154F53008D4E5A /* URL+sha1.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "URL+sha1.swift"; sourceTree = "<group>"; };
+		65551743261D2E3E000E170B /* AppDataID.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDataID.swift; sourceTree = "<group>"; };
+		65551746261D3110000E170B /* AppData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppData.swift; sourceTree = "<group>"; };
+		6555174B261D3354000E170B /* TwilightPrincessAppData.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TwilightPrincessAppData.swift; sourceTree = "<group>"; };
 		65551BD925DCBFB6004368DF /* AmiiboFilePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmiiboFilePicker.swift; sourceTree = "<group>"; };
 		65551BDD25DCC64D004368DF /* AmiiboCharacterPuckTableViewCell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmiiboCharacterPuckTableViewCell.swift; sourceTree = "<group>"; };
 		65551BE125DCC7F8004368DF /* Error+getAlertController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Error+getAlertController.swift"; sourceTree = "<group>"; };
@@ -146,6 +152,16 @@
 			path = Resources;
 			sourceTree = "<group>";
 		};
+		65551742261D2E15000E170B /* AppData */ = {
+			isa = PBXGroup;
+			children = (
+				65551743261D2E3E000E170B /* AppDataID.swift */,
+				65551746261D3110000E170B /* AppData.swift */,
+				6555174B261D3354000E170B /* TwilightPrincessAppData.swift */,
+			);
+			path = AppData;
+			sourceTree = "<group>";
+		};
 		65551BE925F098AD004368DF /* Extensions */ = {
 			isa = PBXGroup;
 			children = (
@@ -181,6 +197,7 @@
 		6588CAD424A9736A006EA341 /* AmiiTag */ = {
 			isa = PBXGroup;
 			children = (
+				65551742261D2E15000E170B /* AppData */,
 				65551BDD25DCC64D004368DF /* AmiiboCharacterPuckTableViewCell.swift */,
 				658D59D725DA01EF00ECA255 /* AmiiboCharactersPuckTableViewController.swift */,
 				6523DF5624BC207700A2C305 /* AmiiboCharactersTableViewController.swift */,
@@ -361,6 +378,9 @@
 				65551C0B25F0AB0E004368DF /* TagDump.swift in Sources */,
 				6510210826117C37006BB6DD /* TagDump.Error+LocalizedError.swift in Sources */,
 				650292D3260FAF54002289AC /* KeyFiles+pickKeyFile.swift in Sources */,
+				65551744261D2E3E000E170B /* AppDataID.swift in Sources */,
+				6555174C261D3354000E170B /* TwilightPrincessAppData.swift in Sources */,
+				65551747261D3110000E170B /* AppData.swift in Sources */,
 				6523DF5524BC1D6200A2C305 /* AmiiboSeriesTableViewController.swift in Sources */,
 				65551BFC25F0A01C004368DF /* TagDump+FromID.swift in Sources */,
 				652CC73C24B57DDD00DE02DF /* KeyFiles.swift in Sources */,

@@ -78,6 +78,15 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
         print("Nickname: \(value.nickname)");
         print("Write Count: \(value.writeCounterInt)")
         
+        if let appIdInt = value.appDataId {
+            if let appId = AppDataID(rawValue: appIdInt),
+               let appData  = value.appData {
+                print("Found app data: \(appId.Name)")
+            } else {
+                print("Found unknown app data: \(appIdInt)")
+            }
+        }
+        
         tagUid.text = "0x\(value.uid.map { String(format: "%02hhx", $0) }.joined())"
         typeName.text = "0x\(value.headHex.prefix(8).suffix(2))"
         seriesName.text = "0x\(value.headHex.prefix(3))"

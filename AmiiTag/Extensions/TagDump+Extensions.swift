@@ -12,14 +12,44 @@ import CoreNFC
 
 extension TagDump {
     var decryptedData: Data? {
-        guard
-            KeyFiles.hasKeys,
-            let decryptDataKeys = KeyFiles.dataKey?.derivedKey(uid: uid, writeCounter: data.subdata(in: 17..<19), salt: data.subdata(in: 96..<128)),
-            let decryptedData = try? decryptDataKeys.decrypt(data.subdata(in: 20..<52) + data.subdata(in: 160..<520)) else {
-                return nil
+        get {
+            guard
+                KeyFiles.hasKeys,
+                let decryptDataKeys = KeyFiles.dataKey?.derivedKey(uid: uid, writeCounter: data.subdata(in: 17..<19), salt: data.subdata(in: 96..<128)),
+                let decryptedData = try? decryptDataKeys.decrypt(data.subdata(in: 20..<52) + data.subdata(in: 160..<520)) else {
+                    return nil
+            }
+            
+            return decryptedData
         }
-        
-        return decryptedData
+    }
+    
+    var appData: Data? {
+        get {
+            guard let decrypted = decryptedData else {
+                return nil
+            }
+            
+            return Data(decrypted[176..<392])
+        }
+    }
+    
+    var appDataId: Int? {
+        get {
+            guard self.writeCounterInt > 0,
+                  let decrypted = decryptedData else {
+                return nil
+            }
+            
+            var value : Int = 0
+            print(decrypted[138..<142].toHexString())
+            for byte in decrypted[138..<142] {
+                value = value << 8
+                value = value | Int(byte)
+            }
+            
+            return value
+        }
     }
     
     var nickname: String {
