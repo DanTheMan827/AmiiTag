@@ -40,7 +40,7 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
     }
     
     @IBAction func uploadTapped(_ sender: Any) {
-        let alertController = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        let alertController = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet).Popify(view: ViewController.view)
         
         alertController.addAction(UIAlertAction(title: "Amiibo Library", style: .default, handler: { (action) in
             LibraryPicker.ShowPicker(using: self.ViewController, with: self)

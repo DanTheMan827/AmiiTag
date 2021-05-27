@@ -119,7 +119,7 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
     
     @IBAction func writeTagTap(_ sender: Any) {
         if (PuckPeripheral.pucks.count > 0) {
-            let alertController = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+            let alertController = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet).Popify(view: self.view)
             alertController.view.tintColor = self.view.tintColor
             
             for puck in PuckPeripheral.pucks.sorted(by: { (a, b) -> Bool in

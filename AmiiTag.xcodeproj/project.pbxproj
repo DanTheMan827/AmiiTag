@@ -38,6 +38,7 @@
 		656B358F24AC35A7009AAF0A /* amiitag-dark.pdf in Resources */ = {isa = PBXBuildFile; fileRef = 656B358E24AC35A7009AAF0A /* amiitag-dark.pdf */; };
 		656B83F125DB4CA20024EF5A /* NFCTagReader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656B83F025DB4CA20024EF5A /* NFCTagReader.swift */; };
 		656B83F425DB5FD20024EF5A /* NFCMiFareTagError+LocalizedError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 656B83F325DB5FD20024EF5A /* NFCMiFareTagError+LocalizedError.swift */; };
+		6578F9BD265F4DA40028F711 /* UIAlertController+Popify.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6578F9BC265F4DA40028F711 /* UIAlertController+Popify.swift */; };
 		6588CAD624A9736A006EA341 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6588CAD524A9736A006EA341 /* AppDelegate.swift */; };
 		6588CADF24A9736A006EA341 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 6588CADD24A9736A006EA341 /* Main.storyboard */; };
 		6588CAE124A9736A006EA341 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 6588CAE024A9736A006EA341 /* Assets.xcassets */; };
@@ -104,6 +105,7 @@
 		656B358E24AC35A7009AAF0A /* amiitag-dark.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = "amiitag-dark.pdf"; sourceTree = "<group>"; };
 		656B83F025DB4CA20024EF5A /* NFCTagReader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NFCTagReader.swift; sourceTree = "<group>"; };
 		656B83F325DB5FD20024EF5A /* NFCMiFareTagError+LocalizedError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NFCMiFareTagError+LocalizedError.swift"; sourceTree = "<group>"; };
+		6578F9BC265F4DA40028F711 /* UIAlertController+Popify.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIAlertController+Popify.swift"; sourceTree = "<group>"; };
 		6588CAD324A9736A006EA341 /* AmiiTag.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = AmiiTag.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		6588CAD524A9736A006EA341 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		6588CADE24A9736A006EA341 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
@@ -162,6 +164,7 @@
 				6510210426117BC3006BB6DD /* NTAG215Tag.Error+LocalizedError.swift */,
 				6510210726117C37006BB6DD /* TagDump.Error+LocalizedError.swift */,
 				654FBE0326154F53008D4E5A /* URL+sha1.swift */,
+				6578F9BC265F4DA40028F711 /* UIAlertController+Popify.swift */,
 			);
 			path = Extensions;
 			sourceTree = "<group>";
@@ -347,7 +350,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = "/bin/sh -e";
-			shellScript = "find AmiiTag/signatures/ -name \"*.bin\" -size 42c -exec cat {} \\; > \"$CODESIGNING_FOLDER_PATH/signatures.bin\"\n\nrm -f \"$CODESIGNING_FOLDER_PATH/amiibo.bin\" \"$CODESIGNING_FOLDER_PATH/key_retail.bin\"\nfind AmiiTag/dumps/ -name \"*.bin\" -size 532c -o -size 540c -o -size 572c | while read file; do\n  head -c 532 \"$file\" >> \"$CODESIGNING_FOLDER_PATH/amiibo.bin\"\ndone\n\n[ -f \"AmiiTag/key_retail.bin\" ] && cp \"AmiiTag/key_retail.bin\" \"$CODESIGNING_FOLDER_PATH/key_retail.bin\"\n\nexit 0\n";
+			shellScript = "find AmiiTag/signatures/ -name \"*.bin\" -size 42c -exec cat {} \\; > \"$CODESIGNING_FOLDER_PATH/signatures.bin\"\n\nrm -f \"$CODESIGNING_FOLDER_PATH/amiibo.bin\" \"$CODESIGNING_FOLDER_PATH/key_retail.bin\"\nfind AmiiTag/dumps/ -name \"*.bin\" -size 532c -o -size 540c -o -size 572c | while read file; do\n  head -c 532 \"$file\" >> \"$CODESIGNING_FOLDER_PATH/Contents/Resources/amiibo.bin\"\ndone\n\n[ -f \"AmiiTag/key_retail.bin\" ] && cp \"AmiiTag/key_retail.bin\" \"$CODESIGNING_FOLDER_PATH/key_retail.bin\"\n\nexit 0\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -363,6 +366,7 @@
 				650292D3260FAF54002289AC /* KeyFiles+pickKeyFile.swift in Sources */,
 				6523DF5524BC1D6200A2C305 /* AmiiboSeriesTableViewController.swift in Sources */,
 				65551BFC25F0A01C004368DF /* TagDump+FromID.swift in Sources */,
+				6578F9BD265F4DA40028F711 /* UIAlertController+Popify.swift in Sources */,
 				652CC73C24B57DDD00DE02DF /* KeyFiles.swift in Sources */,
 				65551C0825F0AB0E004368DF /* MiFareTag.swift in Sources */,
 				65551BDE25DCC64D004368DF /* AmiiboCharacterPuckTableViewCell.swift in Sources */,
@@ -443,7 +447,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_OBJC_BRIDGING_HEADER = bridge.h;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
 		};
@@ -465,7 +469,7 @@
 				SUPPORTS_MACCATALYST = NO;
 				SWIFT_OBJC_BRIDGING_HEADER = bridge.h;
 				SWIFT_VERSION = 5.0;
-				TARGETED_DEVICE_FAMILY = 1;
+				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;
 		};

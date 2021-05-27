@@ -32,7 +32,7 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
     
     @IBAction func startTagReadingSession() {
         if (PuckPeripheral.pucks.count > 0) {
-            let alertController = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+            let alertController = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet).Popify(view: self.view)
             alertController.view.tintColor = self.view.tintColor
             
             for puck in PuckPeripheral.pucks.sorted(by: { (a, b) -> Bool in
@@ -137,7 +137,7 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
                 }
             }
         }) {
-            present(alertController, animated: true)
+            present(alertController.Popify(view: self.view), animated: true)
         }
     }
     
@@ -185,7 +185,7 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
 
     @objc func logoTapped(tapGestureRecognizer: UITapGestureRecognizer)
     {
-        let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+        let alert = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet).Popify(view: self.view)
         
         alert.addAction(UIAlertAction(title: "Update Database", style: .default, handler: { (action) in
             self.updateDatabase()
