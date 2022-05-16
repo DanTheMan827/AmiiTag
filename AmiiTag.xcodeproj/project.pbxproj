@@ -618,7 +618,7 @@
 			repositoryURL = "https://github.com/jordanebelanger/SwiftyBluetooth.git";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 2.2.1;
+				minimumVersion = 3.0.0;
 			};
 		};
 		67BC149D245207930028E9FE /* XCRemoteSwiftPackageReference "CryptoSwift" */ = {
