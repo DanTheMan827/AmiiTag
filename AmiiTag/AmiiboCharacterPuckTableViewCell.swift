@@ -95,10 +95,16 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
     }
     
     func AmiiboCharacterPicked(tag: TagDump) -> Bool {
-        let alert = UIAlertController(title: "Please Wait", message: "Writing \(Puck.name)", preferredStyle: .alert)
         if self.dismiss {
-            self.ViewController.dismiss(animated: true)
+            self.ViewController.dismiss(animated: true) {
+                self.dismiss = false
+                let _ = self.AmiiboCharacterPicked(tag: tag)
+            }
+            
+            return true
         }
+        
+        let alert = UIAlertController(title: "Please Wait", message: "Writing \(Puck.name)", preferredStyle: .alert)
         dismiss = true
         self.ViewController.present(alert, animated: true)
         
@@ -147,6 +153,7 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
                 break
             }
         }
+        
         return false
     }
 }
