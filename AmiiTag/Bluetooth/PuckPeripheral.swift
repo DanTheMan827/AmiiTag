@@ -21,6 +21,10 @@ class PuckError: LocalizedError {
     }
 }
 
+extension NSNotification.Name {
+    static let PuckPeripheralPucksChanged = Notification.Name("PuckPeripheral.PucksChanged")
+}
+
 class PuckPeripheral: NSObject {
     struct TagStatus {
         let slot: UInt8
@@ -341,11 +345,13 @@ class PuckPeripheral: NSObject {
                 case .scanStarted:
                     // The scan started meaning CBCentralManager scanForPeripherals(...) was called
                     pucks.removeAll()
+                    NotificationCenter.default.post(name: .PuckPeripheralPucksChanged, object: nil)
                     break
                 case .scanResult(let peripheral, _, _):
                     // A peripheral was found, your closure may be called multiple time with a .ScanResult enum case.
                     // You can save that peripheral for future use, or call some of its functions directly in this closure.
                     pucks.append(PuckPeripheral(peripheral: peripheral))
+                    NotificationCenter.default.post(name: .PuckPeripheralPucksChanged, object: nil)
                     break
                 case .scanStopped(peripherals: _, error: let error):
                     // The scan stopped, an error is passed if the scan stopped unexpectedly
@@ -354,6 +360,7 @@ class PuckPeripheral: NSObject {
                     } else {
                         scanning = false
                         pucks.removeAll()
+                        NotificationCenter.default.post(name: .PuckPeripheralPucksChanged, object: nil)
                     }
                     break
             }
@@ -380,6 +387,7 @@ class PuckPeripheral: NSObject {
                             
                         case .poweredOff:
                             PuckPeripheral.pucks.removeAll()
+                            NotificationCenter.default.post(name: .PuckPeripheralPucksChanged, object: nil)
                             break
                         default: break
                     }
@@ -404,6 +412,10 @@ class PuckPeripheral: NSObject {
             return alertController
         }
         
-        return nil
+        let alertController = UIAlertController(title: "No Pucks Available", message: "There are no pucks currently available.", preferredStyle: .alert)
+        
+        alertController.addAction(UIAlertAction(title: "OK", style: .default))
+        
+        return alertController
     }
 }

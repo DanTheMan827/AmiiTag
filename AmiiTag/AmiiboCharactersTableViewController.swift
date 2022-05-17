@@ -68,7 +68,7 @@ class AmiiboCharactersTableViewController: UITableViewController {
                 }
                 
                 // Return a fake uid/sig pair
-                return (key: "0401028f0304050604", value: Data(count: 32))
+                return (key: NTAG215Tag.getRandomUID().ToHexString(), value: Data(count: 32))
             }()
             let ID = amiiboCharacters[indexPath.row].key.suffix(16)
             let dataId = Data(hex: String(ID))
