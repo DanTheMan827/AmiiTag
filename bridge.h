@@ -9,5 +9,6 @@
 #ifndef bridge_h
 #define bridge_h
 #import <CommonCrypto/CommonCrypto.h>
+#import "amiitag/ecc.h"
 
 #endif /* bridge_h */

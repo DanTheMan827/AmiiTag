@@ -55,6 +55,8 @@
 		65DA3F2C25D3804700C83147 /* SwiftyBluetooth in Frameworks */ = {isa = PBXBuildFile; productRef = 65DA3F2B25D3804700C83147 /* SwiftyBluetooth */; };
 		65DE8D8A24D76F0600D67552 /* PuckPeripheral.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65DE8D8924D76F0600D67552 /* PuckPeripheral.swift */; };
 		65EBD84524B9689500DDF1B4 /* TagDump+Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65EBD84424B9689500DDF1B4 /* TagDump+Extensions.swift */; };
+		65F8FA152835D27C00A688A2 /* NTAG215Tag+validateSignature.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65F8FA142835D27C00A688A2 /* NTAG215Tag+validateSignature.swift */; };
+		65F8FA182835DC9600A688A2 /* ecc.c in Sources */ = {isa = PBXBuildFile; fileRef = 65F8FA162835DC9500A688A2 /* ecc.c */; };
 		65FB460A25D77B2700610EBC /* AmiiTagError.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FB460925D77B2700610EBC /* AmiiTagError.swift */; };
 		65FB460D25D98A9800610EBC /* LibraryPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = 65FB460C25D98A9800610EBC /* LibraryPicker.swift */; };
 /* End PBXBuildFile section */
@@ -125,6 +127,9 @@
 		658D59DB25DA284600ECA255 /* AwesomeBarButtonItem.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AwesomeBarButtonItem.swift; sourceTree = "<group>"; };
 		65DE8D8924D76F0600D67552 /* PuckPeripheral.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PuckPeripheral.swift; sourceTree = "<group>"; };
 		65EBD84424B9689500DDF1B4 /* TagDump+Extensions.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TagDump+Extensions.swift"; sourceTree = "<group>"; };
+		65F8FA142835D27C00A688A2 /* NTAG215Tag+validateSignature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "NTAG215Tag+validateSignature.swift"; sourceTree = "<group>"; };
+		65F8FA162835DC9500A688A2 /* ecc.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = ecc.c; sourceTree = "<group>"; };
+		65F8FA172835DC9500A688A2 /* ecc.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = ecc.h; sourceTree = "<group>"; };
 		65FB460925D77B2700610EBC /* AmiiTagError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AmiiTagError.swift; sourceTree = "<group>"; };
 		65FB460C25D98A9800610EBC /* LibraryPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPicker.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -155,22 +160,23 @@
 		65551BE925F098AD004368DF /* Extensions */ = {
 			isa = PBXGroup;
 			children = (
+				6527CA4C2833390D0088FBDC /* Data+getRandom.swift */,
 				65551BED25F0997B004368DF /* Data+ToHexString.swift */,
 				65551BE125DCC7F8004368DF /* Error+getAlertController.swift */,
 				650292D2260FAF54002289AC /* KeyFiles+pickKeyFile.swift */,
 				65551BF225F09A52004368DF /* NFCMiFareTag+checkPuck.swift */,
 				656B83F325DB5FD20024EF5A /* NFCMiFareTagError+LocalizedError.swift */,
+				6510210426117BC3006BB6DD /* NTAG215Tag.Error+LocalizedError.swift */,
+				6527CA4E283339C00088FBDC /* NTAG215Tag+getRandomUID.swift */,
 				65551BEA25F098EA004368DF /* NTAG215Tag+uidSignatures.swift */,
+				65F8FA142835D27C00A688A2 /* NTAG215Tag+validateSignature.swift */,
+				6510210726117C37006BB6DD /* TagDump.Error+LocalizedError.swift */,
 				65EBD84424B9689500DDF1B4 /* TagDump+Extensions.swift */,
 				65551BFB25F0A01C004368DF /* TagDump+FromID.swift */,
 				650292CA260D73A4002289AC /* TagDump+GetImage.swift */,
-				650292D5260FB00C002289AC /* URL+sha256.swift */,
-				6510210426117BC3006BB6DD /* NTAG215Tag.Error+LocalizedError.swift */,
-				6510210726117C37006BB6DD /* TagDump.Error+LocalizedError.swift */,
-				654FBE0326154F53008D4E5A /* URL+sha1.swift */,
 				6578F9BC265F4DA40028F711 /* UIAlertController+Popify.swift */,
-				6527CA4C2833390D0088FBDC /* Data+getRandom.swift */,
-				6527CA4E283339C00088FBDC /* NTAG215Tag+getRandomUID.swift */,
+				654FBE0326154F53008D4E5A /* URL+sha1.swift */,
+				650292D5260FB00C002289AC /* URL+sha256.swift */,
 			);
 			path = Extensions;
 			sourceTree = "<group>";
@@ -179,9 +185,9 @@
 			isa = PBXGroup;
 			children = (
 				65551C0425F0AB0E004368DF /* MiFareTag.swift */,
-				65551C0525F0AB0E004368DF /* TagEncyption.swift */,
 				65551C0625F0AB0E004368DF /* NTAG215Tag.swift */,
 				65551C0725F0AB0E004368DF /* TagDump.swift */,
+				65551C0525F0AB0E004368DF /* TagEncyption.swift */,
 			);
 			name = TagWallet;
 			path = TagWallet/TagWallet;
@@ -205,6 +211,8 @@
 				6588CAE024A9736A006EA341 /* Assets.xcassets */,
 				658D59DB25DA284600ECA255 /* AwesomeBarButtonItem.swift */,
 				65DE8D8B24D76F3200D67552 /* Bluetooth */,
+				65F8FA162835DC9500A688A2 /* ecc.c */,
+				65F8FA172835DC9500A688A2 /* ecc.h */,
 				65551BE925F098AD004368DF /* Extensions */,
 				6588CAE524A9736A006EA341 /* Info.plist */,
 				652CC73B24B57DDD00DE02DF /* KeyFiles.swift */,
@@ -217,9 +225,9 @@
 				650BBAF425D9F76D0016E3DB /* Resources */,
 				6510751824AC1F730065B51F /* ScannerViewController.swift */,
 				6588CAE924A97927006EA341 /* SceneDelegate.swift */,
+				65551C0E25F326BC004368DF /* StatusResult.swift */,
 				656A9CBD24A9A5E600FE58CC /* TagInfoViewController.swift */,
 				65551C0325F0AB0E004368DF /* TagWallet */,
-				65551C0E25F326BC004368DF /* StatusResult.swift */,
 			);
 			path = AmiiTag;
 			sourceTree = "<group>";
@@ -396,7 +404,9 @@
 				6510751724AC177A0065B51F /* QrViewController.swift in Sources */,
 				65551C0A25F0AB0E004368DF /* NTAG215Tag.swift in Sources */,
 				65551BF325F09A52004368DF /* NFCMiFareTag+checkPuck.swift in Sources */,
+				65F8FA152835D27C00A688A2 /* NTAG215Tag+validateSignature.swift in Sources */,
 				65551C0925F0AB0E004368DF /* TagEncyption.swift in Sources */,
+				65F8FA182835DC9600A688A2 /* ecc.c in Sources */,
 				65EBD84524B9689500DDF1B4 /* TagDump+Extensions.swift in Sources */,
 				656A9CBE24A9A5E600FE58CC /* TagInfoViewController.swift in Sources */,
 				65551BDA25DCBFB6004368DF /* AmiiboFilePicker.swift in Sources */,

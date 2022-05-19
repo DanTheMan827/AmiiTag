@@ -45,15 +45,21 @@ class NFCTagReader: NSObject, NFCTagReaderSessionDelegate {
             return
         }
         
+        guard NTAG215Tag.validateOriginality(uid: data.prefix(9), signature: data.suffix(32)) else {
+            print("Unable to verify tag signature\n  \(uidHex)\n  \(data.suffix(32).map { String(format: "%02hhx", $0) }.joined())")
+            return
+        }
+        
         let fileManager = FileManager.default
         let documentsURL =  fileManager.urls(for: .documentDirectory, in: .userDomainMask).first!
-
-        let sigPath = documentsURL.appendingPathComponent("Signatures")
+        
+        let sigPath = documentsURL.appendingPathComponent("Signatures").appendingPathComponent("Scanned")
         do
         {
             NTAG215Tag.uidSignatures[uidHex] = Data(data.suffix(32))
             try FileManager.default.createDirectory(atPath: sigPath.path, withIntermediateDirectories: true, attributes: nil)
             try data.write(to: sigPath.appendingPathComponent("\(uidHex).bin"))
+            print("Validated signature: \(uidHex)")
         }
         catch let error as NSError
         {

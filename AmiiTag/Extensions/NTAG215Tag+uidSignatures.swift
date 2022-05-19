@@ -20,17 +20,21 @@ extension NTAG215Tag {
         
         let folderPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Signatures")
         let enumerator = FileManager.default.enumerator(atPath: folderPath.path)
+        
         let emptySig = Data(count: 32)
         
-        while let element = enumerator?.nextObject() as? String {
-            let filePath = folderPath.appendingPathComponent(element)
-            if let attributes = try? FileManager.default.attributesOfItem(atPath: filePath.path),
-               let size = attributes[FileAttributeKey.size] as? UInt64,
-               size == 42,
-               let signatureData = try? Data(contentsOf: filePath),
-               signatureData[9] == 0x48,
-               !signatureData.suffix(32).elementsEqual(emptySig) {
-                signatures[signatureData[0..<9].ToHexString()] = Data(signatureData.suffix(32))
+        if let contents = try? FileManager.default.contentsOfDirectory(atPath: folderPath.path) {
+            contents.forEach { element in
+                let filePath = folderPath.appendingPathComponent(element)
+                if let attributes = try? FileManager.default.attributesOfItem(atPath: filePath.path),
+                   let size = attributes[FileAttributeKey.size] as? UInt64,
+                   size == 42,
+                   let signatureData = try? Data(contentsOf: filePath),
+                   signatureData[9] == 0x48,
+                   !signatureData.suffix(32).elementsEqual(emptySig),
+                   NTAG215Tag.validateOriginality(uid: signatureData[0..<9], signature: signatureData.suffix(32)) {
+                    signatures[signatureData[0..<9].ToHexString()] = Data(signatureData.suffix(32))
+                }
             }
         }
         
