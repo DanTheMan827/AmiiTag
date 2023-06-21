@@ -14,7 +14,7 @@ class AwesomeBarButtonItem: UIBarButtonItem {
     required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
         let fontAwesomeTextAttribute = [
-            NSAttributedString.Key.font: UIFont(name: "Font Awesome 5 Free Solid", size: 17)!
+            NSAttributedString.Key.font: UIFont(name: "Font Awesome 6 Free Solid", size: 17)!
         ]
         
         self.setTitleTextAttributes(fontAwesomeTextAttribute, for: .normal)

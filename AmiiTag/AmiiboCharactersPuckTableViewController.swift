@@ -55,6 +55,9 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
             cell.Info = puckSlots[index]
             cell.Puck = puck
             cell.CellLabel.text = puckSlots[index].dump.displayName
+            if !puckSlots[index].dump.fullHex.hasSuffix("02") {
+                cell.CellLabel.text = "Unknown Data"
+            }
             cell.CellImage.image = puckSlots[index].dump.image
             cells.append(cell)
             
@@ -65,6 +68,76 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
     }
     override func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
         return 100.0
+    }
+    override func tableView(_ tableView: UITableView, leadingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        
+        let randomizeAction = UIContextualAction(style: .destructive, title: nil) {  (contextualAction, view, boolValue) in
+            if let cell = (self.view as? UITableView)?.cellForRow(at: indexPath) as? AmiiboCharacterPuckTableViewCell {
+                cell.randomizeTapped(self)
+            }
+            
+            boolValue(true)
+        }
+        
+        let awesomeLabel = UILabel()
+        awesomeLabel.font = UIFont(name: "Font Awesome 6 Free Solid", size: 24)
+        awesomeLabel.textColor = UIColor.white
+        awesomeLabel.text = "" // Random
+        awesomeLabel.sizeToFit()
+        
+        randomizeAction.backgroundColor = UIColor.systemBlue
+        randomizeAction.image = UIImage(view: awesomeLabel)
+        let swipeActions = UISwipeActionsConfiguration(actions: [randomizeAction])
+
+        return swipeActions
+    }
+    override func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        let uploadAction = UIContextualAction(style: .destructive, title: nil) {  (contextualAction, view, boolValue) in
+            if let cell = (self.view as? UITableView)?.cellForRow(at: indexPath) as? AmiiboCharacterPuckTableViewCell {
+                cell.uploadTapped(self)
+            }
+            
+            boolValue(true)
+        }
+        let downloadAction = UIContextualAction(style: .destructive, title: nil) {  (contextualAction, view, boolValue) in
+            if let cell = (self.view as? UITableView)?.cellForRow(at: indexPath) as? AmiiboCharacterPuckTableViewCell {
+                cell.downloadTapped(self)
+            }
+            
+            boolValue(true)
+        }
+        let clearAction = UIContextualAction(style: .destructive, title: nil) {  (contextualAction, view, boolValue) in
+            if let cell = (self.view as? UITableView)?.cellForRow(at: indexPath) as? AmiiboCharacterPuckTableViewCell {
+                cell.clearTapped(self)
+            }
+            
+            boolValue(true)
+        }
+        
+        var awesomeLabel = UILabel()
+        awesomeLabel.font = UIFont(name: "Font Awesome 6 Free Solid", size: 24)
+        awesomeLabel.textColor = UIColor.white
+        
+        awesomeLabel.text = "" // Download
+        awesomeLabel.sizeToFit()
+        downloadAction.image = UIImage(view: awesomeLabel)
+        
+        awesomeLabel.text = "" // Upload
+        awesomeLabel.sizeToFit()
+        uploadAction.image = UIImage(view: awesomeLabel)
+        
+        awesomeLabel.text = "" // Trash-Alt
+        awesomeLabel.sizeToFit()
+        awesomeLabel.textColor = UIColor.white
+        clearAction.image = UIImage(view: awesomeLabel)
+        
+        
+        uploadAction.backgroundColor = UIColor.systemBlue
+        downloadAction.backgroundColor = UIColor.systemBlue
+        let swipeActions = UISwipeActionsConfiguration(actions: [clearAction, downloadAction, uploadAction])
+
+        swipeActions.performsFirstActionWithFullSwipe = false
+        return swipeActions
     }
     
     // MARK: UITableViewDelegate

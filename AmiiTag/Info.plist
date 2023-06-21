@@ -32,9 +32,9 @@
 	<string>For saving QR codes</string>
 	<key>UIAppFonts</key>
 	<array>
-		<string>Font Awesome 5 Free-Solid-900.otf</string>
-		<string>Font Awesome 5 Free-Regular-400.otf</string>
-		<string>Font Awesome 5 Brands-Regular-400.otf</string>
+		<string>Font Awesome 6 Free-Solid-900.otf</string>
+		<string>Font Awesome 6 Free-Regular-400.otf</string>
+		<string>Font Awesome 6 Brands-Regular-400.otf</string>
 	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
