@@ -1,0 +1,3 @@
+[submodule "submodules/libamiibo"]
+	path = submodules/libamiibo
+	url = https://github.com/DanTheMan827/libamiibo.git
