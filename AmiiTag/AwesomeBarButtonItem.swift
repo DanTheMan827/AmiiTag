@@ -11,16 +11,16 @@ import UIKit
 
 @IBDesignable
 class AwesomeBarButtonItem: UIBarButtonItem {
+    static let fontAwesomeTextAttribute = [
+        NSAttributedString.Key.font: UIFont(name: "Font Awesome 6 Free Solid", size: 17)!
+    ]
     required init?(coder aDecoder: NSCoder) {
         super.init(coder: aDecoder)
-        let fontAwesomeTextAttribute = [
-            NSAttributedString.Key.font: UIFont(name: "Font Awesome 6 Free Solid", size: 17)!
-        ]
         
-        self.setTitleTextAttributes(fontAwesomeTextAttribute, for: .normal)
-        self.setTitleTextAttributes(fontAwesomeTextAttribute, for: .highlighted)
-        self.setTitleTextAttributes(fontAwesomeTextAttribute, for: .selected)
-        self.setTitleTextAttributes(fontAwesomeTextAttribute, for: .focused)
-        self.setTitleTextAttributes(fontAwesomeTextAttribute, for: .disabled)
+        self.setTitleTextAttributes(AwesomeBarButtonItem.fontAwesomeTextAttribute, for: .normal)
+        self.setTitleTextAttributes(AwesomeBarButtonItem.fontAwesomeTextAttribute, for: .highlighted)
+        self.setTitleTextAttributes(AwesomeBarButtonItem.fontAwesomeTextAttribute, for: .selected)
+        self.setTitleTextAttributes(AwesomeBarButtonItem.fontAwesomeTextAttribute, for: .focused)
+        self.setTitleTextAttributes(AwesomeBarButtonItem.fontAwesomeTextAttribute, for: .disabled)
     }
 }
