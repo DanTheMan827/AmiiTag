@@ -58,13 +58,24 @@ class PuckPeripheral: NSObject {
     fileprivate var disconnecting = false
     fileprivate var _name: String? = nil
     
+    static var pucks: [PuckPeripheral] = []
+    static var scanning = false
+    
+    var name: String {
+        return self._name ?? peripheral.name ?? "Puck"
+    }
+    
     init(peripheral: Peripheral){
         self.peripheral = peripheral
     }
     
-    fileprivate func sendBytes(bytes: Data) async throws {
+    // MARK: Bluetooth helper functions
+    /// Send bytes to the puck
+    /// - Parameter bytes: The bytes to send
+    /// - Throws: Any errors that occur
+    fileprivate func sendBytesAsync(bytes: Data, characteristicUuid: String = PuckPeripheral.commandUuid) async throws {
         return try await withCheckedThrowingContinuation { continuation in
-            self.peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: Data(bytes), type: .withResponse) { (result) in
+            self.peripheral.writeValue(ofCharacWithUUID: characteristicUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: Data(bytes), type: .withResponse) { (result) in
                 switch result {
                 case .failure(let error):
                     continuation.resume(throwing: error)
@@ -76,7 +87,9 @@ class PuckPeripheral: NSObject {
         }
     }
     
-    fileprivate func readBytes() async throws -> Data {
+    /// Read bytes from the puck
+    /// - Throws: Any errors that occur
+    fileprivate func readBytesAsync() async throws -> Data {
         return try await withCheckedThrowingContinuation { continuation in
             self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.responseUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
                 switch result {
@@ -91,321 +104,400 @@ class PuckPeripheral: NSObject {
         }
     }
     
-    fileprivate func sendAndReadNext(bytes: Data) async throws -> Data {
-        try await sendBytes(bytes: bytes)
-        return try await readBytes()
+    /// Send bytes to the puck and read the next response
+    /// - Parameter bytes: The bytes to send
+    /// - Throws: Any errors that occur
+    fileprivate func sendAndReadNextAsync(bytes: Data) async throws -> Data {
+        try await sendBytesAsync(bytes: bytes)
+        return try await readBytesAsync()
     }
     
-    fileprivate func _getAllSlotInformation(current: UInt8 = 0, total: UInt8 = 1, data: [SlotInfo]? = nil, completionHandler: @escaping (StatusResult<[SlotInfo], SlotStatus, Error>) -> Void){
-        var data: [SlotInfo] = data ?? []
-        if current < total {
-            completionHandler(.status(SlotStatus(current: current, total: total)))
-            getSlotInformation(slot: current) { (result) in
-                switch result {
-                case .success(let result):
-                    data.append(result)
-                    self._getAllSlotInformation(current: current + 1, total: total, data: data, completionHandler: completionHandler)
-                    break
-                case .failure(let error):
-                    completionHandler(.failure(error))
-                    break
-                }
-            }
+    // MARK: Puck functions
+    
+    /// Get the total number of slots and the current slot
+    /// - Returns: A tuple containing the current slot and total slots
+    /// - Throws: Any errors that occur
+    func getSlotSummaryAsync() async throws -> (current: UInt8, total: UInt8) {
+        let response = try await sendAndReadNextAsync(bytes: Data([0x01]))
+        
+        if response[0] == 0x01 {
+            return (current: response[1], total: response[2])
         } else {
-            completionHandler(.success(data))
+            throw PuckError(description: "Slot summary response invalid")
         }
     }
     
-
-    
-    fileprivate func _readTag(slot: UInt8, startPage: UInt8 = 0, count: UInt8 = 63, accumulatedData: Data? = nil, completionHandler: @escaping (StatusResult<Data, TagStatus, Error>) -> Void){
-        let command = Data([0x02, slot, startPage, count])
-        print("Reading from \(peripheral.name ?? "puck") in slot \(slot) at page \(startPage) for \(count) pages")
-        completionHandler(.status(TagStatus(slot: slot, start: Int(startPage) * 4, count: Int(count) * 4, total: 572)))
-        self.peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
-            switch result {
-            case .success():
-                self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.responseUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
-                    switch result {
-                    case .success(let response):
-                        let lastSlot = response[1]
-                        let lastStart = response[2]
-                        let lastCount = response[3]
-                        let nextPage = lastStart + lastCount
-                        let accumulatedData = Data((accumulatedData ?? Data(count: 0)) + response[4..<(4 + (Int(lastCount) * 4))])
-                        
-                        if startPage + count >= 143 {
-                            completionHandler(.status(TagStatus(slot: slot, start: 572, count: 0, total: 572)))
-                            completionHandler(.success(accumulatedData))
-                        } else {
-                            self._readTag(slot: lastSlot, startPage: nextPage, count: min(UInt8(143) - startPage - count, count), accumulatedData: accumulatedData, completionHandler: completionHandler)
-                        }
-                        break
-                    case .failure(let error):
-                        completionHandler(.failure(error))
-                        break
-                    }
-                }
-                break
-            case .failure(let error):
+    /// Get the total number of slots and the current slot
+    /// - Parameter completionHandler: A closure to call with the result
+    func getSlotSummary(completionHandler: @escaping (Result<(current: UInt8, total: UInt8), Error>) -> Void){
+        Task {
+            do {
+                let summary = try await getSlotSummaryAsync()
+                completionHandler(.success(summary))
+            } catch {
                 completionHandler(.failure(error))
-                break
             }
         }
     }
     
-    fileprivate func _readAllTags(slot: UInt8 = 0, count: UInt8 = 5, tags: [Data] = [], completionHandler: @escaping (StatusResult<[Data], TagStatus, Error>) -> Void){
-        if slot < count {
-            readTag(slot: slot) { (result) in
-                switch result {
-                case .status(let status):
-                    completionHandler(.status(status))
-                case .success(let tag):
-                    var tags: [Data] = tags
-                    tags.append(Data(tag))
-                    self._readAllTags(slot: slot + 1, count: count, tags: tags, completionHandler: completionHandler)
-                    break
-                case .failure(let error):
-                    completionHandler(.failure(error))
-                    break
-                }
-            }
-        } else {
-            completionHandler(.success(tags))
-        }
-    }
-    
-    fileprivate func _writeTag(toSlot slot: UInt8, atPage startPage: UInt8 = 0, withData data: Data, completionHandler: @escaping (StatusResult<Void, TagStatus, Error>) -> Void){
-        if startPage < 143 {
-            let dataToWrite = Data(data[(Int(startPage) * 4)..<min(((Int(startPage) + 4) * 4), 572)])
-            let command = Data([0x03, slot, startPage] + dataToWrite)
-            print("Writing to \(self.name) in slot \(slot) at page \(startPage) for \(dataToWrite.count) bytes")
-            completionHandler(.status(TagStatus(slot: slot, start: Int(startPage) * 4, count: dataToWrite.count, total: 572)))
-            peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
-                switch result {
-                case .success(_):
-                    self._writeTag(toSlot: slot, atPage: startPage + 4, withData: data, completionHandler: completionHandler)
-                    break
-                case .failure(let error):
-                    completionHandler(.failure(error))
-                    break
-                }
-            }
-        } else {
-            completionHandler(.status(TagStatus(slot: slot, start: 572, count: 0, total: 572)))
-            completionHandler(.success(()))
-        }
-    }
-    
-    fileprivate func handleSlotInformationRead(slot: UInt8, attempts: Int = 0, completionHandler: @escaping (Result<SlotInfo, Error>) -> Void) {
-        self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.responseUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
-            switch result {
-            case .success(let data):
-                if data.count != 82 || !(data[0] == 0x01 && data[1] == slot) {
-                    if attempts < 3 {
-                        print("Retry read of tag info for slot \(slot), attempt \(attempts)")
-                        self.handleSlotInformationRead(slot: slot, attempts: attempts + 1, completionHandler: completionHandler)
-                    } else {
-                        completionHandler(.failure(AmiiTagError(description: "Failed to read slot \(slot) after \(attempts) attempts")))
-                    }
-                    return
-                }
-                var tagData = Data(count: 572)
-                let response = Data(data[2..<data.count])
-                tagData[0..<8] = response[0..<8]
-                tagData[16..<28] = response[8..<20]
-                tagData[32..<52] = response[20..<40]
-                tagData[84..<92] = response[40..<48]
-                tagData[96..<128] = response[48..<80]
-                
-                let data = Data(tagData)
-                let tag = TagDump(data: data)!
-                completionHandler(.success(SlotInfo(slot: slot, name: tag.displayName, idHex: "0x\(tag.headHex)\(tag.tailHex)", dump: tag)))
-                break
-            case .failure(let error):
-                completionHandler(.failure(error))
-                break
-            }
-        }
-    }
-}
-
-extension PuckPeripheral {
-    static var pucks: [PuckPeripheral] = []
-    static var scanning = false
-    
-    var name: String {
-        return self._name ?? peripheral.name ?? "Puck"
-    }
-    
-    func disconnect(completionHandler: @escaping (Result<Void, Error>) -> Void) {
-        if self.disconnecting || self.peripheral.state == .disconnected || self.peripheral.state == .disconnecting {
-            completionHandler(.success(()))
+    /// Get information for a slot
+    /// - Parameter slot: The slot to get information for
+    /// - Returns: A SlotInfo struct
+    /// - Throws: Any errors that occur
+    func getSlotInformationAsync(slot: UInt8 = 255) async throws -> SlotInfo {
+        let command = Data([0x01, slot])
+        
+        print("Getting slot information for \(slot)")
+        try await sendBytesAsync(bytes: command)
+        
+        for attempts in 1...3 {
+            let data = try await readBytesAsync()
             
+            if data.count != 82 || !(data[0] == 0x01 && data[1] == slot) {
+                if attempts <= 3 {
+                    print("Retry read of tag info for slot \(slot), attempt \(attempts)")
+                    continue
+                }
+            }
+            
+            var tagData = Data(count: 572)
+            let response = Data(data[2..<data.count])
+            tagData[0..<8] = response[0..<8]
+            tagData[16..<28] = response[8..<20]
+            tagData[32..<52] = response[20..<40]
+            tagData[84..<92] = response[40..<48]
+            tagData[96..<128] = response[48..<80]
+            
+            let tag = TagDump(data: Data(tagData))!
+            return SlotInfo(slot: slot, name: tag.displayName, idHex: "0x\(tag.headHex)\(tag.tailHex)", dump: tag)
+        }
+        
+        throw AmiiTagError(description: "Failed to read slot \(slot) after 3 attempts")
+    }
+    
+    /// Get information for a slot
+    /// - Parameter slot: The slot to get information for
+    func getSlotInformation(slot: UInt8 = 255, completionHandler: @escaping (Result<SlotInfo, Error>) -> Void){
+        Task {
+            do {
+                let info = try await getSlotInformationAsync(slot: slot)
+                completionHandler(.success(info))
+            } catch {
+                completionHandler(.failure(error))
+            }
+        }
+    }
+    
+    /// Get information for all slots
+    /// - Returns: An array of SlotInfo structs
+    /// - Throws: Any errors that occur
+    func getAllSlotInformationAsync(progress: @escaping (SlotStatus) -> Void) async throws -> [SlotInfo] {
+        var data = [SlotInfo]()
+        let summary = try await getSlotSummaryAsync()
+        
+        for slot in 0..<summary.total {
+            progress(SlotStatus(current: slot, total: summary.total))
+            let info = try await getSlotInformationAsync(slot: slot)
+            data.append(info)
+            progress(SlotStatus(current: slot + 1, total: summary.total))
+        }
+        
+        return data
+    }
+    
+    /// Get information for all slots
+    /// - Parameter completionHandler: A closure to call with the result
+    func getAllSlotInformation(completionHandler: @escaping (StatusResult<[SlotInfo], SlotStatus, Error>) -> Void){
+        Task {
+            do {
+                let info = try await getAllSlotInformationAsync { (status) in
+                    completionHandler(.status(status))
+                }
+                completionHandler(.success(info))
+            } catch {
+                completionHandler(.failure(error))
+            }
+        }
+    }
+    
+    /// Read a tag from the puck
+    /// - Parameter slot: The slot to read from
+    /// - Returns: The tag data
+    /// - Throws: Any errors that occur
+    func readTagAsync(slot: UInt8, progress: @escaping (TagStatus) -> Void) async throws -> Data {
+        let maxPages = 63
+        var tagData = Data(count: 0)
+        
+        progress(TagStatus(slot: slot, start: 0, count: maxPages, total: 572))
+        
+        for startPage in stride(from: 0, through: 143, by: maxPages) {
+            let count = min(143 - startPage, maxPages)
+            let command = Data([0x02, slot, UInt8(startPage), UInt8(count)])
+            
+            progress(TagStatus(slot: slot, start: startPage * 4, count: count * 4, total: 572))
+            
+            print("Reading from \(peripheral.name ?? "puck") in slot \(slot) at page \(startPage) for \(count) pages")
+            
+            let result = try await sendAndReadNextAsync(bytes: command)
+            
+            tagData += result[4...]
+            
+        }
+        
+        progress(TagStatus(slot: slot, start: 572, count: 0, total: 572))
+        
+        return Data(tagData)
+    }
+    
+    /// Read a tag from the puck
+    /// - Parameter slot: The slot to read from
+    /// - Parameter completionHandler: A closure to call with the result
+    func readTag(slot: UInt8 = 255, completionHandler: @escaping (StatusResult<Data, TagStatus, Error>) -> Void){
+        Task {
+            do {
+                let result = try await readTagAsync(slot: slot) { (status) in
+                    completionHandler(.status(status))
+                }
+                
+                completionHandler(.success(result))
+            } catch {
+                completionHandler(.failure(error))
+            }
+        }
+    }
+    
+    /// Read all tags from the puck
+    /// - Returns: An array of tag data
+    /// - Throws: Any errors that occur
+    func readAllTagsAsync(progress: @escaping (TagStatus) -> Void) async throws -> [Data] {
+        var tags = [Data]()
+        let summary = try await getSlotSummaryAsync()
+        
+        for slot in 0..<summary.total {
+            let tag = try await readTagAsync(slot: slot, progress: progress)
+            tags.append(tag)
+        }
+        
+        return tags
+    }
+    
+    /// Read all tags from the puck
+    /// - Parameter completionHandler: A closure to call with the result
+    func readAllTags(completionHandler: @escaping (StatusResult<[Data], TagStatus, Error>) -> Void){
+        Task {
+            do {
+                let result = try await self.readAllTagsAsync { (status) in
+                    completionHandler(.status(status))
+                }
+                
+                completionHandler(.success(result))
+            } catch {
+                completionHandler(.failure(error))
+            }
+        }
+    }
+    
+    /// Write a tag to the puck
+    /// - Parameters:
+    ///  - slot: The slot to write to
+    ///  - data: The tag data to write
+    ///  - progress: A closure to call with progress updates
+    /// - Returns: The tag data
+    /// - Throws: Any errors that occur
+    func writeTagAsync(toSlot slot: UInt8, using tag: Data, progress: @escaping (TagStatus) -> Void) async throws {
+        
+        var data = Data(count: 572)
+        data[0..<tag.count] = tag[0..<tag.count]
+        progress(TagStatus(slot: slot, start: 0, count: data.count, total: 572))
+        
+        for startPage in stride(from: 0, through: 143, by: 4) {
+            let dataToWrite = Data(data[(startPage * 4)..<min((((startPage) + 4) * 4), 572)])
+            let command = Data([0x03, slot, UInt8(startPage)] + dataToWrite)
+            
+            progress(TagStatus(slot: slot, start: Int(startPage) * 4, count: dataToWrite.count, total: 572))
+            
+            print("Writing to \(self.name) in slot \(slot) at page \(startPage) for \(dataToWrite.count) bytes")
+            
+            try await sendBytesAsync(bytes: command)
+        }
+        
+        progress(TagStatus(slot: slot, start: 572, count: 0, total: 572))
+    }
+    
+    /// Write a tag to the puck
+    /// - Parameters:
+    ///  - slot: The slot to write to
+    ///  - data: The tag data to write
+    ///  - completionHandler: A closure to call with the result
+    func writeTag(toSlot slot: UInt8 = 255, using tag: Data, completionHandler: @escaping (StatusResult<Void, TagStatus, Error>) -> Void){
+        Task {
+            do {
+                try await writeTagAsync(toSlot: slot, using: tag) { (status) in
+                    completionHandler(.status(status))
+                }
+                
+                completionHandler(.success(()))
+            } catch {
+                completionHandler(.failure(error))
+            }
+        }
+    }
+    
+    /// Disconnect from the puck
+    /// - Throws: Any errors that occur
+    func disconnectAsync() async throws {
+        if self.disconnecting || self.peripheral.state == .disconnected || self.peripheral.state == .disconnecting {
             return
         }
         
         self.disconnecting = true
         print("Disconnecting from \(name)")
-        peripheral.readValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
-            self.peripheral.disconnect { (result) in
-                self.disconnecting = false
-                completionHandler(result)
+        
+        return try await withCheckedThrowingContinuation { continuation in
+            Task {
+                // Read bytes to ensure that iOS flushes any cached data before disconnecting
+                let _ = try? await readBytesAsync()
+                
+                // Disconnect from the puck
+                self.peripheral.disconnect { result in
+                    // Reset the disconnecting flag
+                    self.disconnecting = false
+                    
+                    // Resume the continuation with the result of the disconnect
+                    switch result {
+                    case .success(()):
+                        continuation.resume()
+                        break
+                    case .failure(let error):
+                        continuation.resume(throwing: error)
+                        break
+                    }
+                }
             }
         }
     }
     
-    func changeName(name: String, completionHandler: @escaping (Result<Void, Error>) -> Void){
+    /// Disconnect from the puck
+    /// - Parameter completionHandler: A closure to call when the disconnect is complete
+    func disconnect(completionHandler: @escaping (Result<Void, Error>) -> Void) {
+        Task {
+            do {
+                try await disconnectAsync()
+                completionHandler(.success(()))
+            } catch {
+                completionHandler(.failure(error))
+            }
+        }
+    }
+    
+    /// Change the name of the puck
+    /// - Parameter name: The new name for the puck
+    /// - Throws: Any errors that occur
+    func changeNameAsync(name: String) async throws {
         let command = name.data(using: .utf8)!
         
         if command.count > 20 {
-            completionHandler(.failure(AmiiTagError(description: "Name is too long (\(command.count) bytes)")))
-            return
+            throw AmiiTagError(description: "Name is too long (\(command.count) bytes)")
         }
         
         self._name = name
         
-        peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.nameUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
-            self.disconnect { (result) in
-                completionHandler(result)
+        try await sendBytesAsync(bytes: command, characteristicUuid: PuckPeripheral.nameUuid)
+        try? await disconnectAsync()
+    }
+    
+    /// Change the name of the puck
+    /// - Parameter name: The new name for the puck
+    /// - Parameter completionHandler: A closure to call when the name change is complete
+    func changeName(name: String, completionHandler: @escaping (Result<Void, Error>) -> Void){
+        Task {
+            do {
+                try await changeNameAsync(name: name)
+                completionHandler(.success(()))
+            } catch {
+                completionHandler(.failure(error))
             }
         }
     }
     
+    /// Enable UART mode on the puck
+    /// - Throws: Any errors that occur
+    func enableUartAsync() async throws {
+        try await sendBytesAsync(bytes: Data([0xFE]))
+        try? await disconnectAsync()
+    }
+    
+    /// Enable UART mode on the puck
+    /// - Parameter completionHandler: A closure to call when the UART mode is enabled
     func enableUart(completionHandler: @escaping (Result<Void, Error>) -> Void){
-        let command = Data([0xFE])
-        
-        peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
-            self.disconnect(completionHandler: completionHandler)
-        }
-    }
-    
-    func getSlotSummary(completionHandler: @escaping (Result<(current: UInt8, total: UInt8), Error>) -> Void){
-        let command = Data([0x01])
-        peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
-            switch result {
-            case .success(()):
-                self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.responseUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
-                    switch result {
-                    case .success(let response):
-                        if response[0] == 0x01 {
-                            completionHandler(.success((current: response[1], total: response[2])))
-                        } else {
-                            completionHandler(.failure(PuckError(description: "Slot summary response invalid")))
-                        }
-                        break
-                    case .failure(let error):
-                        completionHandler(.failure(error))
-                        break
-                    }
-                }
-                break
-            case .failure(let error):
+        Task {
+            do {
+                try await enableUartAsync()
+                completionHandler(.success(()))
+            } catch {
                 completionHandler(.failure(error))
-                break
             }
         }
     }
     
-    func getAllSlotInformation(completionHandler: @escaping (StatusResult<[SlotInfo], SlotStatus, Error>) -> Void){
-        getSlotSummary { (result) in
-            switch result {
-            case .success(let summary):
-                self._getAllSlotInformation(current: 0, total: summary.total, data: nil, completionHandler: completionHandler)
-                break
-            case .failure(let error):
-                completionHandler(.failure(error))
-                break
-            }
-        }
-    }
-    
-    func getSlotInformation(slot: UInt8 = 255, completionHandler: @escaping (Result<SlotInfo, Error>) -> Void){
-        let command = Data([0x01, slot])
-        print("Getting slot information for \(slot)")
-        peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
-            switch (result) {
-            case .success(()):
-                self.handleSlotInformationRead(slot: slot, completionHandler: completionHandler)
-                break
-            case .failure(let error):
-                completionHandler(.failure(error))
-                break
-            }
-        }
-    }
-    
-    func changeSlot(slot: UInt8? = nil, completionHandler: @escaping (Result<Void, Error>) -> Void){
+    /// Change the current slot
+    /// - Parameter slot: The slot to change to, or nil to reload the current slot
+    /// - Throws: Any errors that occur
+    func changeSlotAsync(slot: UInt8? = nil) async throws {
         var command: Data!
         if let slot = slot {
             command = Data([0xFF, slot])
         } else {
+            // If no slot is provided, reload the current slot
             command = Data([0xFF])
         }
         
-        peripheral.writeValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid, value: command, type: .withResponse) { (result) in
-            self.peripheral.readValue(ofCharacWithUUID: PuckPeripheral.commandUuid, fromServiceWithUUID: PuckPeripheral.serviceUuid) { (result) in
-                switch result {
-                case .success(_):
-                    completionHandler(.success(()))
-                    break
-                case .failure(let error):
-                    completionHandler(.failure(error))
-                    break
-                }
-            }
-        }
+        try await sendBytesAsync(bytes: command)
     }
     
-    func readTag(slot: UInt8 = 255, completionHandler: @escaping (StatusResult<Data, TagStatus, Error>) -> Void){
-        _readTag(slot: slot, completionHandler: completionHandler)
-    }
-    
-    func readAllTags(completionHandler: @escaping (StatusResult<[Data], TagStatus, Error>) -> Void){
-        getSlotSummary { (result) in
-            switch result {
-            case .success(let tagInformation):
-                self._readAllTags(slot: 0, count: tagInformation.total, completionHandler: completionHandler)
-                break
-            case .failure(let error):
+    /// Change the current slot
+    /// - Parameter slot: The slot to change to, or nil to reload the current slot'
+    func changeSlot(slot: UInt8? = nil, completionHandler: @escaping (Result<Void, Error>) -> Void){
+        Task {
+            do {
+                try await changeSlotAsync(slot: slot)
+                completionHandler(.success(()))
+            } catch {
                 completionHandler(.failure(error))
-                break
             }
         }
     }
     
-    func writeTag(toSlot slot: UInt8 = 255, using tag: Data, completionHandler: @escaping (StatusResult<Void, TagStatus, Error>) -> Void){
-        var data = Data(count: 572)
-        data[0..<tag.count] = tag[0..<tag.count]
-        _writeTag(toSlot: slot, withData: data, completionHandler: completionHandler)
-    }
+    
+    
+
     
     static func startScanning() {
         scanning = true
         
         SwiftyBluetooth.scanForPeripherals(withServiceUUIDs: [serviceUuid], timeoutAfter: 15) { scanResult in
             switch scanResult {
-                case .scanStarted:
-                    // The scan started meaning CBCentralManager scanForPeripherals(...) was called
+            case .scanStarted:
+                // The scan started meaning CBCentralManager scanForPeripherals(...) was called
+                pucks.removeAll()
+                NotificationCenter.default.post(name: .PuckPeripheralPucksChanged, object: nil)
+                break
+            case .scanResult(let peripheral, _, _):
+                // A peripheral was found, your closure may be called multiple time with a .ScanResult enum case.
+                // You can save that peripheral for future use, or call some of its functions directly in this closure.
+                pucks.append(PuckPeripheral(peripheral: peripheral))
+                NotificationCenter.default.post(name: .PuckPeripheralPucksChanged, object: nil)
+                break
+            case .scanStopped(peripherals: _, error: let error):
+                // The scan stopped, an error is passed if the scan stopped unexpectedly
+                if error == nil && scanning {
+                    startScanning()
+                } else {
+                    scanning = false
                     pucks.removeAll()
                     NotificationCenter.default.post(name: .PuckPeripheralPucksChanged, object: nil)
-                    break
-                case .scanResult(let peripheral, _, _):
-                    // A peripheral was found, your closure may be called multiple time with a .ScanResult enum case.
-                    // You can save that peripheral for future use, or call some of its functions directly in this closure.
-                    pucks.append(PuckPeripheral(peripheral: peripheral))
-                    NotificationCenter.default.post(name: .PuckPeripheralPucksChanged, object: nil)
-                    break
-                case .scanStopped(peripherals: _, error: let error):
-                    // The scan stopped, an error is passed if the scan stopped unexpectedly
-                    if error == nil && scanning {
-                        startScanning()
-                    } else {
-                        scanning = false
-                        pucks.removeAll()
-                        NotificationCenter.default.post(name: .PuckPeripheralPucksChanged, object: nil)
-                    }
-                    break
+                }
+                break
             }
         }
     }
@@ -424,15 +516,15 @@ extension PuckPeripheral {
             NotificationCenter.default.addObserver(forName: Central.CentralStateChange, object: Central.sharedInstance, queue: nil) { (notification) in
                 if let state = notification.userInfo?["state"] as? CBManagerState {
                     switch state {
-                        case .poweredOn:
-                            startScanning()
-                            break
-                            
-                        case .poweredOff:
-                            PuckPeripheral.pucks.removeAll()
-                            NotificationCenter.default.post(name: .PuckPeripheralPucksChanged, object: nil)
-                            break
-                        default: break
+                    case .poweredOn:
+                        startScanning()
+                        break
+                        
+                    case .poweredOff:
+                        PuckPeripheral.pucks.removeAll()
+                        NotificationCenter.default.post(name: .PuckPeripheralPucksChanged, object: nil)
+                        break
+                    default: break
                     }
                 }
             }

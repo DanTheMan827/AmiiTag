@@ -129,42 +129,48 @@ class TagInfoViewController: UIViewController, NFCTagReaderSessionDelegate {
                     let alert = UIAlertController(title: "Please Wait", message: "Writing " + (puck.name), preferredStyle: .alert)
                     self.present(alert, animated: true)
                     puck.writeTag(using: self.dump) { (result) in
-                        var hasError = false
-                        
-                        switch result {
-                        case .status(let status):
-                            alert.message = "Writing \(puck.name) (\(status.start)/\(status.total))"
-                        case .success(_):
-                            break
-                        case .failure(let error):
-                            hasError = true
-                            self.dismiss(animated: true) {
-                                self.present(error.getAlertController(), animated: true)
-                            }
-                            break
-                        }
-                        
-                        switch result {
-                        case .status(_):
-                            break
-                        default:
-                            puck.changeSlot { (result) in
-                                switch result {
-                                case .success(_):
-                                    break;
-                                case .failure(let error):
-                                    hasError = true
-                                    self.dismiss(animated: true) {
-                                        self.present(error.getAlertController(), animated: true)
-                                    }
-                                    break
+                        DispatchQueue.main.async {
+                            var hasError = false
+                            
+                            switch result {
+                            case .status(let status):
+                                alert.message = "Writing \(puck.name) (\(status.start)/\(status.total))"
+                            case .success(_):
+                                break
+                            case .failure(let error):
+                                hasError = true
+                                self.dismiss(animated: true) {
+                                    self.present(error.getAlertController(), animated: true)
                                 }
-                                
-                                puck.disconnect { (result) in
-                                    if !hasError {
-                                        self.dismiss(animated: true)
+                                break
+                            }
+                            
+                            switch result {
+                            case .status(_):
+                                break
+                            default:
+                                puck.changeSlot { (result) in
+                                    DispatchQueue.main.async {
+                                        switch result {
+                                        case .success(_):
+                                            break;
+                                        case .failure(let error):
+                                            hasError = true
+                                            self.dismiss(animated: true) {
+                                                self.present(error.getAlertController(), animated: true)
+                                            }
+                                            break
+                                        }
+                                        
+                                        puck.disconnect { (result) in
+                                            DispatchQueue.main.async {
+                                                if !hasError {
+                                                    self.dismiss(animated: true)
+                                                }
+                                                PuckPeripheral.startScanning()
+                                            }
+                                        }
                                     }
-                                    PuckPeripheral.startScanning()
                                 }
                             }
                         }

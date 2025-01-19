@@ -43,26 +43,30 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
                     self.present(alert, animated: true)
                     
                     puck.readTag { (result) in
-                        switch result {
-                        case .status(let status):
-                            alert.message = "Reading \(puck.name) (\(status.start)/\(status.total))"
-                        case .success(let tag):
-                            self.dismiss(animated: true) {
-                                TagInfoViewController.openTagInfo(dump: TagDump(data: tag)!, controller: self)
-                            }
-                            puck.disconnect { (result) in
-                                PuckPeripheral.startScanning()
-                            }
-                        case .failure(let error):
-                            self.dismiss(animated: true) {
-                                self.present(error.getAlertController(), animated: true)
-                            }
-                            puck.disconnect { (result) in
-                                PuckPeripheral.startScanning()
+                        DispatchQueue.main.async {
+                            switch result {
+                            case .status(let status):
+                                alert.message = "Reading \(puck.name) (\(status.start)/\(status.total))"
+                            case .success(let tag):
+                                self.dismiss(animated: true) {
+                                    TagInfoViewController.openTagInfo(dump: TagDump(data: tag)!, controller: self)
+                                }
+                                puck.disconnect { (result) in
+                                    DispatchQueue.main.async {
+                                        PuckPeripheral.startScanning()
+                                    }
+                                }
+                            case .failure(let error):
+                                self.dismiss(animated: true) {
+                                    self.present(error.getAlertController(), animated: true)
+                                }
+                                puck.disconnect { (result) in
+                                    DispatchQueue.main.async {
+                                        PuckPeripheral.startScanning()
+                                    }
+                                }
                             }
                         }
-                        
-                        
                     }
                     
                 }))
@@ -109,31 +113,33 @@ class MainViewController: UIViewController, LibraryPickerProtocol {
             self.present(alert, animated: true)
             
             puck.getAllSlotInformation { (result) in
-                switch result {
-                case .status(let status):
-                    alert.message = "Reading \(puck.name) (\(status.current + 1)/\(status.total))"
-                case .success(let data):
-                    self.dismiss(animated: true) {
-                        let storyboard = UIStoryboard(name: "Main", bundle: nil)
-                        guard let view = storyboard.instantiateViewController(withIdentifier: "AmiiboCharactersPuck") as? AmiiboCharactersPuckTableViewController else {
-                            puck.disconnect { (result) in }
-                            return
+                DispatchQueue.main.async {
+                    switch result {
+                    case .status(let status):
+                        alert.message = "Reading \(puck.name) (\(status.current)/\(status.total))"
+                    case .success(let data):
+                        self.dismiss(animated: true) {
+                            let storyboard = UIStoryboard(name: "Main", bundle: nil)
+                            guard let view = storyboard.instantiateViewController(withIdentifier: "AmiiboCharactersPuck") as? AmiiboCharactersPuckTableViewController else {
+                                puck.disconnect { (result) in }
+                                return
+                            }
+                            
+                            view.puck = puck
+                            view.puckSlots = data
+                            view.title = puck.name
+                            let navigationController = UINavigationController(rootViewController: view)
+                            navigationController.setToolbarHidden(false, animated: false)
+                            self.present(navigationController, animated: true)
                         }
-                        
-                        view.puck = puck
-                        view.puckSlots = data
-                        view.title = puck.name
-                        let navigationController = UINavigationController(rootViewController: view)
-                        navigationController.setToolbarHidden(false, animated: false)
-                        self.present(navigationController, animated: true)
+                        break
+                    case .failure(let error):
+                        self.dismiss(animated: true) {
+                            self.present(error.getAlertController(), animated: true)
+                        }
+                        puck.disconnect { (result) in }
+                        break
                     }
-                    break
-                case .failure(let error):
-                    self.dismiss(animated: true) {
-                        self.present(error.getAlertController(), animated: true)
-                    }
-                    puck.disconnect { (result) in }
-                    break
                 }
             }
         }) {

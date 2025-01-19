@@ -31,7 +31,9 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
         AmiiboCharactersPuckTableViewController.showing = false
         MainViewController.main?.present(UIAlertController(title: "Please Wait", message: "Disconnecting from \(puck.name)", preferredStyle: .alert), animated: true)
         self.puck.disconnect { (result) in
-            MainViewController.main?.dismiss(animated: true)
+            DispatchQueue.main.async {
+                MainViewController.main?.dismiss(animated: true)
+            }
         }
     }
     
@@ -147,7 +149,9 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
             let alert = UIAlertController(title: "Please Wait", message: "Changing Slot", preferredStyle: .alert)
             self.present(alert, animated: true)
             puck.changeSlot(slot: cell.Info.slot) { (result) in
-                self.dismiss(animated: true)
+                DispatchQueue.main.async {
+                    self.dismiss(animated: true)
+                }
             }
         }
     }
@@ -166,18 +170,20 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
             alert.addAction(UIAlertAction(title: "OK", style: .default, handler: { action in
                 self.present(UIAlertController(title: "Please Wait", message: "Changing Name", preferredStyle: .alert), animated: true)
                 self.puck.changeName(name: alert.textFields?.first?.text ?? "") { (result) in
-                    switch result {
-                    case .success(()):
-                        self.dismiss(animated: true)
-                        MainViewController.main?.dismiss(animated: true)
-                        PuckPeripheral.stopScanning()
-                        PuckPeripheral.startScanning()
-                        break
-                    case .failure(let error):
-                        self.dismiss(animated: true) {
-                            self.present(error.getAlertController(), animated: true)
+                    DispatchQueue.main.async {
+                        switch result {
+                        case .success(()):
+                            self.dismiss(animated: true)
+                            MainViewController.main?.dismiss(animated: true)
+                            PuckPeripheral.stopScanning()
+                            PuckPeripheral.startScanning()
+                            break
+                        case .failure(let error):
+                            self.dismiss(animated: true) {
+                                self.present(error.getAlertController(), animated: true)
+                            }
+                            break
                         }
-                        break
                     }
                 }
             }))
@@ -187,15 +193,17 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
         
         alertController.addAction(UIAlertAction(title: "Enable Uart", style: .default, handler: { (action) in
             self.puck.enableUart(completionHandler: { (result) in
-                switch result {
-                case .success(()):
-                    self.puck.disconnect { (result) in }
-                    break
-                case .failure(let error):
-                    self.dismiss(animated: true) {
-                        self.present(error.getAlertController(), animated: true)
+                DispatchQueue.main.async {
+                    switch result {
+                    case .success(()):
+                        self.puck.disconnect { (result) in }
+                        break
+                    case .failure(let error):
+                        self.dismiss(animated: true) {
+                            self.present(error.getAlertController(), animated: true)
+                        }
+                        break
                     }
-                    break
                 }
             })
         }))

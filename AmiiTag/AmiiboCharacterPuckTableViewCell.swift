@@ -28,28 +28,30 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
         self.ViewController.present(alert, animated: true)
         
         Puck.readTag(slot: Info.slot) { (result) in
-            switch result {
-            case .status(let status):
-                alert.message = "Reading \(self.Puck.name) (\(status.start)/\(status.total))"
-            case .success(let tag):
-                self.ViewController.dismiss(animated: true) {
-                    if let dump = try? TagDump(data: tag) {
-                        if dump.isAmiibo {
-                            self.dismiss = false
-                            _ = self.AmiiboCharacterPicked(tag: try! dump.randomizeUID())
+            DispatchQueue.main.async {
+                switch result {
+                case .status(let status):
+                    alert.message = "Reading \(self.Puck.name) (\(status.start)/\(status.total))"
+                case .success(let tag):
+                    self.ViewController.dismiss(animated: true) {
+                        if let dump = try? TagDump(data: tag) {
+                            if dump.isAmiibo {
+                                self.dismiss = false
+                                _ = self.AmiiboCharacterPicked(tag: try! dump.randomizeUID())
+                            } else {
+                                self.ViewController.present(AmiiTagError(description: "Not an amiibo").getAlertController(), animated: true)
+                            }
                         } else {
-                            self.ViewController.present(AmiiTagError(description: "Not an amiibo").getAlertController(), animated: true)
+                            self.ViewController.present(AmiiTagError(description: "Error reading tag").getAlertController(), animated: true)
                         }
-                    } else {
-                        self.ViewController.present(AmiiTagError(description: "Error reading tag").getAlertController(), animated: true)
                     }
+                    break
+                case .failure(let error):
+                    self.ViewController.dismiss(animated: true) {
+                        self.ViewController.present(error.getAlertController(), animated: true)
+                    }
+                    break
                 }
-                break
-            case .failure(let error):
-                self.ViewController.dismiss(animated: true) {
-                    self.ViewController.present(error.getAlertController(), animated: true)
-                }
-                break
             }
         }
     }
@@ -59,19 +61,21 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
         self.ViewController.present(alert, animated: true)
         
         Puck.readTag(slot: Info.slot) { (result) in
-            switch result {
-            case .status(let status):
-                alert.message = "Reading \(self.Puck.name) (\(status.start)/\(status.total))"
-            case .success(let tag):
-                self.ViewController.dismiss(animated: true) {
-                    TagInfoViewController.openTagInfo(dump: TagDump(data: tag)!, controller: self.ViewController)
+            DispatchQueue.main.async {
+                switch result {
+                case .status(let status):
+                    alert.message = "Reading \(self.Puck.name) (\(status.start)/\(status.total))"
+                case .success(let tag):
+                    self.ViewController.dismiss(animated: true) {
+                        TagInfoViewController.openTagInfo(dump: TagDump(data: tag)!, controller: self.ViewController)
+                    }
+                    break
+                case .failure(let error):
+                    self.ViewController.dismiss(animated: true) {
+                        self.ViewController.present(error.getAlertController(), animated: true)
+                    }
+                    break
                 }
-                break
-            case .failure(let error):
-                self.ViewController.dismiss(animated: true) {
-                    self.ViewController.present(error.getAlertController(), animated: true)
-                }
-                break
             }
         }
     }
@@ -146,51 +150,57 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
         self.ViewController.present(alert, animated: true)
         
         Puck.writeTag(toSlot: Info.slot, using: tag.data) { (result) in
-            switch result {
-            case .status(let status):
-                alert.message = "Writing \(self.Puck.name) (\(status.start)/\(status.total))"
-            case .success(()):
-                self.ViewController.puckSlots[Int(self.Info.slot)].dump = tag
-                self.ViewController.puckSlots[Int(self.Info.slot)].name = tag.displayName
-                self.ViewController.puckSlots[Int(self.Info.slot)].idHex = "0x\(tag.fullHex)"
-                self.CellImage.image = tag.image
-                self.CellLabel.text = tag.displayName
-                if !tag.fullHex.hasSuffix("02") {
-                    self.CellLabel.text = "Unknown Data"
-                }
-                self.Puck.getSlotSummary { (result) in
-                    switch result {
-                    case .success(let summary):
-                        if summary.current == self.Info.slot {
-                            self.Puck.changeSlot { (result) in
-                                self.ViewController.dismiss(animated: true) {
-                                    switch result {
-                                    case .success(()):
-                                        break
-                                    case .failure(let error):
-                                        self.ViewController.present(error.getAlertController(), animated: true)
-                                        break
-                                    }
-                                }
-                            }
-                        } else {
-                            self.ViewController.dismiss(animated: true)
-                        }
-                        
-                        break
-                    case .failure(let error):
-                        self.ViewController.dismiss(animated: true) {
-                            self.ViewController.present(error.getAlertController(), animated: true)
-                        }
-                        break
+            DispatchQueue.main.async {
+                switch result {
+                case .status(let status):
+                    alert.message = "Writing \(self.Puck.name) (\(status.start)/\(status.total))"
+                case .success(()):
+                    self.ViewController.puckSlots[Int(self.Info.slot)].dump = tag
+                    self.ViewController.puckSlots[Int(self.Info.slot)].name = tag.displayName
+                    self.ViewController.puckSlots[Int(self.Info.slot)].idHex = "0x\(tag.fullHex)"
+                    self.CellImage.image = tag.image
+                    self.CellLabel.text = tag.displayName
+                    if !tag.fullHex.hasSuffix("02") {
+                        self.CellLabel.text = "Unknown Data"
                     }
+                    self.Puck.getSlotSummary { (result) in
+                        DispatchQueue.main.async {
+                            switch result {
+                            case .success(let summary):
+                                if summary.current == self.Info.slot {
+                                    self.Puck.changeSlot { (result) in
+                                        DispatchQueue.main.async {
+                                            self.ViewController.dismiss(animated: true) {
+                                                switch result {
+                                                case .success(()):
+                                                    break
+                                                case .failure(let error):
+                                                    self.ViewController.present(error.getAlertController(), animated: true)
+                                                    break
+                                                }
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    self.ViewController.dismiss(animated: true)
+                                }
+                                
+                                break
+                            case .failure(let error):
+                                self.ViewController.dismiss(animated: true) {
+                                    self.ViewController.present(error.getAlertController(), animated: true)
+                                }
+                                break
+                            }
+                        }
+                    }
+                    break
+                case .failure(let error):
+                    self.ViewController.dismiss(animated: true) {
+                        self.ViewController.present(error.getAlertController(), animated: true)
+                    }
+                    break
                 }
-                break
-            case .failure(let error):
-                self.ViewController.dismiss(animated: true) {
-                    self.ViewController.present(error.getAlertController(), animated: true)
-                }
-                break
             }
         }
         
