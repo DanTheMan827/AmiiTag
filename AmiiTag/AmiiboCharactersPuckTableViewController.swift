@@ -10,7 +10,9 @@ import Foundation
 import UIKit
 import MobileCoreServices
 import SwiftyBluetooth
-
+protocol ClearableSlotProtocol {
+    func clearSlot(slot: UInt8)
+}
 class AmiiboCharactersPuckTableViewController: UITableViewController {
     var puck: PuckPeripheral! = nil
     var puckSlots: [PuckPeripheral.SlotInfo] = []
@@ -110,7 +112,9 @@ class AmiiboCharactersPuckTableViewController: UITableViewController {
         }
         let clearAction = UIContextualAction(style: .destructive, title: nil) {  (contextualAction, view, boolValue) in
             if let cell = (self.view as? UITableView)?.cellForRow(at: indexPath) as? AmiiboCharacterPuckTableViewCell {
-                cell.clearTapped(self)
+                Task {
+                    try await cell.clearTapped(self)
+                }
             }
             
             boolValue(true)

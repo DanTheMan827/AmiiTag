@@ -30,10 +30,10 @@ DerivedData/
 *.xcworkspace
 unfixed-info.bin
 locked-secret.bin
-AmiiTag/signatures/*
-!AmiiTag/signatures/readme.txt
-AmiiTag/dumps/*
-!AmiiTag/dumps/readme.txt
+Signatures/*
+!Signatures/readme.txt
+Dumps/*
+!Dumps/readme.txt
 amiibo.bin
 amiibodump.bin
 key_retail.bin

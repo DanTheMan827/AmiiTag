@@ -19,38 +19,88 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
     @IBOutlet var CellLabel: UILabel!
     
     @IBAction func clearTapped(_ sender: Any) {
-        self.dismiss = false
-        _ = AmiiboCharacterPicked(tag: TagDump.getBlankTag())
+        let alert = UIAlertController(title: "Please Wait", message: "Clearing Slot", preferredStyle: .alert)
+        self.ViewController.present(alert, animated: true)
+        
+        Task {
+            do {
+                _ = try await Puck.clearSlot(slot: Info.slot)
+                DispatchQueue.main.async {
+                    self.ViewController.dismiss(animated: true) {
+                        self.dismiss = false
+                    }
+                    
+                    let tag = TagDump.getBlankTag()
+                    self.ViewController.puckSlots[Int(self.Info.slot)].dump = tag
+                    self.ViewController.puckSlots[Int(self.Info.slot)].name = tag.displayName
+                    self.ViewController.puckSlots[Int(self.Info.slot)].idHex = "0x\(tag.fullHex)"
+                    self.CellImage.image = tag.image
+                    self.CellLabel.text = tag.displayName
+                    if !tag.fullHex.hasSuffix("02") {
+                        self.CellLabel.text = "Unknown Data"
+                    }
+                }
+            } catch {
+                DispatchQueue.main.async {
+                    self.ViewController.dismiss(animated: true) {
+                        self.ViewController.present(error.getAlertController(), animated: true)
+                    }
+                }
+            }
+        }
     }
     
     @IBAction func randomizeTapped(_ sender: Any) {
         let alert = UIAlertController(title: "Please Wait", message: "Reading \(Puck.name)", preferredStyle: .alert)
         self.ViewController.present(alert, animated: true)
         
-        Puck.readTag(slot: Info.slot) { (result) in
-            DispatchQueue.main.async {
+        if (Puck.amiitoolEnabled && Puck.amiitoolKeysLoaded) {
+            alert.message = "Randomizing Slot"
+            Puck.randomizeUid(slot: Info.slot) { (result) in
                 switch result {
-                case .status(let status):
-                    alert.message = "Reading \(self.Puck.name) (\(status.start)/\(status.total))"
                 case .success(let tag):
-                    self.ViewController.dismiss(animated: true) {
-                        if let dump = try? TagDump(data: tag) {
-                            if dump.isAmiibo {
-                                self.dismiss = false
-                                _ = self.AmiiboCharacterPicked(tag: try! dump.randomizeUID())
-                            } else {
-                                self.ViewController.present(AmiiTagError(description: "Not an amiibo").getAlertController(), animated: true)
-                            }
-                        } else {
-                            self.ViewController.present(AmiiTagError(description: "Error reading tag").getAlertController(), animated: true)
+                    DispatchQueue.main.async {
+                        self.ViewController.dismiss(animated: true) {
+                            self.dismiss = false
                         }
                     }
                     break
+                    
                 case .failure(let error):
-                    self.ViewController.dismiss(animated: true) {
-                        self.ViewController.present(error.getAlertController(), animated: true)
+                    DispatchQueue.main.async {
+                        self.ViewController.dismiss(animated: true) {
+                            self.ViewController.present(error.getAlertController(), animated: true)
+                        }
                     }
                     break
+                }
+            }
+        } else {
+            Puck.readTag(slot: Info.slot) { (result) in
+                DispatchQueue.main.async {
+                    switch result {
+                    case .status(let status):
+                        alert.message = "Reading \(self.Puck.name) (\(status.start)/\(status.total))"
+                    case .success(let tag):
+                        self.ViewController.dismiss(animated: true) {
+                            if let dump = try? TagDump(data: tag) {
+                                if dump.isAmiibo {
+                                    self.dismiss = false
+                                    _ = self.AmiiboCharacterPicked(tag: try! dump.randomizeUID())
+                                } else {
+                                    self.ViewController.present(AmiiTagError(description: "Not an amiibo").getAlertController(), animated: true)
+                                }
+                            } else {
+                                self.ViewController.present(AmiiTagError(description: "Error reading tag").getAlertController(), animated: true)
+                            }
+                        }
+                        break
+                    case .failure(let error):
+                        self.ViewController.dismiss(animated: true) {
+                            self.ViewController.present(error.getAlertController(), animated: true)
+                        }
+                        break
+                    }
                 }
             }
         }
@@ -167,29 +217,14 @@ class AmiiboCharacterPuckTableViewCell: UITableViewCell, LibraryPickerProtocol {
                         DispatchQueue.main.async {
                             switch result {
                             case .success(let summary):
-                                if summary.current == self.Info.slot {
-                                    self.Puck.changeSlot { (result) in
-                                        DispatchQueue.main.async {
-                                            self.ViewController.dismiss(animated: true) {
-                                                switch result {
-                                                case .success(()):
-                                                    break
-                                                case .failure(let error):
-                                                    self.ViewController.present(error.getAlertController(), animated: true)
-                                                    break
-                                                }
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    self.ViewController.dismiss(animated: true)
-                                }
+                                self.ViewController.dismiss(animated: true)
                                 
                                 break
                             case .failure(let error):
                                 self.ViewController.dismiss(animated: true) {
                                     self.ViewController.present(error.getAlertController(), animated: true)
                                 }
+                                
                                 break
                             }
                         }
