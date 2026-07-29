@@ -112,8 +112,8 @@ public class AmiiboDatabase {
     public static let Sha1sumPath = apiPath.appendingPathComponent("sha1sum.json")
     public static let imagesPath = apiPath.appendingPathComponent("images")
     
-    private static let sha1sumUrl = URL(string: "https://raw.githubusercontent.com/N3evin/AmiiboAPI/master/sha1sum.json")!
-    private static let apiBase = URL(string: "https://raw.githubusercontent.com/N3evin/AmiiboAPI/master/")!
+    private static let sha1sumUrl = URL(string: "https://github.com/DanTheMan827/AmiiboData/raw/refs/heads/main/sha1sum.json")!
+    private static let apiBase = URL(string: "https://github.com/DanTheMan827/AmiiboData/raw/refs/heads/main/")!
     
     public static func NeedsUpdate(completionHandler: @escaping (Result<Bool, Error>) -> Void) {
         if !FileManager.default.fileExists(atPath: amiiboJsonPath.path) {
