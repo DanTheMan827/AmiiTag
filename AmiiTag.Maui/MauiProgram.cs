@@ -20,9 +20,9 @@ namespace AmiiTag.Maui
 
             builder.Services.AddMauiBlazorWebView();
 
-            builder.Services.AddScoped(sp => new HttpClient());
+            builder.Services.AddScoped<HttpClient>(sp => new HttpClient());
             builder.Services.AddSingleton<IAppPaths>(sp => new AppPaths());
-            builder.Services.AddSingleton<IDatabaseContainer>(sp => new AmiiboDatabaseContainer());
+            builder.Services.AddSingleton<IDatabaseContainer, AmiiboDatabaseContainer>();
             builder.Services.AddSingleton(sp => new AppEnvironment()
             {
 #if ANDROID

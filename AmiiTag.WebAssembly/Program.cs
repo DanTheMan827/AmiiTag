@@ -1,3 +1,4 @@
+using AmiiTag.AmiiboData;
 using AmiiTag.Core;
 using AmiiTag.Core.Components;
 using AmiiTag.Core.Data;
@@ -11,7 +12,8 @@ builder.RootComponents.Add<Routes>("#app");
 builder.RootComponents.Add<HeadOutlet>("head::after");
 
 builder.Services.AddScoped(sp => new HttpClient { BaseAddress = new Uri(builder.HostEnvironment.BaseAddress) });
-builder.Services.AddScoped<IDatabaseContainer>(sp => new AmiiboDatabaseContainer());
+builder.Services.AddScoped<AmiiboDatabase>();
+builder.Services.AddScoped<IDatabaseContainer, AmiiboDatabaseContainer>();
 builder.Services.AddScoped<IAppPaths>(sp => new AppPaths() { BaseAddress = builder.HostEnvironment.BaseAddress });
 builder.Services.AddSingleton(sp => new AppEnvironment()
 {
