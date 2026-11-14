@@ -11,7 +11,10 @@
 @inject ScreenEvents Screens
 @inject ContextMenus Menus
 
-<AppPage Title="@(_device?.Name ?? "Device")" Wide="true">
+@* AmiiboLink/AmiiLoop take a dump dropped anywhere on the page; puck slots each take one; Pixl.js folders take files. *@
+<AppPage Title="@(_device?.Name ?? "Device")" Wide="true"
+         OnFilesDropped="files => DroppedOnDevice(files, null)" DropEnabled="WritesWholeDevice"
+         DropLabel="@($"Drop an amiibo to write it to {_device?.Name}")">
     <HeaderActions>
         @if (_device != null)
         {
@@ -58,7 +61,7 @@
                             var figure = Lookup.GetSlotFigure(slot.Dump);
                             var title = SlotTitle(slot);
                             var items = SlotItems(slot);
-                            <li>
+                            <DropZone Element="li" OnFiles="files => DroppedOnDevice(files, slot.Slot)" Label="@($"Drop an amiibo to write it to slot {slot.Slot + 1}")">
                                 <button type="button" class="list-row with-image @(AmiiboLookup.IsAmiiboSummary(slot.Dump) ? "" : "dimmed")"
                                         @onpointerdown="Menus.TrackPointer"
                                         @onclick="e => Menus.ClickAsync(e, title, items)"
@@ -69,7 +72,7 @@
                                         <span class="list-row-subtitle">Slot @(slot.Slot + 1)@(slot.Slot == _activeSlot ? " · Active" : "")</span>
                                     </span>
                                 </button>
-                            </li>
+                            </DropZone>
                         }
                     </ul>
                 }
@@ -282,6 +285,42 @@
         }
 
         await WriteDump(dump, slot);
+    }
+
+    /// <summary>
+    /// AmiiboLink and AmiiLoop: the page takes a dropped dump (pucks take them per slot, Pixl.js per folder).
+    /// </summary>
+    private bool WritesWholeDevice => _device is { IsConnected: true } and not ISlotTagDevice and not PixlDevice;
+
+    /// <summary>
+    /// A dump dropped on the device (or on a slot) is written there, after a confirmation naming what it is.
+    /// </summary>
+    private async Task DroppedOnDevice(IReadOnlyList<PickedFile> files, int? slot)
+    {
+        if (_device == null)
+        {
+            return;
+        }
+
+        var file = files[0];
+        if (!AmiiboImage.TryParse(file.Data, out var image) || image == null)
+        {
+            await Dialogs.AlertAsync("Not an amiibo", $"{file.Name} isn't an amiibo dump ({file.Data.Length} bytes).");
+            return;
+        }
+
+        if (image is not TagDump dump)
+        {
+            await Dialogs.AlertAsync("Can't write this figure", $"{file.Name} is a v3 amiibo, which {_device.Name} can't hold.");
+            return;
+        }
+
+        var target = slot is int s ? $"slot {s + 1}" : _device.Name;
+        var more = files.Count > 1 ? " Only the first dropped file is written." : string.Empty;
+        if (await Dialogs.ConfirmAsync($"Write to {target}?", $"{Lookup.GetDisplayName(dump)} ({file.Name}) replaces what's there.{more}", "Write", "Cancel"))
+        {
+            await WriteDump(dump, slot);
+        }
     }
 
     private Task WriteBlank() => WriteDump(TagDump.Blank(), null);

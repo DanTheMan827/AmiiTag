@@ -614,17 +614,20 @@ public sealed class TagActions
     /// </summary>
     public async Task<AmiiboV3Dump?> LoadLockOnFromFileAsync(AmiiboV3Dump dump)
     {
-        await _lockOns.EnsureLoadedAsync();
         var file = await _files.PickFileAsync("Load Lock-on Response", [".lockon", ".bin"]);
-        if (file == null)
-        {
-            return null;
-        }
+        return file == null ? null : await UseLockOnFileAsync(dump, file);
+    }
 
-        if (ReadLockOnFile(file) is not { } found)
+    /// <summary>
+    /// Puts the lock-on from a file (picked or dropped) into a v3 image, telling the user why if the file doesn't hold
+    /// a valid one, and offering to add it to the library. Returns null if it can't be used.
+    /// </summary>
+    public async Task<AmiiboV3Dump?> UseLockOnFileAsync(AmiiboV3Dump dump, PickedFile file)
+    {
+        await _lockOns.EnsureLoadedAsync();
+        if (ReadLockOnFile(file, out var problem) is not { } found)
         {
-            await _dialogs.AlertAsync("Invalid file",
-                $"This isn't a lock-on response (up to {LockOnResponse.Length} bytes, not blank) or a v3 amiibo .bin that includes one ({file.Data.Length} bytes).");
+            await _dialogs.AlertAsync("No valid lock-on", problem);
             return null;
         }
 
@@ -686,20 +689,28 @@ public sealed class TagActions
     public async Task ImportLockOnsAsync()
     {
         var files = await _files.PickFilesAsync("Import Lock-ons", [".lockon", ".bin"]);
-        if (files.Count == 0)
+        if (files.Count > 0)
         {
-            return;
+            await AddLockOnsAsync(files);
         }
+    }
 
+    /// <summary>
+    /// Adds lock-on files (picked or dropped) to the library. Each is named by the user when <paramref name="askNames"/>
+    /// (by default, when there's only one); otherwise it keeps a name from the figure or the file.
+    /// </summary>
+    public async Task AddLockOnsAsync(IReadOnlyList<PickedFile> files, bool? askNames = null)
+    {
+        var ask = askNames ?? files.Count == 1;
         await _lockOns.EnsureLoadedAsync();
         var added = 0;
         var duplicates = new List<string>();
         var invalid = new List<string>();
         foreach (var file in files)
         {
-            if (ReadLockOnFile(file) is not { } found)
+            if (ReadLockOnFile(file, out var problem) is not { } found)
             {
-                invalid.Add(file.Name);
+                invalid.Add(problem);
                 continue;
             }
 
@@ -710,12 +721,12 @@ public sealed class TagActions
             }
 
             var name = found.Name;
-            if (files.Count == 1)
+            if (ask)
             {
-                var given = await _dialogs.PromptAsync("Name This Lock-on", "Shown in your lock-on library.", found.Name, 60);
+                var given = await _dialogs.PromptAsync("Name This Lock-on", $"{file.Name}: shown in your lock-on library.", found.Name, 60);
                 if (given == null)
                 {
-                    return;
+                    continue;
                 }
 
                 name = given;
@@ -738,11 +749,7 @@ public sealed class TagActions
                 lines.Add($"Already in your library: {string.Join(", ", duplicates)}.");
             }
 
-            if (invalid.Count > 0)
-            {
-                lines.Add($"Not a lock-on or a v3 amiibo with one: {string.Join(", ", invalid)}.");
-            }
-
+            lines.AddRange(invalid);
             await _dialogs.AlertAsync("Import Lock-ons", string.Join("\n\n", lines));
         }
     }
@@ -771,23 +778,161 @@ public sealed class TagActions
     }
 
     /// <summary>
-    /// A lock-on from a file: a 1-64 byte response, or a v3 amiibo image that includes one. Null if it's neither.
+    /// A lock-on from a file: a 1-64 byte response, or a v3 amiibo image that includes one. Null if it's neither, or it
+    /// doesn't pass the checks that can be made without the figure's keys, with the reason in <paramref name="problem"/>.
     /// </summary>
-    private (byte[] Response, string Name, string? AmiiboId, string? Uid)? ReadLockOnFile(PickedFile file)
+    private (byte[] Response, string Name, string? AmiiboId, string? Uid)? ReadLockOnFile(PickedFile file, out string problem)
     {
-        if (file.Data.Length == AmiiboV3Dump.ImageLength && AmiiboImage.TryParse(file.Data, out var image) &&
-            image is AmiiboV3Dump { LockOn: { } response } v3 && LockOnResponse.IsUsable(LockOnResponse.Check(response)))
+        problem = "";
+        if (file.Data.Length == AmiiboV3Dump.ImageLength && AmiiboImage.TryParse(file.Data, out var image) && image is AmiiboV3Dump v3)
         {
+            if (v3.LockOn is not { } response)
+            {
+                problem = $"{file.Name} is a v3 amiibo without a lock-on.";
+                return null;
+            }
+
+            var check = LockOnResponse.Check(response);
+            if (!LockOnResponse.IsUsable(check))
+            {
+                problem = $"{file.Name} is a v3 amiibo, but its lock-on isn't valid: {LockOnResponse.Describe(check)}.";
+                return null;
+            }
+
             return (response, _lookup.GetDisplayName(v3), v3.HasAmiiboId ? v3.AmiiboIdHex : null, v3.UidHex);
         }
 
-        if (file.Data.Length is > 0 and <= LockOnResponse.Length && file.Data.Length is <= LockOnResponse.BodyLength or LockOnResponse.Length &&
-            LockOnResponse.IsUsable(LockOnResponse.Check(LockOnResponse.Normalize(file.Data))))
+        if (AmiiboImage.TryParse(file.Data, out var other) && other is TagDump)
         {
+            problem = $"{file.Name} is an NTAG215 amiibo. Only v3 figures have a lock-on.";
+            return null;
+        }
+
+        if (file.Data.Length is > 0 and <= LockOnResponse.BodyLength or LockOnResponse.Length)
+        {
+            var check = LockOnResponse.Check(LockOnResponse.Normalize(file.Data));
+            if (!LockOnResponse.IsUsable(check))
+            {
+                problem = $"{file.Name} isn't a valid lock-on: {LockOnResponse.Describe(check)}.";
+                return null;
+            }
+
             return (file.Data, Path.GetFileNameWithoutExtension(file.Name), null, null);
         }
 
+        problem = $"{file.Name} isn't a lock-on ({LockOnResponse.Length} bytes) or a v3 amiibo that includes one ({file.Data.Length} bytes).";
         return null;
+    }
+
+    /// <summary>
+    /// Imports key files (picked or dropped): key_retail.bin, or unfixed-info.bin and locked-secret.bin, recognised by
+    /// size and SHA-256, and says what was loaded.
+    /// </summary>
+    public async Task ImportKeysAsync(IReadOnlyList<PickedFile> files)
+    {
+        try
+        {
+            var result = await _keys.ImportAsync(files);
+            var message = $"Loaded: {string.Join(", ", result.Used)}.";
+            if (result.Ignored.Count > 0)
+            {
+                message += $"\n\nIgnored (not key files): {string.Join(", ", result.Ignored)}.";
+            }
+
+            if (!result.HasBothKeys)
+            {
+                message += result.HasUnfixedInfo
+                    ? "\n\nStill needed to encrypt: locked-secret.bin."
+                    : "\n\nStill needed: unfixed-info.bin.";
+            }
+
+            await _dialogs.AlertAsync(result.HasBothKeys ? "Keys loaded" : "Key loaded", message);
+        }
+        catch (TagException ex)
+        {
+            await _dialogs.AlertAsync("No key files", ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Files dropped on the main menu, recognised by their contents: key files are imported, lock-ons named and added
+    /// to the library, UID/signature pairs checked and saved, and an amiibo opened.
+    /// </summary>
+    public async Task HandleDroppedFilesAsync(IReadOnlyList<PickedFile> files)
+    {
+        var keys = new List<PickedFile>();
+        var lockOns = new List<PickedFile>();
+        var signatures = new List<PickedFile>();
+        var amiibo = new List<(PickedFile File, IAmiiboImage Image)>();
+        var unknown = new List<string>();
+        foreach (var file in files)
+        {
+            var isLockOnFile = Path.GetExtension(file.Name).Equals(".lockon", StringComparison.OrdinalIgnoreCase);
+            if (AmiiboKeyFiles.Identify(file.Data) != AmiiboKeyFileKind.Unknown)
+            {
+                keys.Add(file);
+            }
+            else if (AmiiboImage.TryParse(file.Data, out var image) && image != null)
+            {
+                amiibo.Add((file, image));
+            }
+            else if (isLockOnFile || file.Data.Length == LockOnResponse.Length)
+            {
+                lockOns.Add(file);
+            }
+            else if (file.Data.Length == SignatureStore.RecordLength)
+            {
+                signatures.Add(file);
+            }
+            else
+            {
+                unknown.Add(file.Name);
+            }
+        }
+
+        if (keys.Count > 0)
+        {
+            await ImportKeysAsync(keys);
+        }
+
+        if (signatures.Count > 0)
+        {
+            var lines = new List<string>();
+            foreach (var file in signatures)
+            {
+                lines.Add((await _signatures.AddRecordAsync(file.Data)) switch
+                {
+                    SignatureImport.Added => $"{file.Name}: saved.",
+                    SignatureImport.AlreadySaved => $"{file.Name}: already saved.",
+                    SignatureImport.InvalidUid => $"{file.Name}: not saved, the UID's check bytes don't match it.",
+                    SignatureImport.InvalidSignature => $"{file.Name}: not saved, the signature isn't valid for this UID.",
+                    _ => $"{file.Name}: not saved, a UID/signature pair is {SignatureStore.RecordLength} bytes.",
+                });
+            }
+
+            await _dialogs.AlertAsync("UID/Signature Pairs", string.Join("\n", lines));
+        }
+
+        if (lockOns.Count > 0)
+        {
+            await AddLockOnsAsync(lockOns, askNames: true);
+        }
+
+        if (unknown.Count > 0)
+        {
+            await _dialogs.AlertAsync("Not recognised",
+                $"{string.Join(", ", unknown)}: not an amiibo, a key file, a lock-on (.lockon or {LockOnResponse.Length} bytes) or a UID/signature pair ({SignatureStore.RecordLength} bytes).");
+        }
+
+        if (amiibo.Count > 1)
+        {
+            await _dialogs.AlertAsync("One amiibo at a time", $"Opening {amiibo[0].File.Name}; drop the others one by one.");
+        }
+
+        if (amiibo.Count > 0)
+        {
+            await OpenTagAsync(amiibo[0].Image);
+        }
     }
 
     private string FileBaseName(IAmiiboImage dump)

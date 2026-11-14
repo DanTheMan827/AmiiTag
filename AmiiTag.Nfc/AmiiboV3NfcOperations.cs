@@ -217,9 +217,9 @@ public static class AmiiboV3NfcOperations
         // the session registers, FAST_WRITE the request (type 01) to F0-FF, poll NS_REG until SRAM_RF_READY, PWD_AUTH
         // again, FAST_READ F0-FF. SRAM is volatile; nothing on the figure is changed.
         var auth0 = raw[AmiiboV3Dump.Auth0Page * 4 + 3];
-        var canWriteSram = authenticated || auth0 > AmiiboV3Dump.SramLastPage;
+        var sramProtected = auth0 <= AmiiboV3Dump.SramLastPage;
 
-        // Authentication can have been lost to a reselect since; the session registers are read fresh.
+        // Authentication can have been lost to a reselect since.
         async Task BeforeSramAccessAsync()
         {
             try
@@ -232,22 +232,41 @@ public static class AmiiboV3NfcOperations
             }
         }
 
-        if (canWriteSram)
+        // The session registers, read fresh.
+        if (authenticated)
         {
             await BeforeSramAccessAsync();
-            session = await ReadSessionAsync(connection, cancellationToken) ?? session;
         }
 
-        if (session != null && canWriteSram && WaitingForLockOnRequest(session))
+        session = await ReadSessionAsync(connection, cancellationToken) ?? session;
+        if (session != null && WaitingForLockOnRequest(session))
         {
-            if (await TryWriteLockOnRequestAsync(connection, client, BeforeSramAccessAsync, cancellationToken))
+            // Writing SRAM needs the password when AUTH0 covers it (amiibo: AUTH0 04h; reading doesn't). If sector 1
+            // didn't need it, it hasn't been sent yet: it's sent once now, as a Switch does. A refusal isn't retried
+            // (AUTHLIM).
+            if (sramProtected && !authenticated && !sector1Protected && connection.IsDirectCommandMode)
+            {
+                try
+                {
+                    await client.PasswordAuthAsync(password, cancellationToken);
+                    authenticated = true;
+                }
+                catch (NfcException ex) when (ex is not NfcCommandNotSupportedException)
+                {
+                    System.Diagnostics.Debug.WriteLine($"v3 read: the figure refused the amiibo password for SRAM ({ex.Message}).");
+                    await TryReselectAsync(connection, cancellationToken);
+                }
+            }
+
+            if ((authenticated || !sramProtected) &&
+                await TryWriteLockOnRequestAsync(connection, client, BeforeSramAccessAsync, cancellationToken))
             {
                 session = await ReadSessionAsync(connection, cancellationToken) ?? session;
             }
         }
 
         var (lockOn, latestSession) = await ReadLockOnCoreAsync(
-            connection, session, lockOnTimeout ?? DefaultLockOnTimeout, canWriteSram ? BeforeSramAccessAsync : null, cancellationToken);
+            connection, session, lockOnTimeout ?? DefaultLockOnTimeout, authenticated ? BeforeSramAccessAsync : null, cancellationToken);
 
         // Erased SRAM or our own request read back is not a response; keeping it would look like a lock-on.
         if (lockOn != null && !LockOnResponse.IsUsable(LockOnResponse.Check(lockOn)))

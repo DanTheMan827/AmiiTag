@@ -12,7 +12,8 @@
    figures (read here, or imported), kept under names the user chooses so they can be put back into v3 images later.
    With a TagKey it's the Load Lock-on picker for that tag: choosing one (or a file) puts it in the tag and goes back. *@
 
-<AppPage Title="@(Picking ? "Load Lock-on" : "Lock-on Library")">
+<AppPage Title="@(Picking ? "Load Lock-on" : "Lock-on Library")" OnFilesDropped="DroppedAsync"
+         DropLabel="@(Picking ? "Drop a lock-on to use it" : "Drop lock-ons to add them")">
     <div class="button-stack compact">
         @if (Picking)
         {
@@ -150,6 +151,23 @@
         items.Add(new("Export", () => Actions.ExportLockOnAsync(entry)));
         items.Add(new("Delete", () => Actions.DeleteLockOnAsync(entry), IsDestructive: true));
         return items;
+    }
+
+    /// <summary>
+    /// The picker uses a dropped lock-on (or a v3 amiibo's, saying why if it has no valid one); the library adds them.
+    /// </summary>
+    private async Task DroppedAsync(IReadOnlyList<PickedFile> files)
+    {
+        if (!Picking)
+        {
+            await Actions.AddLockOnsAsync(files);
+            return;
+        }
+
+        if (Target is { } target && await Actions.UseLockOnFileAsync(target, files[0]) is { } updated)
+        {
+            await UseAsync(updated.LockOn!);
+        }
     }
 
     private async Task LoadFromFile()

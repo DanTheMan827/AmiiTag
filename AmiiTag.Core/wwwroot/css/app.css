@@ -1926,3 +1926,70 @@ img {
 .list-row-subtitle.lockon-warning {
     color: var(--destructive);
 }
+
+/* Drag and drop (DropZone): while files are over the window every zone that takes them is outlined; the one under
+   the pointer is solid and tinted, with what a drop does shown at the top of the window. */
+.drop-zone {
+    transition: outline-color 120ms ease, background-color 120ms ease;
+}
+
+.dragging-files .drop-zone:not(.app-page) {
+    outline: 2px dashed var(--accent-glow);
+    outline-offset: -2px;
+    border-radius: var(--radius);
+}
+
+.dragging-files .drop-zone.drop-active:not(.app-page) {
+    outline: 2px solid var(--accent);
+    background-color: var(--accent-tint);
+}
+
+/* A page that takes drops: a frame around the window. */
+.app-page.drop-zone::before {
+    content: "";
+    position: fixed;
+    inset: 8px;
+    border: 2px dashed transparent;
+    border-radius: 18px;
+    pointer-events: none;
+    z-index: 30;
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.dragging-files .app-page.drop-zone::before {
+    border-color: var(--accent-glow);
+}
+
+.dragging-files .app-page.drop-zone.drop-active::before {
+    border-style: solid;
+    border-color: var(--accent);
+    background-color: var(--accent-tint);
+}
+
+.drop-active[data-drop-label]::after {
+    content: attr(data-drop-label);
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100vw - 48px);
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 6px 18px var(--accent-glow);
+    pointer-events: none;
+    z-index: 31;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .drop-zone,
+    .app-page.drop-zone::before {
+        transition: none;
+    }
+}

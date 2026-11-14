@@ -9,8 +9,9 @@
 @inject IDatabaseContainer DatabaseContainer
 @inject AppState State
 @inject AppEnvironment Environment
+@inject TagActions Actions
 
-<AppPage Title="Settings">
+<AppPage Title="Settings" OnFilesDropped="Actions.ImportKeysAsync" DropLabel="Drop key files to load them">
     <h2 class="section-title">Keys</h2>
     <div class="card">
         <p>
@@ -129,32 +130,9 @@
     {
         // Any number of files: the relevant ones are picked out by size and SHA-256.
         var files = await Files.PickFilesAsync("Load key_retail.bin, or unfixed-info.bin and locked-secret.bin", [".bin"]);
-        if (files.Count == 0)
+        if (files.Count > 0)
         {
-            return;
-        }
-
-        try
-        {
-            var result = await Keys.ImportAsync(files);
-            var message = $"Loaded: {string.Join(", ", result.Used)}.";
-            if (result.Ignored.Count > 0)
-            {
-                message += $"\n\nIgnored (not key files): {string.Join(", ", result.Ignored)}.";
-            }
-
-            if (!result.HasBothKeys)
-            {
-                message += result.HasUnfixedInfo
-                    ? "\n\nStill needed to encrypt: locked-secret.bin."
-                    : "\n\nStill needed: unfixed-info.bin.";
-            }
-
-            await Dialogs.AlertAsync(result.HasBothKeys ? "Keys loaded" : "Key loaded", message);
-        }
-        catch (TagException ex)
-        {
-            await Dialogs.AlertAsync("No key files", ex.Message);
+            await Actions.ImportKeysAsync(files);
         }
     }
 

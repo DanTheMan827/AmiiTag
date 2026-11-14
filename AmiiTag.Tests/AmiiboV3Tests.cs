@@ -404,8 +404,9 @@ public class AmiiboV3Tests
     [Fact]
     public async Task ReadV3_WaitsForTheFigureToFillSram()
     {
+        // A figure as consoles see it (its password set): waiting for a request, it's sent the password and one.
         var figure = Figure(LockOnPayload());
-        var tag = NtagI2cPlusSimulator.FromImage(figure);
+        var tag = NtagI2cPlusSimulator.FromAmiiboImage(figure);
         tag.SramReadyAfterSessionReads = 4;
         await using var connection = new SimulatedTagConnection(tag);
 
@@ -441,7 +442,7 @@ public class AmiiboV3Tests
     [Fact]
     public async Task ReadV3_GivesUpOnTheLockOnAfterTheTimeout()
     {
-        var tag = NtagI2cPlusSimulator.FromImage(Figure(LockOnPayload()));
+        var tag = NtagI2cPlusSimulator.FromAmiiboImage(Figure(LockOnPayload()));
         tag.SramReadyAfterSessionReads = int.MaxValue;
         await using var connection = new SimulatedTagConnection(tag);
 

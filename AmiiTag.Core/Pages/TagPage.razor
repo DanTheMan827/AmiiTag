@@ -13,7 +13,8 @@
 @inject FlipperEmulationService Flipper
 @inject LockOnLibrary LockOns
 
-<AppPage Title="@_title" Wide="true" ForceBack="OpenedAutomatically" OnBack="BackToMenuAsync">
+<AppPage Title="@_title" Wide="true" ForceBack="OpenedAutomatically" OnBack="BackToMenuAsync"
+         OnFilesDropped="DroppedLockOnAsync" DropEnabled="@(_dump is AmiiboV3Dump)" DropLabel="Drop a lock-on to put it in this tag">
     @if (_dump == null && _figure == null)
     {
         <p class="empty-state">@(_message ?? "This tag is no longer available.")</p>
@@ -263,6 +264,18 @@
         LockOnCheck.Valid => "Included (CRC valid)",
         var check => $"Included ({LockOnResponse.Describe(check)})",
     };
+
+    /// <summary>
+    /// v3 tags take a dropped lock-on (a .lockon, or a v3 amiibo that has one), as Load from File would.
+    /// </summary>
+    private async Task DroppedLockOnAsync(IReadOnlyList<PickedFile> files)
+    {
+        if (_dump is AmiiboV3Dump v3 && await Actions.UseLockOnFileAsync(v3, files[0]) is { } updated)
+        {
+            _key ??= Tags.Add(updated);
+            Update(updated);
+        }
+    }
 
     private async Task SaveLockOn()
     {

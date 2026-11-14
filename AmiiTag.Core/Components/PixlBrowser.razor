@@ -46,6 +46,8 @@ else
             }
         </nav>
 
+        @* The folder takes dropped files (uploads); a folder row takes them into that folder. *@
+        <DropZone Class="pixl-folder" OnFiles="files => UploadAsync(_path, files)" Label="@($"Drop files to upload to {_path}")">
         <div class="pixl-toolbar">
             <button type="button" class="pill-button" disabled="@(PixlPath.Parent(_path) == null)" @onclick="Up">Up</button>
             <button type="button" class="pill-button" @onclick="UploadFiles">Upload Files</button>
@@ -69,7 +71,7 @@ else
                 {
                     var figure = FigureFor(entry);
                     var items = EntryItems(entry);
-                    <li>
+                    <DropZone Element="li" Enabled="entry.IsFolder" OnFiles="files => UploadAsync(entry.Path, files)" Label="@($"Drop files to upload to {entry.Name}")">
                         <button type="button" class="list-row with-image @(entry.Meta.Hidden ? "dimmed" : "")"
                                 @onpointerdown="Menus.TrackPointer"
                                 @onclick="e => Menus.ClickAsync(e, entry.Name, items)"
@@ -91,10 +93,11 @@ else
                                 <span class="list-row-subtitle">@Subtitle(entry, figure)</span>
                             </span>
                         </button>
-                    </li>
+                    </DropZone>
                 }
             </ul>
         }
+        </DropZone>
     }
 }
 
@@ -342,12 +345,23 @@ else
         }
 
         var files = await Files.PickFilesAsync("Upload to Pixl.js", []);
-        if (files.Count == 0)
+        if (files.Count > 0)
+        {
+            await UploadAsync(_path, files);
+        }
+    }
+
+    /// <summary>
+    /// Writes files (picked or dropped) into a folder, asking for a new name where the Pixl.js can't take the
+    /// original, then shows the current folder again.
+    /// </summary>
+    private async Task UploadAsync(string? folder, IReadOnlyList<PickedFile> files)
+    {
+        if (folder == null)
         {
             return;
         }
 
-        var folder = _path;
         foreach (var file in files)
         {
             var name = Path.GetFileName(file.Name);
@@ -380,7 +394,8 @@ else
             }
         }
 
-        await OpenFolder(folder);
+        // Dropping onto a folder row stays in the folder being shown.
+        await OpenFolder(_path ?? folder);
     }
 
     private async Task AddCharacter(AmiiboFigure figure)

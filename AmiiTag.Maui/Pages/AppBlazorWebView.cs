@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Components.WebView;
 using Microsoft.AspNetCore.Components.WebView.Maui;
 using Microsoft.Extensions.FileProviders;
 
@@ -11,6 +12,25 @@ namespace AmiiTag.Maui.Pages;
 /// </summary>
 public sealed class AppBlazorWebView : BlazorWebView
 {
+    public AppBlazorWebView()
+    {
+        BlazorWebViewInitialized += OnInitialized;
+    }
+
+    /// <summary>
+    /// Files dropped from other apps, for the pages' drop zones. Windows: WebView2 in WinUI refuses files dropped from
+    /// Explorer (the "not allowed" cursor, no HTML drop events) unless AllowDrop is set, which MAUI doesn't do
+    /// (dotnet/maui#37903). Android: WebView doesn't pass them to the page, so they're forwarded natively.
+    /// </summary>
+    private static void OnInitialized(object? sender, BlazorWebViewInitializedEventArgs e)
+    {
+#if WINDOWS
+        e.WebView.AllowDrop = true;
+#elif ANDROID
+        WebViewDropForwarder.Attach(e.WebView);
+#endif
+    }
+
     public override IFileProvider CreateFileProvider(string contentRootDir)
     {
 #if WINDOWS

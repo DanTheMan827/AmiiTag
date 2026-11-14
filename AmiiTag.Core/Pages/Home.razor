@@ -8,7 +8,9 @@
 @inject HomeScreenState Screen
 @implements IDisposable
 
-<AppPage Title="AmiiTag" ShowHeader="false" ShowBack="false" Sheet="false" Class="home">
+@* Dropped files are recognised by their contents: keys, amiibo, lock-ons, UID/signature pairs. *@
+<AppPage Title="AmiiTag" ShowHeader="false" ShowBack="false" Sheet="false" Class="home"
+         OnFilesDropped="Actions.HandleDroppedFilesAsync" DropLabel="Drop amiibo, keys, lock-ons or UID/signature pairs">
     <button type="button" class="logo-button" @onclick="LogoTapped" aria-label="Database and key options">
         <AppLogo Class="home-logo" />
     </button>

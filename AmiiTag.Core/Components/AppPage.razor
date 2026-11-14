@@ -10,7 +10,9 @@
     <PageTitle>@(string.IsNullOrEmpty(Title) ? "AmiiTag" : $"{Title} - AmiiTag")</PageTitle>
 }
 
-<div class="app-page @(Sheet ? "sheet" : "") @(Wide ? "wide" : "") @Class">
+@* The page itself is a drop zone when the screen takes dropped files (OnFilesDropped). *@
+<DropZone Class="@($"app-page {(Sheet ? "sheet" : "")} {(Wide ? "wide" : "")} {Class}")"
+          Enabled="DropEnabled" Label="@DropLabel" OnFiles="OnFilesDropped">
     @if (DrawsHeader && ShowHeader)
     {
         <header class="page-header">
@@ -34,7 +36,7 @@
     <main class="page-content">
         @ChildContent
     </main>
-</div>
+</DropZone>
 
 <ContextMenuOverlay />
 
@@ -69,6 +71,21 @@
     [Parameter] public bool Wide { get; set; }
 
     [Parameter] public string? Class { get; set; }
+
+    /// <summary>
+    /// Files dropped anywhere on the page that an inner drop zone (a slot, a folder) doesn't take.
+    /// </summary>
+    [Parameter] public EventCallback<IReadOnlyList<PickedFile>> OnFilesDropped { get; set; }
+
+    /// <summary>
+    /// What a drop on the page does, shown while files are over it.
+    /// </summary>
+    [Parameter] public string? DropLabel { get; set; }
+
+    /// <summary>
+    /// Turns the page's drop zone off without removing <see cref="OnFilesDropped"/> (say while nothing can take it).
+    /// </summary>
+    [Parameter] public bool DropEnabled { get; set; } = true;
 
     private bool IsWeb => Environment.Platform == AppEnvironment.PlatformType.WebAssembly;
 

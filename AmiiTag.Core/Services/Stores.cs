@@ -197,6 +197,30 @@ public sealed class KeyStore
 }
 
 /// <summary>
+/// The outcome of adding a UID/signature pair file (<see cref="SignatureStore.AddRecordAsync"/>).
+/// </summary>
+public enum SignatureImport
+{
+    Added,
+    AlreadySaved,
+
+    /// <summary>
+    /// Not 42 bytes.
+    /// </summary>
+    WrongSize,
+
+    /// <summary>
+    /// The UID's check bytes (BCC0/BCC1) don't match it, so it isn't a tag's 9 byte UID.
+    /// </summary>
+    InvalidUid,
+
+    /// <summary>
+    /// The signature isn't NXP's for this UID.
+    /// </summary>
+    InvalidSignature,
+}
+
+/// <summary>
 /// Saves UID + originality signature pairs from scanned genuine tags, so generated tags can use real ones.
 /// Port of the Swift Signatures folder (42 byte files: 9 byte UID, 1 byte, 32 byte signature).
 /// </summary>
@@ -213,7 +237,42 @@ public sealed class SignatureStore
         _storage = storage;
     }
 
+    public const int RecordLength = 42;
+
     public int Count => _records.Count;
+
+    /// <summary>
+    /// Adds a UID/signature pair file (42 bytes: the 9 byte UID with its check bytes, 1 byte, the 32 byte signature)
+    /// after checking its size, its UID and that the signature is NXP's for that UID.
+    /// </summary>
+    public async Task<SignatureImport> AddRecordAsync(byte[] record)
+    {
+        if (record.Length != RecordLength)
+        {
+            return SignatureImport.WrongSize;
+        }
+
+        var uid = record[..9];
+        if (uid[3] != (byte)(0x88 ^ uid[0] ^ uid[1] ^ uid[2]) || uid[8] != (byte)(uid[4] ^ uid[5] ^ uid[6] ^ uid[7]))
+        {
+            return SignatureImport.InvalidUid;
+        }
+
+        if (!NtagOriginality.Verify(uid, record.AsSpan(10, 32)))
+        {
+            return SignatureImport.InvalidSignature;
+        }
+
+        await EnsureLoadedAsync();
+        var key = Hex.ToHex(uid);
+        if (!_records.TryAdd(key, record.ToArray()))
+        {
+            return SignatureImport.AlreadySaved;
+        }
+
+        await _storage.WriteAsync($"{Prefix}{key}.bin", record);
+        return SignatureImport.Added;
+    }
 
     public async Task EnsureLoadedAsync()
     {
