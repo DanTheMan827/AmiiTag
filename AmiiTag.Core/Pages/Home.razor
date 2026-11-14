@@ -17,6 +17,7 @@
         <BigButton OnClick="OpenLibrary">Amiibo Library</BigButton>
         <BigButton OnClick="OpenGames">Game Info</BigButton>
         <BigButton OnClick="Actions.LoadTagFromFileAsync">Load Tag</BigButton>
+        <BigButton OnClick="OpenLockOns">Lock-on Library</BigButton>
         @if (Capabilities.CanUseTags)
         {
             <BigButton OnClick="Actions.ScanTagAsync">Scan Tag</BigButton>
@@ -81,6 +82,8 @@
     private Task OpenLibrary() => Navigator.NavigateAsync(AppRoutes.Library());
 
     private Task OpenGames() => Navigator.NavigateAsync(AppRoutes.Games());
+
+    private Task OpenLockOns() => Navigator.NavigateAsync(AppRoutes.LockOns());
 
     // In a browser this opens its device picker straight away (it needs this click as the user gesture).
     private Task OpenDevices() => Actions.OpenBluetoothDevicesAsync();

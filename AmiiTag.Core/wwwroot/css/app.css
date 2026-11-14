@@ -340,6 +340,11 @@ h1:focus {
     gap: 8px;
 }
 
+/* A list straight after buttons (no section title between them). */
+.button-stack + .list {
+    margin-top: 16px;
+}
+
 /* Primary: a filled accent with a faint top light. */
 .big-button {
     display: block;
@@ -1907,4 +1912,17 @@ img {
     background: var(--accent-tint);
     color: var(--text);
     text-align: left;
+}
+
+/* Lock-on library */
+.lockon-placeholder {
+    display: block;
+    border-radius: 10px;
+    background: linear-gradient(145deg, var(--accent-tint), transparent);
+    box-shadow: inset 0 0 0 1px var(--card-border);
+    filter: none;
+}
+
+.list-row-subtitle.lockon-warning {
+    color: var(--destructive);
 }

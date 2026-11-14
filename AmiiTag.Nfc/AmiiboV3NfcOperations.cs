@@ -248,6 +248,14 @@ public static class AmiiboV3NfcOperations
 
         var (lockOn, latestSession) = await ReadLockOnCoreAsync(
             connection, session, lockOnTimeout ?? DefaultLockOnTimeout, canWriteSram ? BeforeSramAccessAsync : null, cancellationToken);
+
+        // Erased SRAM or our own request read back is not a response; keeping it would look like a lock-on.
+        if (lockOn != null && !LockOnResponse.IsUsable(LockOnResponse.Check(lockOn)))
+        {
+            System.Diagnostics.Debug.WriteLine($"v3 read: SRAM held no lock-on response ({LockOnResponse.Describe(LockOnResponse.Check(lockOn))}).");
+            lockOn = null;
+        }
+
         lockOn?.CopyTo(raw, AmiiboV3Dump.LockOnOffset);
         if (lockOn == null)
         {

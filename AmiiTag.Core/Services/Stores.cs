@@ -342,6 +342,12 @@ public sealed class SettingsStore
 public sealed class TagStore
 {
     private readonly ConcurrentDictionary<string, IAmiiboImage> _tags = new();
+    private readonly ConcurrentDictionary<string, string> _figureKeys = new();
+
+    /// <summary>
+    /// A tag was replaced (changed on another screen, such as the lock-on picker); its key.
+    /// </summary>
+    public event Action<string>? Replaced;
 
     public string Add(IAmiiboImage dump)
     {
@@ -350,7 +356,20 @@ public sealed class TagStore
         return key;
     }
 
-    public void Replace(string key, IAmiiboImage dump) => _tags[key] = dump;
+    public void Replace(string key, IAmiiboImage dump)
+    {
+        _tags[key] = dump;
+        Replaced?.Invoke(key);
+    }
+
+    /// <summary>
+    /// The tag a library figure's page generated and then changed (a lock-on, a new UID...), so going back to that
+    /// figure (the web rebuilds the page) shows it rather than a newly generated one.
+    /// </summary>
+    public void RememberForFigure(string figureId, string key) => _figureKeys[figureId] = key;
+
+    public string? KeyForFigure(string figureId) =>
+        _figureKeys.TryGetValue(figureId, out var key) && _tags.ContainsKey(key) ? key : null;
 
     public IAmiiboImage? Get(string? key) => key != null && _tags.TryGetValue(key, out var dump) ? dump : null;
 }

@@ -25,6 +25,7 @@ public sealed class TagActions
     private readonly IQrScanner _qr;
     private readonly DeviceCapabilities _capabilities;
     private readonly N2EliteService _n2;
+    private readonly LockOnLibrary _lockOns;
 
     public TagActions(
         NfcService nfc,
@@ -39,8 +40,10 @@ public sealed class TagActions
         IFileService files,
         IQrScanner qr,
         DeviceCapabilities capabilities,
-        N2EliteService n2)
+        N2EliteService n2,
+        LockOnLibrary lockOns)
     {
+        _lockOns = lockOns;
         _capabilities = capabilities;
         _n2 = n2;
         _nfc = nfc;
@@ -605,24 +608,186 @@ public sealed class TagActions
     }
 
     /// <summary>
-    /// Puts a lock-on response into a v3 figure's image (sector 0 pages F0-FF), from a 64 byte .lockon file or a
-    /// shorter payload that gets a CRC. Saving or sharing the figure then includes it. Returns null if cancelled or invalid.
+    /// Puts a lock-on response from a file (a .lockon, or a v3 .bin that has one) into a v3 figure's image (sector 0
+    /// pages F0-FF), offering to add it to the lock-on library. Saving or sharing the figure then includes it.
+    /// Returns null if cancelled or invalid. (The library itself is offered by the Load Lock-on page.)
     /// </summary>
-    public async Task<AmiiboV3Dump?> LoadLockOnAsync(AmiiboV3Dump dump)
+    public async Task<AmiiboV3Dump?> LoadLockOnFromFileAsync(AmiiboV3Dump dump)
     {
+        await _lockOns.EnsureLoadedAsync();
         var file = await _files.PickFileAsync("Load Lock-on Response", [".lockon", ".bin"]);
         if (file == null)
         {
             return null;
         }
 
-        if (file.Data.Length is 0 or > LockOnResponse.Length)
+        if (ReadLockOnFile(file) is not { } found)
         {
-            await _dialogs.AlertAsync("Invalid file", $"A lock-on response is up to {LockOnResponse.Length} bytes (got {file.Data.Length}).");
+            await _dialogs.AlertAsync("Invalid file",
+                $"This isn't a lock-on response (up to {LockOnResponse.Length} bytes, not blank) or a v3 amiibo .bin that includes one ({file.Data.Length} bytes).");
             return null;
         }
 
-        return dump.WithLockOn(file.Data);
+        var updated = dump.WithLockOn(found.Response);
+        if (_lockOns.Find(updated.LockOn) == null &&
+            await _dialogs.ConfirmAsync("Add to Lock-on Library?", "Keep this lock-on in your library to use it again later.", "Add", "Not Now"))
+        {
+            await SaveLockOnToLibraryAsync(updated, found.Name);
+        }
+
+        return updated;
+    }
+
+    /// <summary>
+    /// Adds a v3 image's lock-on response to the library under a name the user gives it. Returns the entry (an
+    /// existing one if it's already there), or null if cancelled.
+    /// </summary>
+    public async Task<LockOnEntry?> SaveLockOnToLibraryAsync(AmiiboV3Dump dump, string? suggestedName = null)
+    {
+        if (dump.LockOn is not { } response)
+        {
+            return null;
+        }
+
+        var check = LockOnResponse.Check(response);
+        if (!LockOnResponse.IsUsable(check))
+        {
+            await _dialogs.AlertAsync("Not a lock-on response", $"{LockOnResponse.Describe(check)}. Read the figure again.");
+            return null;
+        }
+
+        if (check == LockOnCheck.CrcMismatch &&
+            !await _dialogs.ConfirmAsync("CRC doesn't match", "This lock-on's CRC doesn't match its data, so it may be damaged. Save it anyway?", "Save", "Cancel"))
+        {
+            return null;
+        }
+
+        await _lockOns.EnsureLoadedAsync();
+        if (_lockOns.Find(response) is { } existing)
+        {
+            await _dialogs.AlertAsync("Already in your library", $"This lock-on is saved as \u201C{existing.Name}\u201D.");
+            return existing;
+        }
+
+        var name = await _dialogs.PromptAsync("Name This Lock-on", "Shown in your lock-on library.", suggestedName ?? _lookup.GetDisplayName(dump), 60);
+        if (name == null)
+        {
+            return null;
+        }
+
+        var amiiboId = dump.HasAmiiboId ? dump.AmiiboIdHex : null;
+        return (await _lockOns.AddAsync(name, response, amiiboId, dump.UidHex)).Entry;
+    }
+
+    /// <summary>
+    /// Adds lock-on files to the library: .lockon responses, or v3 .bin images that include one. One file is named by
+    /// the user; several keep a name from the figure or the file, which can be changed later.
+    /// </summary>
+    public async Task ImportLockOnsAsync()
+    {
+        var files = await _files.PickFilesAsync("Import Lock-ons", [".lockon", ".bin"]);
+        if (files.Count == 0)
+        {
+            return;
+        }
+
+        await _lockOns.EnsureLoadedAsync();
+        var added = 0;
+        var duplicates = new List<string>();
+        var invalid = new List<string>();
+        foreach (var file in files)
+        {
+            if (ReadLockOnFile(file) is not { } found)
+            {
+                invalid.Add(file.Name);
+                continue;
+            }
+
+            if (_lockOns.Find(LockOnResponse.Normalize(found.Response)) is { } existing)
+            {
+                duplicates.Add($"{file.Name} (saved as \u201C{existing.Name}\u201D)");
+                continue;
+            }
+
+            var name = found.Name;
+            if (files.Count == 1)
+            {
+                var given = await _dialogs.PromptAsync("Name This Lock-on", "Shown in your lock-on library.", found.Name, 60);
+                if (given == null)
+                {
+                    return;
+                }
+
+                name = given;
+            }
+
+            await _lockOns.AddAsync(name, found.Response, found.AmiiboId, found.Uid);
+            added++;
+        }
+
+        if (duplicates.Count > 0 || invalid.Count > 0)
+        {
+            var lines = new List<string>();
+            if (added > 0)
+            {
+                lines.Add($"Added {added}.");
+            }
+
+            if (duplicates.Count > 0)
+            {
+                lines.Add($"Already in your library: {string.Join(", ", duplicates)}.");
+            }
+
+            if (invalid.Count > 0)
+            {
+                lines.Add($"Not a lock-on or a v3 amiibo with one: {string.Join(", ", invalid)}.");
+            }
+
+            await _dialogs.AlertAsync("Import Lock-ons", string.Join("\n\n", lines));
+        }
+    }
+
+    public async Task RenameLockOnAsync(LockOnEntry entry)
+    {
+        var name = await _dialogs.PromptAsync("Rename Lock-on", null, entry.Name, 60);
+        if (name != null)
+        {
+            await _lockOns.RenameAsync(entry, name);
+        }
+    }
+
+    public Task ExportLockOnAsync(LockOnEntry entry)
+    {
+        var name = string.Join("_", entry.Name.Split(Path.GetInvalidFileNameChars())).Trim();
+        return _files.SaveFileAsync($"{(name.Length == 0 ? "lock-on" : name)}.lockon", entry.Response);
+    }
+
+    public async Task DeleteLockOnAsync(LockOnEntry entry)
+    {
+        if (await _dialogs.ConfirmAsync($"Delete \u201C{entry.Name}\u201D?", "It's removed from your lock-on library. Tags it was loaded into keep their copy.", "Delete", "Cancel"))
+        {
+            await _lockOns.DeleteAsync(entry);
+        }
+    }
+
+    /// <summary>
+    /// A lock-on from a file: a 1-64 byte response, or a v3 amiibo image that includes one. Null if it's neither.
+    /// </summary>
+    private (byte[] Response, string Name, string? AmiiboId, string? Uid)? ReadLockOnFile(PickedFile file)
+    {
+        if (file.Data.Length == AmiiboV3Dump.ImageLength && AmiiboImage.TryParse(file.Data, out var image) &&
+            image is AmiiboV3Dump { LockOn: { } response } v3 && LockOnResponse.IsUsable(LockOnResponse.Check(response)))
+        {
+            return (response, _lookup.GetDisplayName(v3), v3.HasAmiiboId ? v3.AmiiboIdHex : null, v3.UidHex);
+        }
+
+        if (file.Data.Length is > 0 and <= LockOnResponse.Length && file.Data.Length is <= LockOnResponse.BodyLength or LockOnResponse.Length &&
+            LockOnResponse.IsUsable(LockOnResponse.Check(LockOnResponse.Normalize(file.Data))))
+        {
+            return (file.Data, Path.GetFileNameWithoutExtension(file.Name), null, null);
+        }
+
+        return null;
     }
 
     private string FileBaseName(IAmiiboImage dump)

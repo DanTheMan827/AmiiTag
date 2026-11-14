@@ -249,6 +249,7 @@ public static class ServiceCollectionExtensions
     {
         services.AddSingleton<KeyStore>();
         services.AddSingleton<SignatureStore>();
+        services.AddSingleton<LockOnLibrary>();
         services.AddSingleton<SettingsStore>();
         services.AddSingleton<TagStore>();
         services.AddSingleton<AmiiboLookup>();

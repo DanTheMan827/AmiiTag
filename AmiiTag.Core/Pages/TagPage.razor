@@ -11,6 +11,7 @@
 @inject DeviceCapabilities Capabilities
 @inject BleDeviceManager Ble
 @inject FlipperEmulationService Flipper
+@inject LockOnLibrary LockOns
 
 <AppPage Title="@_title" Wide="true" ForceBack="OpenedAutomatically" OnBack="BackToMenuAsync">
     @if (_dump == null && _figure == null)
@@ -98,10 +99,15 @@
                         }
                         @if (_dump is AmiiboV3Dump v3Info)
                         {
+                            var saved = v3Info.LockOn is { } lockOnData ? LockOns.Find(lockOnData) : null;
                             <div class="info-row">
                                 <dt>Lock-on</dt>
-                                <dd>@(v3Info.HasLockOn ? (v3Info.LockOnCrcValid ? "Included" : "Included (CRC not verified)") : "None")</dd>
+                                <dd>@(v3Info.LockOn is { } response ? DescribeLockOn(response) : "None")</dd>
                             </div>
+                            @if (saved != null)
+                            {
+                                <div class="info-row"><dt>In library as</dt><dd>@saved.Name</dd></div>
+                            }
                         }
                     </dl>
                 </section>
@@ -153,6 +159,10 @@
                     @if (_dump is AmiiboV3Dump v3)
                     {
                         <BigButton OnClick="LoadLockOn" Class="secondary">@(v3.HasLockOn ? "Replace Lock-on" : "Load Lock-on")</BigButton>
+                        @if (v3.LockOn is { } current && LockOns.Find(current) == null && LockOnResponse.IsUsable(LockOnResponse.Check(current)))
+                        {
+                            <BigButton OnClick="SaveLockOn" Class="secondary">Save Lock-on to Library</BigButton>
+                        }
                         @if (v3.HasLockOn)
                         {
                             <BigButton OnClick="RemoveLockOn" Class="secondary">Remove Lock-on</BigButton>
@@ -239,6 +249,27 @@
         Keys.Changed += OnKeysChanged;
         Flipper.Changed += OnFlipperChanged;
         Flipper.TagUpdated += OnTagUpdated;
+        LockOns.Changed += OnLockOnsChanged;
+        Tags.Replaced += OnTagUpdated;
+    }
+
+    private void OnLockOnsChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    /// <summary>
+    /// What can be told about a lock-on without its keys (each figure's is unique): CRC, or that it holds no data.
+    /// </summary>
+    private static string DescribeLockOn(byte[] response) => LockOnResponse.Check(response) switch
+    {
+        LockOnCheck.Valid => "Included (CRC valid)",
+        var check => $"Included ({LockOnResponse.Describe(check)})",
+    };
+
+    private async Task SaveLockOn()
+    {
+        if (_dump is AmiiboV3Dump v3)
+        {
+            await Actions.SaveLockOnToLibraryAsync(v3);
+        }
     }
 
     // The Emulate button follows the Flipper being plugged in and out.
@@ -273,6 +304,7 @@
     protected override async Task OnParametersSetAsync()
     {
         await Keys.EnsureLoadedAsync();
+        await LockOns.EnsureLoadedAsync();
         if (!DatabaseContainer.IsLoaded)
         {
             await State.EnsureStartedAsync();
@@ -309,6 +341,14 @@
         {
             _dump = emulated;
             _key = Flipper.LastTagKey;
+            return;
+        }
+
+        // Likewise a tag changed on this page (a lock-on, a new UID) before going to another screen and back.
+        if (Tags.KeyForFigure(FigureId!) is { } kept && Tags.Get(kept) is { } changed)
+        {
+            _dump = changed;
+            _key = kept;
             return;
         }
 
@@ -412,10 +452,20 @@
             return;
         }
 
-        var updated = await Actions.LoadLockOnAsync(v3);
-        if (updated != null)
+        // The library as a page, with Load from File; the choice comes back through TagStore.Replaced.
+        _key ??= Tags.Add(v3);
+        RememberForFigure();
+        await Navigator.NavigateAsync(AppRoutes.PickLockOn(_key));
+    }
+
+    /// <summary>
+    /// A library figure's tag is kept for when the page comes back (see <see cref="TagStore.RememberForFigure"/>).
+    /// </summary>
+    private void RememberForFigure()
+    {
+        if (!string.IsNullOrEmpty(FigureId) && _key != null)
         {
-            Update(updated);
+            Tags.RememberForFigure(FigureId, _key);
         }
     }
 
@@ -433,6 +483,7 @@
         if (_key != null)
         {
             Tags.Replace(_key, updated);
+            RememberForFigure();
         }
 
         Describe();
@@ -452,6 +503,7 @@
             if (_key != null)
             {
                 Tags.Replace(_key, updated);
+                RememberForFigure();
             }
 
             Describe();
@@ -466,6 +518,8 @@
         Keys.Changed -= OnKeysChanged;
         Flipper.Changed -= OnFlipperChanged;
         Flipper.TagUpdated -= OnTagUpdated;
+        LockOns.Changed -= OnLockOnsChanged;
+        Tags.Replaced -= OnTagUpdated;
         if (_startedScan)
         {
             _startedScan = false;

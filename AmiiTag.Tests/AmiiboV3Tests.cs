@@ -51,6 +51,22 @@ public class AmiiboV3Tests
     }
 
     [Fact]
+    public void LockOnCheck_TellsResponsesFromBlankSramAndRequests()
+    {
+        Assert.Equal(LockOnCheck.Valid, LockOnResponse.Check(LockOnResponse.Normalize(LockOnPayload())));
+        Assert.Equal(LockOnCheck.Blank, LockOnResponse.Check(new byte[64]));
+        Assert.Equal(LockOnCheck.Blank, LockOnResponse.Check(Enumerable.Repeat((byte)0xFF, 64).ToArray()));
+        Assert.Equal(LockOnCheck.NoData, LockOnResponse.Check(AmiiboV3NfcOperations.LockOnRequest));
+        Assert.Equal(LockOnCheck.WrongLength, LockOnResponse.Check(new byte[63]));
+
+        var damaged = LockOnResponse.Normalize(LockOnPayload());
+        damaged[10] ^= 0x40;
+        Assert.Equal(LockOnCheck.CrcMismatch, LockOnResponse.Check(damaged));
+        Assert.True(LockOnResponse.IsUsable(LockOnCheck.CrcMismatch));
+        Assert.False(LockOnResponse.IsUsable(LockOnCheck.NoData));
+    }
+
+    [Fact]
     public void LockOn_FullResponseIsKeptByteForByte()
     {
         var response = LockOnResponse.Normalize(LockOnPayload());

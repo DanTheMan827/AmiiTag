@@ -1,6 +1,35 @@
 namespace AmiiTag.Tags;
 
 /// <summary>
+/// What can be checked about a lock-on response without its cryptography (each figure's response is unique and can't be
+/// generated): its length, its CRC, and that it holds data at all.
+/// </summary>
+public enum LockOnCheck
+{
+    /// <summary>
+    /// 64 bytes with a matching CRC.
+    /// </summary>
+    Valid,
+
+    /// <summary>
+    /// The CRC doesn't match the body (damaged, or a format nothing here knows).
+    /// </summary>
+    CrcMismatch,
+
+    /// <summary>
+    /// Every byte the same (00 or FF): erased SRAM, nothing from a figure.
+    /// </summary>
+    Blank,
+
+    /// <summary>
+    /// Nothing after the first byte: what a reader writes as its request (the figure didn't answer), not a response.
+    /// </summary>
+    NoData,
+
+    WrongLength,
+}
+
+/// <summary>
 /// The 64 byte SRAM response a v3 figure's lock-on part serves at sector 0 pages F0-FF (pass-through mode):
 /// a 62 byte body followed by its CRC16/MCRF4XX (stored big endian, as Pixl.js does; little endian is accepted too).
 /// </summary>
@@ -37,6 +66,45 @@ public static class LockOnResponse
         response[BodyLength + 1] = (byte)crc;
         return response;
     }
+
+    /// <summary>
+    /// The checks that can be made without the figure's keys. <see cref="LockOnCheck.Blank"/> and
+    /// <see cref="LockOnCheck.NoData"/> are never a figure's response and aren't kept.
+    /// </summary>
+    public static LockOnCheck Check(ReadOnlySpan<byte> response)
+    {
+        if (response.Length != Length)
+        {
+            return LockOnCheck.WrongLength;
+        }
+
+        if (response.IndexOfAnyExcept(response[0]) < 0)
+        {
+            return LockOnCheck.Blank;
+        }
+
+        if (response[1..BodyLength].IndexOfAnyExcept((byte)0) < 0)
+        {
+            return LockOnCheck.NoData;
+        }
+
+        return HasValidCrc(response) ? LockOnCheck.Valid : LockOnCheck.CrcMismatch;
+    }
+
+    /// <summary>
+    /// True for responses worth keeping (<see cref="LockOnCheck.Valid"/>, or <see cref="LockOnCheck.CrcMismatch"/>
+    /// with a warning).
+    /// </summary>
+    public static bool IsUsable(LockOnCheck check) => check is LockOnCheck.Valid or LockOnCheck.CrcMismatch;
+
+    public static string Describe(LockOnCheck check) => check switch
+    {
+        LockOnCheck.Valid => "CRC valid",
+        LockOnCheck.CrcMismatch => "CRC doesn't match",
+        LockOnCheck.Blank => "Blank (every byte the same)",
+        LockOnCheck.NoData => "No data (a reader's request, not a figure's response)",
+        _ => $"Not {Length} bytes",
+    };
 
     public static bool HasValidCrc(ReadOnlySpan<byte> response)
     {

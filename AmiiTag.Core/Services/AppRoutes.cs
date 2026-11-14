@@ -65,6 +65,20 @@ public static class AppRoutes
     public static AppRoute Emulate() =>
         new(typeof(EmulatePage), "Emulate", "emulate", NoParameters, RoutePresentation.Modal);
 
+    /// <summary>
+    /// The user's named lock-on responses (<see cref="LockOnLibrary"/>).
+    /// </summary>
+    public static AppRoute LockOns() =>
+        new(typeof(LockOnsPage), "Lock-on Library", "lockons", NoParameters, RoutePresentation.Modal);
+
+    /// <summary>
+    /// The lock-on library as a picker for a v3 tag in <see cref="TagStore"/>: choosing one (or a file) puts it in the
+    /// tag and comes back.
+    /// </summary>
+    public static AppRoute PickLockOn(string tagKey) =>
+        new(typeof(LockOnsPage), "Load Lock-on", $"lockons/pick/{tagKey}",
+            new Dictionary<string, object?> { [nameof(LockOnsPage.TagKey)] = tagKey });
+
     public static AppRoute Settings() =>
         new(typeof(SettingsPage), "Settings", "settings", NoParameters, RoutePresentation.Modal);
 }
