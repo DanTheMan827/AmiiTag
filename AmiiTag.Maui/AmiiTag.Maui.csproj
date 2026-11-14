@@ -23,7 +23,9 @@
     <!-- Display name -->
     <ApplicationTitle>AmiiTag</ApplicationTitle>
     <!-- App Identifier -->
-    <ApplicationId>com.companyname.amiitag.maui</ApplicationId>
+    <ApplicationId>com.dantheman827.amiitag</ApplicationId>
+    <Company>DanTheMan827</Company>
+    <Authors>DanTheMan827</Authors>
     <!-- Versions -->
     <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
     <ApplicationVersion>1</ApplicationVersion>
@@ -61,7 +63,7 @@
       <ResolvedFileToPublish Include="%(_AmiiTagMissing.Source)" RelativePath="%(_AmiiTagMissing.Identity)" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="false" />
     </ItemGroup>
     <PropertyGroup>
-      <_AmiiTagMissingCount>@(_AmiiTagMissing->Count())</_AmiiTagMissingCount>
+      <_AmiiTagMissingCount>@(_AmiiTagMissing-&gt;Count())</_AmiiTagMissingCount>
     </PropertyGroup>
     <Message Importance="high" Text="AmiiTag: added $(_AmiiTagMissingCount) file(s) from the build output that the publish was missing." />
     <Error Condition="!Exists('$(OutDir)wwwroot\index.html')" Text="wwwroot wasn't found in $(OutDir); the published app would have no pages." />
@@ -78,11 +80,24 @@
       </ResolvedFileToPublish>
     </ItemGroup>
   </Target>
+  <!--
+    iOS signing. Entitlements.plist asks for NFC tag reading (com.apple.developer.nfc.readersession.formats = TAG),
+    which CoreNFC needs; Bluetooth and the camera need only their Info.plist usage strings. A wildcard App ID can't
+    have the NFC Tag Reading capability, so a wildcard provisioning profile ("VS: WildCard Development") never
+    includes it and signing fails or NFC is refused. What's needed:
+
+      1. An explicit App ID for ApplicationId (com.dantheman827.amiitag) with the NFC Tag Reading capability
+         turned on.
+      2. A development (or distribution) provisioning profile for that App ID.
+
+    Automatic provisioning does both from the entitlements: Visual Studio (Tools > Options > Xamarin > Apple
+    Accounts, or the App Store Connect API key it already uses) creates the App ID with the capability and a matching
+    profile. To use a profile made by hand instead, set ProvisioningType to manual and CodesignProvision to its name.
+  -->
   <PropertyGroup Condition="'$(TargetFramework)'=='net10.0-ios'">
-    <CodesignKey>Apple Development: Created via API (NZ326X9B6Z)</CodesignKey>
-    <CodesignProvision>VS: WildCard Development</CodesignProvision>
-    <!-- CoreNFC tag reading needs the NFC entitlement (and a provisioning profile that includes it). -->
+    <CodesignKey>Apple Development</CodesignKey>
     <CodesignEntitlements>Platforms\iOS\Entitlements.plist</CodesignEntitlements>
+    <ProvisioningType>automatic</ProvisioningType>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net10.0-ios|AnyCPU'">
     <MtouchLink>SdkOnly</MtouchLink>
@@ -148,4 +163,14 @@
       <Generator>MSBuild:Compile</Generator>
     </MauiXaml>
   </ItemGroup>
+
+  <!--
+    The static web assets SDK writes its props file (obj\...\staticwebassets\msbuild.AmiiTag.Maui...props) without
+    creating the folder first. An iOS Release build for a runtime identifier (obj\Release\net10.0-ios\ios-arm64\) can
+    get there before anything else has made it, and fails with DirectoryNotFoundException (MSB4018). Hooked before
+    every target name that task has had (missing ones are ignored).
+  -->
+  <Target Name="AmiiTagEnsureStaticWebAssetsFolder" BeforeTargets="GenerateStaticWebAssetsPackFiles;GenerateStaticWebAssetsPropsFile;_GenerateStaticWebAssetsPropsFile">
+    <MakeDir Directories="$(IntermediateOutputPath)staticwebassets" />
+  </Target>
 </Project>
