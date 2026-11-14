@@ -3,6 +3,7 @@
 @inject AppEnvironment Environment
 @inject IAppNavigator Navigator
 @inject IJSRuntime JS
+@implements IAsyncDisposable
 
 @if (IsWeb)
 {
@@ -78,8 +79,26 @@
 
     private bool BackVisible => IsWeb && (ForceBack || (ShowBack && s_iosStandalone == true));
 
+    // Desktop app: the mouse's back button goes back (the web has the browser's own handling).
+    private IJSObjectReference? _mouseBack;
+    private DotNetObjectReference<AppPage>? _self;
+
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender && !IsWeb)
+        {
+            try
+            {
+                _self = DotNetObjectReference.Create(this);
+                await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AmiiTag.Core/js/mouse-back.js");
+                _mouseBack = await module.InvokeAsync<IJSObjectReference>("register", _self);
+            }
+            catch (JSException)
+            {
+                // No scripts here: the native back controls still work.
+            }
+        }
+
         if (firstRender && IsWeb && s_iosStandalone == null)
         {
             try
@@ -96,6 +115,30 @@
                 StateHasChanged();
             }
         }
+    }
+
+    [JSInvokable]
+    public Task MouseBack() => InvokeAsync(GoBack);
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            if (_mouseBack != null)
+            {
+                await _mouseBack.InvokeVoidAsync("dispose");
+                await _mouseBack.DisposeAsync();
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // The page's web view is already gone.
+        }
+        catch (JSException)
+        {
+        }
+
+        _self?.Dispose();
     }
 
     private Task GoBack() => OnBack.HasDelegate ? OnBack.InvokeAsync() : Navigator.GoBackAsync();
