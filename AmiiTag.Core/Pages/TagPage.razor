@@ -229,8 +229,14 @@
     /// Web: opened by the main menu's background scan (?auto=1). The browser skips the main menu's history entry after
     /// a navigation nobody tapped for, so this page shows its own Back to the main menu.
     /// </summary>
+    /// <remarks>
+    /// Taken as text: Blazor parses a bool query value with bool.Parse, so "?auto=1" threw while rendering and left a
+    /// black page.
+    /// </remarks>
     [SupplyParameterFromQuery(Name = "auto")]
-    public bool OpenedAutomatically { get; set; }
+    public string? Auto { get; set; }
+
+    private bool OpenedAutomatically => Auto is "1" || string.Equals(Auto, "true", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// Back for an automatically opened tag: back to the main menu, replacing this history entry so the browser's own
