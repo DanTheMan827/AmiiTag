@@ -292,6 +292,12 @@ internal sealed class PluginBleConnection : IBleConnection
             characteristic.Release();
         }
 
+#if WINDOWS
+        // Plugin.BLE opens its GATT session with MaintainConnection on, which tells Windows to keep (and re-establish)
+        // the link; disposing the session doesn't always undo that. It's switched off first.
+        await ExpectDeviceDisconnectAsync();
+#endif
+
         try
         {
             await _adapter.DisconnectDeviceAsync(_device).WaitAsync(DisconnectStepTimeout);
@@ -313,6 +319,40 @@ internal sealed class PluginBleConnection : IBleConnection
 
 #if WINDOWS
     /// <summary>
+    /// Windows: Plugin.BLE's GATT session for the device has MaintainConnection on, so Windows reconnects whenever
+    /// the device reappears: after it restarts its Bluetooth (a puck applying a new name), or even after Bluetooth is
+    /// turned off and on, and the device never gets to advertise again. MaintainConnection is a request held by each
+    /// session object, so it's switched off on the plugin's own object (a private field, found by type).
+    /// </summary>
+    public Task ExpectDeviceDisconnectAsync()
+    {
+        var released = 0;
+        for (var type = _device.GetType(); type != null && type != typeof(object); type = type.BaseType)
+        {
+            var fields = type.GetFields(System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic |
+                                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.DeclaredOnly);
+            foreach (var field in fields.Where(f => typeof(global::Windows.Devices.Bluetooth.GenericAttributeProfile.GattSession).IsAssignableFrom(f.FieldType)))
+            {
+                try
+                {
+                    if (field.GetValue(_device) is global::Windows.Devices.Bluetooth.GenericAttributeProfile.GattSession session)
+                    {
+                        session.MaintainConnection = false;
+                        released++;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"BLE {Device.DisplayName}: couldn't release the GATT session ({ex.Message}).");
+                }
+            }
+        }
+
+        System.Diagnostics.Debug.WriteLine($"BLE {Device.DisplayName}: MaintainConnection switched off on {released} GATT session(s).");
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
     /// Windows has no "disconnect": the link drops once nothing in the app holds the device, its GATT session or any
     /// of its services. Plugin.BLE disposes its session and services; this disposes the device too, then collects the
     /// WinRT wrappers still waiting for the garbage collector (each one keeps the link up until it's finalized).
@@ -327,6 +367,21 @@ internal sealed class PluginBleConnection : IBleConnection
         }
         catch
         {
+        }
+
+        // Windows drops the link only once every BluetoothLEDevice object the app has for the device is gone, and
+        // Plugin.BLE can hold more than one: the one connected (which it may recreate while disconnecting), and the
+        // one from the scan, kept in its discovered list while scanning carries on. Each is closed explicitly.
+        var others = _adapter.DiscoveredDevices.Concat(_adapter.ConnectedDevices).Where(d => d.Id == _device.Id).Append(_device);
+        foreach (var nativeObject in others.Select(d => d.NativeDevice).Append(native).OfType<global::Windows.Devices.Bluetooth.BluetoothLEDevice>().Distinct())
+        {
+            try
+            {
+                nativeObject.Dispose();
+            }
+            catch
+            {
+            }
         }
 
         native = null;

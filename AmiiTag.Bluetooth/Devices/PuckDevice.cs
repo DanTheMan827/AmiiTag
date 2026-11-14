@@ -310,6 +310,13 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
         }
 
         _name = name;
+
+        // The puck restarts its Bluetooth to advertise the new name; nothing may reconnect to it while it does.
+        // TODO: On Windows the link still isn't dropped after a rename (puck only; Pixl.js disconnects fine), so the
+        // puck never applies the name. Something in the app holds it: closing the app ends the session, and turning
+        // Bluetooth off and on makes the app reconnect. Not fixed by switching off MaintainConnection on Plugin.BLE's
+        // GATT session, nor by disposing every BluetoothLEDevice for it (PluginBleAdapter). See TODO.md.
+        await Connection.ExpectDeviceDisconnectAsync();
         try
         {
             await SendAndReceiveAsync([Cmd.SetBluetoothName, .. bytes], timeout: RenameReplyTimeout, cancellationToken: cancellationToken);
@@ -326,6 +333,7 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
 
     public async Task EnableUartAsync(CancellationToken cancellationToken = default)
     {
+        await Connection.ExpectDeviceDisconnectAsync();
         await RequireCommand().WriteAsync([Cmd.EnableBleUart], true, cancellationToken);
         await DisconnectAsync();
     }

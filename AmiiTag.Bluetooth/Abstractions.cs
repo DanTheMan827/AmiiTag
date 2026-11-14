@@ -116,6 +116,13 @@ public interface IBleConnection : IAsyncDisposable
     /// </summary>
     Task<int> RequestMtuAsync(int mtu, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// The device is about to drop the link itself (restarting its Bluetooth, say to apply a new name): the platform
+    /// mustn't reconnect to it when it comes back. Windows otherwise does, straight away, which keeps the device from
+    /// ever finishing its restart.
+    /// </summary>
+    Task ExpectDeviceDisconnectAsync() => Task.CompletedTask;
+
     Task DisconnectAsync();
 }
 
