@@ -43,18 +43,86 @@ public sealed class MauiFileService : IFileService
 
     public async Task SaveFileAsync(string fileName, byte[] data, string contentType = "application/octet-stream")
     {
-        // Mobile platforms export through the share sheet (Save to Files, AirDrop, Drive...).
+#if WINDOWS
+        // Desktop: the system's Save dialog.
+        await MainThread.InvokeOnMainThreadAsync(() => SaveWithPickerAsync(fileName, data));
+#else
         var folder = Path.Combine(FileSystem.CacheDirectory, "exports");
         Directory.CreateDirectory(folder);
         var path = Path.Combine(folder, fileName);
         await File.WriteAllBytesAsync(path, data);
 
+#if MACCATALYST
+        // Desktop: the system's Save panel (an export picker on Mac Catalyst).
+        await MainThread.InvokeOnMainThreadAsync(() => ExportWithPickerAsync(path));
+#else
+        // Phones export through the share sheet (Save to Files, AirDrop, Drive...).
         await MainThread.InvokeOnMainThreadAsync(() => Share.Default.RequestAsync(new ShareFileRequest
         {
             Title = fileName,
             File = new ShareFile(path, contentType),
         }));
+#endif
+#endif
     }
+
+#if WINDOWS
+    private static async Task SaveWithPickerAsync(string fileName, byte[] data)
+    {
+        var extension = Path.GetExtension(fileName);
+        if (string.IsNullOrEmpty(extension))
+        {
+            extension = ".bin";
+        }
+
+        var picker = new global::Windows.Storage.Pickers.FileSavePicker
+        {
+            SuggestedFileName = Path.GetFileNameWithoutExtension(fileName),
+            SuggestedStartLocation = global::Windows.Storage.Pickers.PickerLocationId.DocumentsLibrary,
+        };
+        picker.FileTypeChoices.Add(DescribeFileType(extension), new List<string> { extension });
+
+        // Unpackaged WinUI apps must tell the picker which window owns it.
+        if (Application.Current?.Windows.FirstOrDefault()?.Handler?.PlatformView is Microsoft.UI.Xaml.Window window)
+        {
+            WinRT.Interop.InitializeWithWindow.Initialize(picker, WinRT.Interop.WindowNative.GetWindowHandle(window));
+        }
+
+        var file = await picker.PickSaveFileAsync();
+        if (file != null)
+        {
+            await File.WriteAllBytesAsync(file.Path, data);
+        }
+    }
+
+    private static string DescribeFileType(string extension) => extension.ToLowerInvariant() switch
+    {
+        ".bin" => "Tag dump",
+        ".txt" => "Text",
+        ".zip" => "Zip archive",
+        ".png" => "PNG image",
+        _ => $"{extension.TrimStart('.').ToUpperInvariant()} file",
+    };
+#endif
+
+#if MACCATALYST
+    private static Task ExportWithPickerAsync(string path)
+    {
+        var done = new TaskCompletionSource();
+        var picker = new UIKit.UIDocumentPickerViewController([Foundation.NSUrl.FromFilename(path)], asCopy: true);
+        picker.DidPickDocumentAtUrls += (_, _) => done.TrySetResult();
+        picker.WasCancelled += (_, _) => done.TrySetResult();
+
+        var presenter = Platform.GetCurrentUIViewController();
+        if (presenter == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        presenter.PresentViewController(picker, true, null);
+        return done.Task;
+    }
+#endif
 }
 
 /// <summary>

@@ -4,17 +4,26 @@ This is the wire protocol between the Flipper Zero NFC Bridge app and a host com
 
 ## Transport
 
-The Flipper switches its USB port to a vendor-defined HID device while the app runs.
+While the app runs, the Flipper's USB port becomes a device with two interfaces. Both carry the same 64-byte packets (called reports below), so a host uses whichever it can reach.
 
 | | |
 |---|---|
-| VID / PID | `0x1209` / `0x0001` (the shared pid.codes test PID, so also check the next three fields) |
+| VID / PID | `0x1209` / `0x0001` (the shared pid.codes test PID, so also check the product string or an interface below) |
 | Product string | `NFC Bridge` |
-| Usage page / usage | `0xFF41` / `0x01` |
-| Reports | 64-byte input and output reports with no report ID |
-| Endpoints | Interrupt IN `0x81` and OUT `0x01`, polled every 1 ms |
+| Interface 0: HID | Usage page `0xFF41`, usage `0x01`. 64-byte input and output reports with no report ID. Interrupt IN `0x81` and OUT `0x01`, polled every 1 ms. |
+| Interface 1: bulk | Vendor class (`0xFF`). Bulk IN `0x82` and OUT `0x02`, 64-byte packets. |
+| Windows | Microsoft OS 2.0 descriptors bind WinUSB to interface 1, with device interface GUID `{C4A1D7E2-5B3F-4E88-9D21-6F0A3B7C9E14}`. |
 
-No driver is needed on Windows, macOS or Linux. Linux needs a udev rule for access without root (see [HOST_GUIDE.md](HOST_GUIDE.md)). Most HID APIs want a leading report ID byte of `0` when writing, and some return it when reading.
+**Which to use:**
+- **HID** moves one packet per millisecond each way. A 240-byte answer therefore needs about 5 ms to reach the Flipper, which is too slow for some readers.
+- **Bulk** moves as many packets per millisecond as the host schedules, so the same answer arrives within the same millisecond. Write a whole message (all its 64-byte packets back to back) in one bulk transfer, and read IN 64 bytes at a time.
+- **The Flipper replies on the interface the host last sent on.**
+
+No driver needs installing:
+- **Windows** binds WinUSB to the bulk interface by itself (8.1 and later), and HID works as usual.
+- **macOS and Linux** reach the bulk interface with libusb, and browsers through WebUSB. Linux needs a udev rule for access without root (see [HOST_GUIDE.md](HOST_GUIDE.md)).
+
+Most HID APIs want a leading report ID byte of `0` when writing, and some return it when reading. Bulk packets have no report ID.
 
 ## Framing
 
@@ -73,7 +82,7 @@ Other messages use 0.
 
 The Flipper becomes a card, and LISTEN replaces whatever mode was running.
 
-**Answer timeout (ms):** how long the Flipper waits for an ANSWER before staying silent. 0 means 25 ms.
+**Answer timeout (ms):** how long the Flipper waits for an ANSWER before staying silent. 0 means 100 ms. Answers normally take well under a millisecond; a generous timeout covers host hiccups, since a late answer usually still satisfies the reader while silence makes it give up.
 
 **Technology parameters:**
 

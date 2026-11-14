@@ -28,9 +28,17 @@ public class FlipperBridgeTests
 
         public BridgeStatusCode NextStatus { get; set; } = BridgeStatusCode.Ok;
 
-        public void Write(ReadOnlySpan<byte> report)
+        public void Write(ReadOnlySpan<byte> reports)
         {
-            Assert.Equal(BridgeProtocol.ReportSize, report.Length);
+            Assert.True(reports.Length > 0 && reports.Length % BridgeProtocol.ReportSize == 0);
+            for (var start = 0; start < reports.Length; start += BridgeProtocol.ReportSize)
+            {
+                WriteReport(reports.Slice(start, BridgeProtocol.ReportSize));
+            }
+        }
+
+        private void WriteReport(ReadOnlySpan<byte> report)
+        {
             if (!_assembler.TryAdd(report, out var message))
             {
                 return;

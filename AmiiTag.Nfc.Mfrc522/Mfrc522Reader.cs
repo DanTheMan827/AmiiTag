@@ -139,7 +139,8 @@ public sealed class Mfrc522Reader
         var frame = Iso14443Crc.Append(command);
         if (frame.Length > FifoSize)
         {
-            throw new NfcException("The command is too long for the MFRC522 FIFO.");
+            // Nothing is sent (FAST_WRITE of 16 pages is 69 bytes with its CRC); callers fall back to smaller commands.
+            throw new NfcCommandNotSupportedException(command[0]);
         }
 
         var answer = await ExchangeAsync(frame, 0, cancellationToken);

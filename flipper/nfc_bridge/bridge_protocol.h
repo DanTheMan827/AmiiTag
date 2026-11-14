@@ -3,10 +3,14 @@
 /*
  * NFC bridge protocol, version 2. Full description: docs/PROTOCOL.md.
  *
- * The Flipper exposes its NFC front end at the technology level (the firmware's Nfc layer) to a host over a vendor
- * defined USB HID interface: 64 byte reports each way, interrupt endpoints polled every 1 ms, no driver needed.
+ * The Flipper exposes its NFC front end at the technology level (the firmware's Nfc layer) to a host over USB, on
+ * either of two interfaces carrying the same 64 byte packets ("reports"); no driver needs installing anywhere:
+ *   - a vendor defined HID interface (usage page 0xFF41): 1 ms interrupt endpoints, one packet per millisecond.
+ *   - a vendor bulk interface (endpoints 0x82 in, 0x02 out): many packets per millisecond. Windows binds WinUSB to
+ *     it through Microsoft OS 2.0 descriptors (device interface GUID BRIDGE_WINUSB_GUID).
+ * The Flipper answers on the interface the host last sent on.
  *
- * Every report is one chunk of a message:
+ * Every packet is one chunk of a message:
  *
  *   [0]    message type
  *   [1]    sequence number (pairs FRAME/ANSWER and TRANSCEIVE/TRANSCEIVE_RESULT)
@@ -33,6 +37,10 @@
 #define BRIDGE_HID_USAGE_PAGE 0xFF41
 #define BRIDGE_HID_USAGE 0x01
 #define BRIDGE_USB_PRODUCT "NFC Bridge"
+/* Device interface GUID of the bulk interface under WinUSB (Windows hosts find the device by it). */
+#define BRIDGE_WINUSB_GUID "{C4A1D7E2-5B3F-4E88-9D21-6F0A3B7C9E14}"
+#define BRIDGE_BULK_EP_IN 0x82
+#define BRIDGE_BULK_EP_OUT 0x02
 
 typedef enum {
     /* Device -> host */

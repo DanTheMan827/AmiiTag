@@ -366,8 +366,14 @@ public sealed class TransparentSessionStrategy : IPcscTransceiveStrategy
         }
 
         return (command.Length == 6 && command[0] == Ntag215Client.CmdWrite) ||
-               (command.Length == 2 && command[0] == 0xC2 && command[1] == 0xFF);
+               (command.Length == 2 && command[0] == 0xC2 && command[1] == 0xFF) ||
+               IsFastWrite(command);
     }
+
+    /// <summary>
+    /// NTAG I²C FAST_WRITE (A6, start, end, 64 bytes of SRAM), answered with a 4 bit ACK.
+    /// </summary>
+    private static bool IsFastWrite(byte[] command) => command.Length == 3 + 64 && command[0] == 0xA6;
 
     private byte[] Exchange(PcscCard card, byte[] command, byte[]? flags)
     {
@@ -447,7 +453,8 @@ public sealed class TransparentSessionStrategy : IPcscTransceiveStrategy
     private static bool ExpectsAckWithoutConsuming(byte[] command) =>
         (command.Length == 6 && command[0] == Ntag215Client.CmdWrite) ||
         (command.Length == 2 && command[0] is 0xA0 or 0xC2) ||
-        command.Length == 16;
+        command.Length == 16 ||
+        IsFastWrite(command);
 
     private static string Describe(byte[] response) =>
         response.Length >= 2 ? $"status {response[^2]:X2}{response[^1]:X2}" : "no status";

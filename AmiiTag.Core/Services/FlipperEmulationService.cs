@@ -74,7 +74,7 @@ public sealed class FlipperEmulationService : IDisposable
     public static TagSimulator CreateSimulator(IAmiiboImage image) => image switch
     {
         TagDump dump => Ntag215Simulator.FromAmiiboDump(dump),
-        AmiiboV3Dump v3 => NtagI2cPlusSimulator.FromImage(v3),
+        AmiiboV3Dump v3 => NtagI2cPlusSimulator.FromAmiiboImage(v3),
         _ => throw new NotSupportedException("This kind of tag can't be emulated."),
     };
 

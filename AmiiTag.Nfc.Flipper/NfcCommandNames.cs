@@ -23,6 +23,7 @@ public static class NfcCommandNames
             0x1B when command.Length == 5 => "PWD_AUTH",
             0x3C when command.Length == 2 => "READ_SIG",
             0xC2 when command.Length == 2 => "SECTOR_SELECT (1/2)",
+            0xA6 when command.Length == 67 => $"FAST_WRITE {command[1]:X2}-{command[2]:X2} (SRAM)",
             0x50 when command.Length == 2 => "HLTA",
             0x55 when command.Length == 1 => "N2 GET_INFO",
             0x43 when command.Length == 1 => "N2 GET_ID",

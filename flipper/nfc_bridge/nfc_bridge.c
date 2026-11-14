@@ -269,7 +269,7 @@ static void bridge_draw(Canvas* canvas, void* context) {
         canvas_draw_str(canvas, 2, 26, "Connect USB to the computer");
         canvas_draw_str(canvas, 2, 38, "and start the host app.");
     } else if(view.mode == BridgeModeOff) {
-        canvas_draw_str(canvas, 2, 26, "USB ready.");
+        canvas_draw_str(canvas, 2, 26, usb_bridge_is_bulk(app->usb) ? "USB ready (bulk)." : "USB ready (HID).");
         canvas_draw_str(canvas, 2, 38, "Waiting for the host.");
     } else {
         snprintf(

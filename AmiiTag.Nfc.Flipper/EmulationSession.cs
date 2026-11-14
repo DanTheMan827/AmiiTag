@@ -1,3 +1,4 @@
+using System.Runtime;
 using System.Text;
 using AmiiTag.Simulation;
 
@@ -137,6 +138,9 @@ public sealed class EmulationSession : IAsyncDisposable
     private double _worstHostMicros;
     private int? _pendingCompatibilityWrite;
 
+    private string _transportName = "USB";
+    private GCLatencyMode? _previousLatency;
+
     private EmulationSession(FlipperBridge bridge, TagSimulator tag, string tagName, bool useAnswerTable)
     {
         _bridge = bridge;
@@ -192,7 +196,7 @@ public sealed class EmulationSession : IAsyncDisposable
         TimeSpan? answerTimeout = null, bool useAnswerTable = false, CancellationToken cancellationToken = default)
     {
         var bridge = new FlipperBridge(transport);
-        var session = new EmulationSession(bridge, tag, tagName, useAnswerTable);
+        var session = new EmulationSession(bridge, tag, tagName, useAnswerTable) { _transportName = transport.Name };
         try
         {
             await session.RunAsync(answerTimeout, cancellationToken).ConfigureAwait(false);
@@ -213,6 +217,11 @@ public sealed class EmulationSession : IAsyncDisposable
         _bridge.DeviceLog += text => Log.Add(EmulationLogKind.Device, text);
         _bridge.Closed += OnClosed;
         _bridge.Start();
+
+        // A blocking (gen 2) collection pauses every thread, the one answering the reader included, for longer than
+        // a reader waits. Keep them to the background while emulating.
+        _previousLatency = GCSettings.LatencyMode;
+        GCSettings.LatencyMode = GCLatencyMode.SustainedLowLatency;
 
         Hello = await _bridge.HelloAsync(cancellationToken).ConfigureAwait(false);
         if (!Hello.Capabilities.HasFlag(BridgeCapabilities.ListenA))
@@ -235,7 +244,7 @@ public sealed class EmulationSession : IAsyncDisposable
         await _bridge.ListenIso14443AAsync(uid, Tag.Atqa, Tag.Sak, BridgeListenFlags.Default, answerTimeout, cancellationToken).ConfigureAwait(false);
         IsRunning = true;
 
-        Log.Add(EmulationLogKind.Info, $"{Hello.Firmware} (protocol {Hello.ProtocolVersion})");
+        Log.Add(EmulationLogKind.Info, $"{Hello.Firmware} (protocol {Hello.ProtocolVersion}, over {_transportName})");
         Log.Add(EmulationLogKind.Info,
             $"Emulating {TagName}: UID {Convert.ToHexString(uid)}, ATQA {Convert.ToHexString(Tag.Atqa)}, SAK {Tag.Sak:X2} ({Tag.GetType().Name})");
         if (preloaded > 0)
@@ -453,6 +462,12 @@ public sealed class EmulationSession : IAsyncDisposable
         }
 
         IsRunning = false;
+        if (_previousLatency is { } latency)
+        {
+            GCSettings.LatencyMode = latency;
+            _previousLatency = null;
+        }
+
         await _bridge.DisposeAsync().ConfigureAwait(false);
     }
 }

@@ -211,21 +211,43 @@ public static class AmiiboV3NfcOperations
         // Lock-on last: if SRAM turns out not to be readable the tag NAKs and drops out of the session.
         connection.SetStatus("Reading lock-on...");
 
-        // Real figures wait in pass-through mode with the direction set NFC -> I²C: the reader writes a request to SRAM,
-        // the figure's microcontroller reads it over I²C and writes its response back. (Seen: NC_REG 41, NS_REG 21, and
-        // SRAM_RF_READY never comes on by itself.) The response is reportedly the same whatever the request, so a blank
-        // one in the response's own format is written. SRAM is volatile; nothing on the figure is changed.
+        // Real figures wait in pass-through mode with the direction set NFC -> I²C (NC_REG 41, NS_REG 21): the reader
+        // writes a request to SRAM, the figure's microcontroller reads it over I²C and writes its response back, then
+        // sets SRAM_RF_READY. This follows what a Switch does (traced through the Flipper NFC Bridge): PWD_AUTH, read
+        // the session registers, FAST_WRITE the request (type 01) to F0-FF, poll NS_REG until SRAM_RF_READY, PWD_AUTH
+        // again, FAST_READ F0-FF. SRAM is volatile; nothing on the figure is changed.
         var auth0 = raw[AmiiboV3Dump.Auth0Page * 4 + 3];
         var canWriteSram = authenticated || auth0 > AmiiboV3Dump.SramLastPage;
+
+        // Authentication can have been lost to a reselect since; the session registers are read fresh.
+        async Task BeforeSramAccessAsync()
+        {
+            try
+            {
+                await ReauthenticateAsync();
+            }
+            catch (NfcException ex) when (ex is not NfcCommandNotSupportedException)
+            {
+                System.Diagnostics.Debug.WriteLine($"v3 read: PWD_AUTH before the lock-on failed ({ex.Message}).");
+            }
+        }
+
+        if (canWriteSram)
+        {
+            await BeforeSramAccessAsync();
+            session = await ReadSessionAsync(connection, cancellationToken) ?? session;
+        }
+
         if (session != null && canWriteSram && WaitingForLockOnRequest(session))
         {
-            if (await TryWriteLockOnRequestAsync(client, cancellationToken))
+            if (await TryWriteLockOnRequestAsync(connection, client, BeforeSramAccessAsync, cancellationToken))
             {
                 session = await ReadSessionAsync(connection, cancellationToken) ?? session;
             }
         }
 
-        var (lockOn, latestSession) = await ReadLockOnCoreAsync(connection, session, lockOnTimeout ?? DefaultLockOnTimeout, cancellationToken);
+        var (lockOn, latestSession) = await ReadLockOnCoreAsync(
+            connection, session, lockOnTimeout ?? DefaultLockOnTimeout, canWriteSram ? BeforeSramAccessAsync : null, cancellationToken);
         lockOn?.CopyTo(raw, AmiiboV3Dump.LockOnOffset);
         if (lockOn == null)
         {
@@ -295,11 +317,13 @@ public static class AmiiboV3NfcOperations
     // NC_REG: pass-through data flows from NFC to I²C.
     public const byte NcPassThroughDirNfcToI2c = 0x01;
 
+    public const byte CmdFastWrite = 0xA6;
+
     /// <summary>
-    /// What's written to SRAM to ask a real figure for its lock-on response: 62 zero bytes and their CRC, the response's
-    /// own format.
+    /// What's written to SRAM to ask a real figure for its lock-on response, exactly as a Switch sends it: request type
+    /// 01, 61 zero bytes and the CRC (A4 03), in the response's own format.
     /// </summary>
-    public static byte[] LockOnRequest => LockOnResponse.Normalize([0x00]);
+    public static byte[] LockOnRequest => LockOnResponse.Normalize([0x01]);
 
     /// <summary>
     /// True when the figure is in pass-through mode, waiting for the NFC side to fill SRAM, and nothing is ready to read.
@@ -308,25 +332,62 @@ public static class AmiiboV3NfcOperations
         (session[0] & NcPassThroughOn) != 0 && (session[0] & NcPassThroughDirNfcToI2c) != 0 && (session[6] & NsSramI2cReady) == 0;
 
     /// <summary>
-    /// Writes <see cref="LockOnRequest"/> to SRAM (pages F0-FF, one WRITE each; the last page hands SRAM to I²C).
+    /// Writes <see cref="LockOnRequest"/> to SRAM: one FAST_WRITE of F0-FF as a Switch does, or (readers without direct
+    /// commands, or a refused FAST_WRITE) a WRITE per page; either way the last page hands SRAM to I²C.
     /// </summary>
-    private static async Task<bool> TryWriteLockOnRequestAsync(Ntag215Client client, CancellationToken cancellationToken)
+    private static async Task<bool> TryWriteLockOnRequestAsync(INfcTagConnection connection, Ntag215Client client, Func<Task> restore, CancellationToken cancellationToken)
     {
         var request = LockOnRequest;
-        try
+        if (connection.IsDirectCommandMode)
         {
-            for (var page = AmiiboV3Dump.SramFirstPage; page <= AmiiboV3Dump.SramLastPage; page++)
+            try
             {
-                await client.WritePageAsync(page, request.AsMemory((page - AmiiboV3Dump.SramFirstPage) * 4, 4), cancellationToken);
+                var response = await connection.TransceiveAsync(
+                    [CmdFastWrite, (byte)AmiiboV3Dump.SramFirstPage, (byte)AmiiboV3Dump.SramLastPage, .. request], cancellationToken);
+                if (response.Length == 0 || (response.Length == 1 && (response[0] & 0x0F) == 0x0A))
+                {
+                    System.Diagnostics.Debug.WriteLine("v3 read: FAST_WROTE the lock-on request to SRAM; waiting for the figure's response.");
+                    return true;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"v3 read: FAST_WRITE of the lock-on request refused ({Hex.ToSpacedHex(response)}); writing it page by page.");
+            }
+            catch (NfcCommandNotSupportedException)
+            {
+                // The reader can't send it (MFRC522: longer than its FIFO). Nothing reached the tag; the session is intact.
+                System.Diagnostics.Debug.WriteLine("v3 read: this reader can't FAST_WRITE; writing the lock-on request page by page.");
+                return await WritePagesAsync();
+            }
+            catch (NfcException ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"v3 read: FAST_WRITE of the lock-on request failed ({ex.Message}); writing it page by page.");
             }
 
-            System.Diagnostics.Debug.WriteLine("v3 read: wrote a lock-on request to SRAM; waiting for the figure's response.");
-            return true;
+            // A refusal leaves the tag idle until reselected (which also drops the authentication).
+            await TryReselectAsync(connection, cancellationToken);
+            await restore();
         }
-        catch (NfcException ex) when (ex is not NfcCommandNotSupportedException)
+
+        return await WritePagesAsync();
+
+        async Task<bool> WritePagesAsync()
         {
-            System.Diagnostics.Debug.WriteLine($"v3 read: couldn't write the lock-on request to SRAM ({ex.Message}).");
-            return false;
+            try
+            {
+                for (var page = AmiiboV3Dump.SramFirstPage; page <= AmiiboV3Dump.SramLastPage; page++)
+                {
+                    await client.WritePageAsync(page, request.AsMemory((page - AmiiboV3Dump.SramFirstPage) * 4, 4), cancellationToken);
+                }
+
+                System.Diagnostics.Debug.WriteLine("v3 read: wrote a lock-on request to SRAM; waiting for the figure's response.");
+                return true;
+            }
+            catch (NfcException ex)
+            {
+                // Includes readers that can't write at all (storage card mode): the figure is still read, without it.
+                System.Diagnostics.Debug.WriteLine($"v3 read: couldn't write the lock-on request to SRAM ({ex.Message}).");
+                return false;
+            }
         }
     }
 
@@ -390,16 +451,28 @@ public static class AmiiboV3NfcOperations
     /// FAST_READ the session registers just try F0-FF.
     /// </remarks>
     public static async Task<byte[]?> ReadLockOnAsync(INfcTagConnection connection, byte[]? session, TimeSpan timeout, CancellationToken cancellationToken = default) =>
-        (await ReadLockOnCoreAsync(connection, session, timeout, cancellationToken)).LockOn;
+        (await ReadLockOnCoreAsync(connection, session, timeout, null, cancellationToken)).LockOn;
 
     /// <summary>
     /// <see cref="ReadLockOnAsync"/>, also returning the last session registers read while waiting.
     /// </summary>
-    private static async Task<(byte[]? LockOn, byte[]? Session)> ReadLockOnCoreAsync(INfcTagConnection connection, byte[]? session, TimeSpan timeout, CancellationToken cancellationToken)
+    private static async Task<(byte[]? LockOn, byte[]? Session)> ReadLockOnCoreAsync(
+        INfcTagConnection connection, byte[]? session, TimeSpan timeout, Func<Task>? beforeSramRead, CancellationToken cancellationToken)
     {
+        // A Switch sends PWD_AUTH again right before reading the response.
+        async Task<byte[]?> ReadSramAsync(int firstPage)
+        {
+            if (beforeSramRead != null)
+            {
+                await beforeSramRead();
+            }
+
+            return await TryReadSramAsync(connection, firstPage, cancellationToken);
+        }
+
         if (session == null)
         {
-            return (await TryReadSramAsync(connection, AmiiboV3Dump.SramFirstPage, cancellationToken), null);
+            return (await ReadSramAsync(AmiiboV3Dump.SramFirstPage), null);
         }
 
         var deadline = DateTime.UtcNow + timeout;
@@ -411,12 +484,12 @@ public static class AmiiboV3NfcOperations
 
             if ((nc & NcPassThroughOn) != 0 && (ns & NsSramI2cReady) != 0)
             {
-                return (await TryReadSramAsync(connection, AmiiboV3Dump.SramFirstPage, cancellationToken), session);
+                return (await ReadSramAsync(AmiiboV3Dump.SramFirstPage), session);
             }
 
             if ((nc & NcPassThroughOn) == 0 && (nc & NcSramMirrorOn) != 0 && sm <= 0xF0)
             {
-                return (await TryReadSramAsync(connection, sm, cancellationToken), session);
+                return (await ReadSramAsync(sm), session);
             }
 
             if (DateTime.UtcNow >= deadline)
@@ -424,7 +497,8 @@ public static class AmiiboV3NfcOperations
                 return (null, session);
             }
 
-            await Task.Delay(50, cancellationToken);
+            // A Switch polls about every 13 ms; the figure answers within a couple of polls.
+            await Task.Delay(10, cancellationToken);
             var next = await ReadSessionAsync(connection, cancellationToken);
             if (next == null)
             {

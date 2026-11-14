@@ -5,12 +5,13 @@
 
 #include <furi.h>
 #include <furi_hal.h>
+#include <furi_hal_nfc.h>
 #include <nfc/nfc.h>
 #include <toolbox/bit_buffer.h>
 
 #define TAG "NfcBridge"
 
-#define DEFAULT_ANSWER_TIMEOUT_MS 25
+#define DEFAULT_ANSWER_TIMEOUT_MS 100
 #define ANSWER_QUEUE_SIZE 4
 #define REQUEST_QUEUE_SIZE 2
 #define TABLE_CAPACITY (16 * 1024)
@@ -76,6 +77,7 @@ struct BridgeNfc {
     uint8_t* message;
     uint8_t* raw; /* parity extraction scratch */
     uint8_t next_seq;
+    bool transmitted; /* whether the current frame got an answer on air */
 
     bool field;
     uint8_t uid[10];
@@ -260,8 +262,11 @@ static NfcCommand bridge_listener_transmit(BridgeNfc* bridge, uint8_t flags, uin
     } else {
         error = nfc_listener_tx(bridge->nfc, bridge->tx);
     }
+    /* Counts even when the call reports an error: a long frame outlasts the driver's wait while the chip keeps
+       sending, and restarting reception then would cut it off mid-frame. */
+    bridge->transmitted = true;
     if(error != NfcErrorNone) {
-        FURI_LOG_W(TAG, "Listener tx error %d", error);
+        FURI_LOG_W(TAG, "Listener tx of %u bits reported error %d", bits, error);
     }
 
     return (flags & BridgeTxSleep) ? NfcCommandSleep : NfcCommandContinue;
@@ -298,7 +303,7 @@ static bool bridge_wait_answer(BridgeNfc* bridge, uint8_t seq, uint32_t started)
     return true;
 }
 
-static NfcCommand bridge_listener_rx(BridgeNfc* bridge, const BitBuffer* frame) {
+static NfcCommand bridge_listener_handle_rx(BridgeNfc* bridge, const BitBuffer* frame) {
     const uint32_t started = bridge_micros();
     uint8_t* msg = bridge->message;
     uint8_t flags = 0;
@@ -357,6 +362,20 @@ static NfcCommand bridge_listener_rx(BridgeNfc* bridge, const BitBuffer* frame) 
     BridgeAnswer* answer = bridge->answer;
     return bridge_listener_transmit(
         bridge, answer->flags, answer->bits, answer->data, (answer->flags & BridgeTxCustomParity) ? answer->parity : NULL);
+}
+
+/*
+ * The ST25R3916 stops receiving after each frame and only restarts with the next transmission. A frame left
+ * unanswered on purpose (a passive ACK such as SECTOR_SELECT's), or because the host was too late, would leave the
+ * card deaf to everything that follows, so reception is restarted by hand.
+ */
+static NfcCommand bridge_listener_rx(BridgeNfc* bridge, const BitBuffer* frame) {
+    bridge->transmitted = false;
+    const NfcCommand command = bridge_listener_handle_rx(bridge, frame);
+    if(command == NfcCommandContinue && !bridge->transmitted) {
+        furi_hal_nfc_listener_enable_rx();
+    }
+    return command;
 }
 
 static NfcCommand bridge_listener_callback(NfcEvent event, void* context) {

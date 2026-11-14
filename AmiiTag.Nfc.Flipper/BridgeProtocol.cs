@@ -23,10 +23,11 @@ public static class BridgeProtocol
     public const string ProductName = "NFC Bridge";
 
     /// <summary>
-    /// How long the Flipper waits for an answer before staying silent. Readers usually give up after 5-10 ms, so the
-    /// host must answer well within that anyway; this only bounds how long a lost answer blocks the Flipper.
+    /// How long the Flipper waits for an answer before staying silent. Answers normally take well under a millisecond;
+    /// this covers a host hiccup: a late answer (a WRITE's ACK, say) usually still satisfies the reader, while silence
+    /// makes it give up.
     /// </summary>
-    public static readonly TimeSpan DefaultAnswerTimeout = TimeSpan.FromMilliseconds(25);
+    public static readonly TimeSpan DefaultAnswerTimeout = TimeSpan.FromMilliseconds(100);
 }
 
 public enum BridgeMessageType : byte

@@ -262,6 +262,11 @@ internal sealed class PluginBleConnection : IBleConnection
         }
     }
 
+    /// <summary>
+    /// The longest each disconnect step waits on the device; one that has restarted or gone may never answer.
+    /// </summary>
+    private static readonly TimeSpan DisconnectStepTimeout = TimeSpan.FromSeconds(2);
+
     public async Task DisconnectAsync()
     {
         // Turn notifications off first: Windows keeps the link up while any subscription (or service object) is alive,
@@ -277,7 +282,7 @@ internal sealed class PluginBleConnection : IBleConnection
         {
             try
             {
-                await characteristic.StopNotificationsAsync();
+                await characteristic.StopNotificationsAsync().WaitAsync(DisconnectStepTimeout);
             }
             catch
             {
@@ -289,10 +294,11 @@ internal sealed class PluginBleConnection : IBleConnection
 
         try
         {
-            await _adapter.DisconnectDeviceAsync(_device);
+            await _adapter.DisconnectDeviceAsync(_device).WaitAsync(DisconnectStepTimeout);
         }
         catch
         {
+            // Includes a device that restarted or went out of range: Windows can wait a long time for it.
         }
         finally
         {
@@ -383,8 +389,18 @@ internal sealed class PluginBleCharacteristic : IBleCharacteristic
         var native = Native;
         native.WriteType = withResponse ? CharacteristicWriteType.WithResponse : CharacteristicWriteType.WithoutResponse;
         cancellationToken.ThrowIfCancellationRequested();
-        await native.WriteAsync(data);
+        try
+        {
+            // A device that drops the link before confirming a write can leave Windows waiting a long time.
+            await native.WriteAsync(data).WaitAsync(WriteTimeout, cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            throw new TimeoutException("The device didn't confirm the write.");
+        }
     }
+
+    private static readonly TimeSpan WriteTimeout = TimeSpan.FromSeconds(5);
 
     public async Task<byte[]> ReadAsync(CancellationToken cancellationToken = default)
     {

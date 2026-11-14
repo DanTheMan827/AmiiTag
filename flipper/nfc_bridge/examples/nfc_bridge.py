@@ -311,16 +311,16 @@ class NfcBridge:
     DEFAULT_LISTEN = LISTEN_STRIP_CRC | LISTEN_HANDLE_HLTA | LISTEN_NOTIFY_TABLE_HITS
 
     def listen_a(self, uid: bytes, atqa: bytes = b"\x44\x00", sak: int = 0x00, flags: int = DEFAULT_LISTEN,
-                 timeout_ms: int = 25):
+                 timeout_ms: int = 100):
         if len(uid) not in (4, 7, 10):
             raise ValueError("UIDs are 4, 7 or 10 bytes")
         self._control(LISTEN, struct.pack("<BBH", TECH_A, flags, timeout_ms) + bytes([len(uid)]) + uid + atqa + bytes([sak]))
 
-    def listen_v(self, flags: int = LISTEN_STRIP_CRC | LISTEN_NOTIFY_TABLE_HITS, timeout_ms: int = 25):
+    def listen_v(self, flags: int = LISTEN_STRIP_CRC | LISTEN_NOTIFY_TABLE_HITS, timeout_ms: int = 100):
         self._control(LISTEN, struct.pack("<BBH", TECH_V, flags, timeout_ms))
 
     def listen_f(self, idm: bytes, pmm: bytes, system_code: int = 0xFFFF,
-                 flags: int = LISTEN_STRIP_CRC | LISTEN_NOTIFY_TABLE_HITS, timeout_ms: int = 25):
+                 flags: int = LISTEN_STRIP_CRC | LISTEN_NOTIFY_TABLE_HITS, timeout_ms: int = 100):
         self._control(LISTEN, struct.pack("<BBH", TECH_F, flags, timeout_ms) + idm + pmm + struct.pack("<H", system_code))
 
     def answer(self, frame: Frame | int, data: bytes = b"", bits: int | None = None, add_crc: bool = True,

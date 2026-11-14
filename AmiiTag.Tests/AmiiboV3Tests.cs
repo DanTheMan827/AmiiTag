@@ -401,6 +401,28 @@ public class AmiiboV3Tests
     }
 
     [Fact]
+    public async Task ReadV3_AsksARealFigureForItsLockOnLikeASwitch()
+    {
+        // A real figure waits in pass-through mode, direction NFC -> I²C, until the reader writes a request to SRAM.
+        var raw = Figure(LockOnPayload()).Span.ToArray();
+        raw[0xEC * 4] |= AmiiboV3NfcOperations.NcPassThroughDirNfcToI2c;
+        Assert.True(AmiiboImage.TryParse(raw, out var image));
+        var tag = NtagI2cPlusSimulator.FromAmiiboImage(Assert.IsType<AmiiboV3Dump>(image));
+        tag.SramReadyAfterSessionReads = 3;
+        await using var connection = new SimulatedTagConnection(tag);
+
+        var read = await AmiiboV3NfcOperations.ReadV3Async(connection);
+
+        // The request a Switch sends (type 01, zeros, CRC A4 03), in one FAST_WRITE of F0-FF.
+        Assert.Equal(AmiiboV3NfcOperations.LockOnRequest, tag.LastSramRequest);
+        Assert.Equal(0x01, AmiiboV3NfcOperations.LockOnRequest[0]);
+        Assert.Equal(new byte[] { 0xA4, 0x03 }, AmiiboV3NfcOperations.LockOnRequest[^2..]);
+        Assert.Single(tag.CommandLog, c => c[0] == AmiiboV3NfcOperations.CmdFastWrite);
+        Assert.DoesNotContain(tag.CommandLog, c => c[0] == 0xA2 && c[1] >= 0xF0);
+        Assert.True(read.HasLockOn);
+    }
+
+    [Fact]
     public async Task ReadV3_GivesUpOnTheLockOnAfterTheTimeout()
     {
         var tag = NtagI2cPlusSimulator.FromImage(Figure(LockOnPayload()));
@@ -449,5 +471,63 @@ public class AmiiboV3Tests
         var read = Assert.IsType<AmiiboV3Dump>(await AmiiboV3NfcOperations.ReadAnyAsync(connection, cancellationToken: cts.Token));
         Assert.Equal(figure.Data, read.Data);
         Assert.Equal(figure.LockOn, read.LockOn);
+    }
+
+    // ---------------------------------------------------------------- Emulation
+
+    [Fact]
+    public void AmiiboModel_AcceptsTheConsolesPassword()
+    {
+        // Images hold PWD/PACK as zeros (they can't be read); a console sends the password derived from the UID.
+        var figure = Figure();
+        var password = NtagUid.AmiiboPassword(NtagUid.FromSevenByteUid(V3Uid));
+
+        var plain = NtagI2cPlusSimulator.FromImage(figure);
+        Assert.Equal(TagResponseKind.Nak, plain.Transceive([0x1B, .. password]).Kind);
+
+        var amiibo = NtagI2cPlusSimulator.FromAmiiboImage(figure);
+        var pack = amiibo.Transceive([0x1B, .. password]);
+        Assert.Equal(TagResponseKind.Data, pack.Kind);
+        Assert.Equal(new byte[] { 0x80, 0x80 }, pack.Data);
+        Assert.True(amiibo.IsAuthenticated);
+
+        // What the console reads is unchanged (the refused one halted after its NAK: reselect it).
+        plain.Activate();
+        Assert.Equal(plain.Transceive([0x3A, 0x00, 0x3F]).Data, amiibo.Transceive([0x3A, 0x00, 0x3F]).Data);
+    }
+
+    [Fact]
+    public void AmiiboModel_AcknowledgesTheConsolesSramRequest()
+    {
+        // The console writes its 64 byte lock-on request to SRAM with FAST_WRITE; the stored response stays.
+        var figure = Figure(LockOnPayload());
+        var tag = NtagI2cPlusSimulator.FromAmiiboImage(figure);
+        var request = Enumerable.Range(0, 64).Select(i => (byte)i).ToArray();
+
+        var ack = tag.Transceive([NtagI2cPlusSimulator.CmdFastWrite, 0xF0, 0xFF, .. request]);
+
+        Assert.Equal(TagResponseKind.Ack, ack.Kind);
+        Assert.Equal(request, tag.LastSramRequest);
+        Assert.Equal(TagResponseKind.Nak, NtagI2cPlusSimulator.FromAmiiboImage(figure)
+            .Transceive([NtagI2cPlusSimulator.CmdFastWrite, 0x10, 0x1F, .. request]).Kind);
+    }
+
+    [Fact]
+    public void AmiiboModel_TakesGameSavesInSectorOne()
+    {
+        // A Switch saves into sector 1 after PWD_AUTH and SECTOR_SELECT 1, although the lock bits say it's locked.
+        var figure = Figure();
+        var password = NtagUid.AmiiboPassword(NtagUid.FromSevenByteUid(V3Uid));
+        var tag = NtagI2cPlusSimulator.FromAmiiboImage(figure);
+
+        tag.Transceive([0x1B, .. password]);
+        Assert.Equal(TagResponseKind.Ack, tag.Transceive([0xC2, 0xFF]).Kind);
+        Assert.Equal(TagResponseKind.None, tag.Transceive([0x01, 0x00, 0x00, 0x00]).Kind);
+        Assert.Equal(TagResponseKind.Ack, tag.Transceive([0xA2, 0x32, 0xFF, 0xFF, 0xFF, 0xFF]).Kind);
+        Assert.Equal(new byte[] { 0xFF, 0xFF, 0xFF, 0xFF }, tag.GetPage(1, 0x32));
+
+        // The lock bytes the console reads are unchanged, and the datasheet model still enforces them.
+        Assert.Equal(NtagI2cPlusSimulator.FromImage(figure).GetPage(0, 0xE2), tag.GetPage(0, 0xE2));
+        Assert.True(NtagI2cPlusSimulator.FromImage(figure).IsPageLocked(1, 0x32));
     }
 }

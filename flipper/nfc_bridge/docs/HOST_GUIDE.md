@@ -11,13 +11,18 @@ A host to start from:
 Match all of these, because the VID/PID pair is a shared test ID:
 
 - VID `0x1209` and PID `0x0001`.
-- Usage page `0xFF41` (usage `0x01`), or the product string `NFC Bridge`.
+- The product string `NFC Bridge`, or an interface below: HID usage page `0xFF41` (usage `0x01`), or the vendor bulk interface 1.
+
+Prefer the bulk interface where you can reach it: it removes HID's one-packet-per-millisecond limit, which matters for large answers such as a 240-byte FAST_READ (see Latency).
 
 The device appears when the app starts on the Flipper and disappears when it exits, so watch for hotplug rather than enumerating once.
 
 | Platform | API | Notes |
 |---|---|---|
-| Windows | HID class driver (`hid.dll`, `CreateFile` + `WriteFile`/`ReadFile`, or hidapi / HidSharp) | No driver to install. Writes and reads carry a leading report ID byte (`0`), so buffers are 65 bytes. |
+| Windows (bulk) | WinUSB: find the device interface GUID `{C4A1D7E2-5B3F-4E88-9D21-6F0A3B7C9E14}` with SetupAPI, `CreateFile` it with `FILE_FLAG_OVERLAPPED`, `WinUsb_Initialize`, then `WinUsb_WritePipe(0x02)` and `WinUsb_ReadPipe(0x82)` | Windows binds WinUSB by itself from the Microsoft OS 2.0 descriptors. If you plugged in an older build of the app, a new device revision makes Windows read them again. |
+| Windows (HID) | HID class driver (`hid.dll`, `CreateFile` + `WriteFile`/`ReadFile`, or hidapi / HidSharp) | No driver to install. Writes and reads carry a leading report ID byte (`0`), so buffers are 65 bytes. |
+| macOS, Linux (bulk) | libusb: claim interface 1, bulk transfers on `0x02` / `0x82` | Linux needs the udev rule below. |
+| Browsers (bulk) | WebUSB: `requestDevice({filters: [{vendorId: 0x1209, productId: 0x0001}]})`, `claimInterface(1)`, `transferOut(2, ...)`, `transferIn(2, 64)` | Chrome and Edge. |
 | macOS | IOKit `IOHIDManager` (or hidapi / HidSharp) | Sandboxed apps need the `com.apple.security.device.usb` entitlement. |
 | Linux | `hidraw` (hidapi's hidraw backend) | Install the udev rule below for access without root. |
 | Browsers (Chrome, Edge) | WebHID | See the snippet below; needs HTTPS or localhost. |
@@ -29,7 +34,10 @@ Save as `/etc/udev/rules.d/70-nfc-bridge.rules` (also in [`examples/70-nfc-bridg
 
 ```
 SUBSYSTEM=="hidraw", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="0001", MODE="0660", TAG+="uaccess"
+SUBSYSTEM=="usb", ATTRS{idVendor}=="1209", ATTRS{idProduct}=="0001", MODE="0660", TAG+="uaccess"
 ```
+
+The first line covers HID (hidapi), the second the bulk interface (libusb).
 
 ### WebHID
 
@@ -49,16 +57,17 @@ await device.sendReport(0, report64); // report ID 0, 64-byte Uint8Array
 
 Card emulation is a race against the reader's timeout. Each relayed frame costs:
 
-| Cost | Typical time |
-|---|---|
-| Flipper → host | Up to 1 ms of USB polling, plus OS scheduling |
-| Host computes the answer | Hopefully microseconds |
-| Host → Flipper | Up to 1 ms of USB polling |
-| Flipper transmits | Immediately |
+| Cost | HID | Bulk |
+|---|---|---|
+| Flipper → host | Up to 1 ms of polling per packet, plus OS scheduling | Well under 1 ms |
+| Host computes the answer | Hopefully microseconds | Same |
+| Host → Flipper | 1 ms per 64-byte packet: a 240-byte answer needs 5 packets, about 5 ms | All packets in the same millisecond |
+| Flipper transmits | Immediately | Same |
 
-Expect about 2–4 ms in total. To keep it there:
+Over HID, expect about 2 ms for short answers and about 1 ms more per 58 bytes of answer. Over bulk, expect 1–2 ms whatever the size. To keep it there:
 
-- **Read on a dedicated thread** that blocks on the HID read, and answer from that thread. Thread pool hops and UI dispatching add milliseconds.
+- **Use the bulk interface** for anything with large answers.
+- **Read on a dedicated thread** that blocks on the read, and answer from that thread. Thread pool hops and UI dispatching add milliseconds.
 - **Precompute answers** and keep tag state in memory. Never do I/O, logging to disk, or locking against the UI on the answer path. Queue the log and write it elsewhere.
 - **Put static answers in the answer table** (READs of read-only memory, GET_VERSION, READ_SIG, select responses of ISO 14443-4 apps). Table hits cost a few µs, and with NotifyTableHits you still see them in your log.
 - **Watch STATUS:** `timeouts` counts frames whose answer took longer than the LISTEN timeout, `late` counts answers that arrived after that, and `worst round trip` is the slowest relayed frame.

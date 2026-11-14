@@ -310,9 +310,19 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
         }
 
         _name = name;
-        await SendAndReceiveAsync([Cmd.SetBluetoothName, .. bytes], cancellationToken: cancellationToken);
+        try
+        {
+            await SendAndReceiveAsync([Cmd.SetBluetoothName, .. bytes], timeout: RenameReplyTimeout, cancellationToken: cancellationToken);
+        }
+        catch (TimeoutException)
+        {
+            // The puck applies the name and restarts its Bluetooth, often before answering (or confirming the write).
+        }
+
         await DisconnectAsync();
     }
+
+    private static readonly TimeSpan RenameReplyTimeout = TimeSpan.FromSeconds(2);
 
     public async Task EnableUartAsync(CancellationToken cancellationToken = default)
     {

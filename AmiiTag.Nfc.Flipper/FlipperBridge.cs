@@ -56,7 +56,46 @@ public sealed class FlipperBridge : IAsyncDisposable
 
     public bool IsRunning => _readLoop is { IsCompleted: false };
 
-    public void Start() => _readLoop ??= Task.Run(ReadLoopAsync);
+    public void Start()
+    {
+        if (_readLoop != null)
+        {
+            return;
+        }
+
+        if (_transport is IBridgeReportSource source)
+        {
+            // Frames are answered on the transport's own thread: no thread pool hop between a frame and its answer.
+            var done = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            _readLoop = done.Task;
+            source.StartReports(OnReport, error =>
+            {
+                Finish(error);
+                done.TrySetResult();
+            });
+        }
+        else
+        {
+            _readLoop = Task.Run(ReadLoopAsync);
+        }
+    }
+
+    private void OnReport(byte[] report)
+    {
+        if (_stop.IsCancellationRequested || !_assembler.TryAdd(report, out var message))
+        {
+            return;
+        }
+
+        try
+        {
+            Handle(message);
+        }
+        catch (Exception ex)
+        {
+            DeviceLog?.Invoke($"Couldn't handle a {message.Type} message: {ex.Message}");
+        }
+    }
 
     // ---- control ----
 
@@ -273,12 +312,11 @@ public sealed class FlipperBridge : IAsyncDisposable
     private void Send(BridgeMessageType type, byte sequence, ReadOnlySpan<byte> payload)
     {
         var reports = BridgeFraming.Encode(type, sequence, payload);
+        var message = reports.Count == 1 ? reports[0] : reports.SelectMany(report => report).ToArray();
         lock (_writeLock)
         {
-            foreach (var report in reports)
-            {
-                _transport.Write(report);
-            }
+            // The whole message in one write: over bulk its packets leave in the same millisecond.
+            _transport.Write(message);
         }
     }
 
@@ -302,6 +340,18 @@ public sealed class FlipperBridge : IAsyncDisposable
         catch (Exception ex)
         {
             error = ex;
+        }
+
+        Finish(error);
+    }
+
+    private int _finished;
+
+    private void Finish(Exception? error)
+    {
+        if (Interlocked.Exchange(ref _finished, 1) != 0)
+        {
+            return;
         }
 
         var failure = error ?? new OperationCanceledException();

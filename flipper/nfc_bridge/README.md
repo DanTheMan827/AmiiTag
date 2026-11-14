@@ -21,7 +21,11 @@ The app runs on the firmware's technology-level `Nfc` API, one layer below the p
 
 **Reader mode:** the Flipper is a reader. The host sends TRANSCEIVE requests (any bit length, optional CRC, custom parity, type A short and anticollision frames) and gets each response with its timing.
 
-**Transport:** a vendor-defined USB HID interface with 64-byte reports and 1 ms interrupt endpoints. No driver is needed on Windows, macOS or Linux, and it works from browsers through WebHID. While the app runs, it replaces the Flipper's USB serial port, so qFlipper and the CLI come back when you exit.
+**Transport:** two USB interfaces carrying the same 64-byte packets.
+- **HID:** works everywhere with no driver, including browsers through WebHID, but moves one packet per millisecond.
+- **Vendor bulk:** moves many packets per millisecond. Windows binds its WinUSB driver to it automatically; elsewhere use libusb or WebUSB.
+
+While the app runs, it replaces the Flipper's USB serial port, so qFlipper and the CLI come back when you exit.
 
 ## Documentation
 
@@ -70,7 +74,7 @@ FeliCa card emulation needs `nfc_felica_listener_set_sensf_res_data`. On older f
 
 ## Timing in one paragraph
 
-Relaying a frame costs one USB round trip, about 2–4 ms. That is fine for ISO 14443-A after selection, where readers usually wait 5 ms or more and 14443-4 cards can ask for seconds, and for FeliCa with a generous PMm. It is far too slow for ISO 15693, which must answer within about 320 µs, so preload those answers into the table. Reader mode has no timing constraints. The host guide has the details and tips.
+Relaying a frame costs one USB round trip: 1–2 ms over the bulk interface, and over HID about 2 ms plus 1 ms per 58 bytes of answer (a 240-byte FAST_READ takes about 5 ms, too slow for the Switch, for example). That is fine for ISO 14443-A after selection, where readers usually wait 5 ms or more and 14443-4 cards can ask for seconds, and for FeliCa with a generous PMm. It is far too slow for ISO 15693, which must answer within about 320 µs, so preload those answers into the table. Reader mode has no timing constraints. The host guide has the details and tips.
 
 ## Limitations
 

@@ -50,6 +50,7 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
     public const byte CmdReadSig = 0x3C;
     public const byte CmdSectorSelect = 0xC2;
     public const byte CmdHalt = 0x50;
+    public const byte CmdFastWrite = 0xA6;
 
     public const int SectorPages = 256;
     public const int Sectors = 2;
@@ -127,6 +128,22 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
     }
 
     public static NtagI2cPlusSimulator FromImage(AmiiboV3Dump image) => new(image.Span);
+
+    /// <summary>
+    /// A v3 amiibo as consoles expect it: the image plus PWD derived from the UID and PACK 80 80 (images can't hold the
+    /// real values: PWD and PACK always read back as zeros, so a plain <see cref="FromImage"/> refuses consoles), with
+    /// sector 1 writable for game saves (<see cref="Sector1Writable"/>).
+    /// </summary>
+    public static NtagI2cPlusSimulator FromAmiiboImage(AmiiboV3Dump image)
+    {
+        var raw = image.Span.ToArray();
+        NtagUid.AmiiboPassword(NtagUid.FromSevenByteUid(image.Uid)).CopyTo(raw, PwdPage * 4);
+        raw[PackPage * 4] = 0x80;
+        raw[PackPage * 4 + 1] = 0x80;
+        raw[PackPage * 4 + 2] = 0x00;
+        raw[PackPage * 4 + 3] = 0x00;
+        return new NtagI2cPlusSimulator(raw) { Sector1Writable = true };
+    }
 
     /// <summary>
     /// An unconfigured NT3H2211: zeroed user memory and CC, no locks, protection off (AUTH0 FFh), AUTHLIM off,
@@ -222,7 +239,7 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
 
         if (sector == 1)
         {
-            return (dyn2 & (1 << (page / 32))) != 0;
+            return !Sector1Writable && (dyn2 & (1 << (page / 32))) != 0;
         }
 
         return page switch
@@ -314,9 +331,40 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
             case CmdPwdAuth when command.Length == 5:
                 return PasswordAuth(command[1..5]);
 
+            case CmdFastWrite when command.Length == 3 + 64:
+                return FastWrite(command[1], command[2], command[3..]);
+
             default:
                 return TagResponse.Nak(TagResponse.NakInvalidArgument);
         }
+    }
+
+    /// <summary>
+    /// The last 64 byte request a reader wrote to SRAM with FAST_WRITE (a v3 console's lock-on request).
+    /// </summary>
+    public byte[]? LastSramRequest { get; private set; }
+
+    /// <summary>
+    /// Ignore the sector 1 lock bits (dynamic lock byte 2). Amiibo set them all (E2 reads 01 00 FF 00), yet a Switch
+    /// saves game data into sector 1, and the emulators known to work with it (pixl.js, Amiibo Zero) accept those
+    /// writes; <see cref="FromAmiiboImage"/> does the same. The lock bytes still read back unchanged.
+    /// </summary>
+    public bool Sector1Writable { get; set; }
+
+    /// <summary>
+    /// FAST_WRITE of the whole SRAM (F0-FF, sector 0): the console's lock-on request. A v3 figure's microcontroller
+    /// would answer it through SRAM; here the stored lock-on response stays in place (as pixl.js and Amiibo Zero do),
+    /// so the request is acknowledged and kept for inspection.
+    /// </summary>
+    private TagResponse FastWrite(int start, int end, ReadOnlySpan<byte> data)
+    {
+        if (_sector != 0 || start != SramFirstPage || end != SramLastPage)
+        {
+            return TagResponse.Nak(TagResponse.NakInvalidArgument);
+        }
+
+        LastSramRequest = data.ToArray();
+        return TagResponse.Ack;
     }
 
     private bool IsProtected(int page) =>

@@ -49,7 +49,11 @@ namespace AmiiTag.Maui
             builder.Services.AddSingleton<IFigureImageProvider, MauiFigureImageProvider>();
             builder.Services.AddSingleton<IQrScanner, CameraQrScanner>();
             builder.Services.AddSingleton<IBleAdapter, PluginBleAdapter>();
-#if WINDOWS || MACCATALYST
+            // Flipper NFC Bridge: the fast bulk interface through WinUSB on Windows, HID otherwise (and as fallback).
+#if WINDOWS
+            builder.Services.AddSingleton<AmiiTag.Nfc.Flipper.IFlipperTransportProvider>(_ =>
+                new CompositeFlipperTransportProvider(new WinUsbFlipperTransportProvider(), new HidFlipperTransportProvider()));
+#elif MACCATALYST
             builder.Services.AddSingleton<AmiiTag.Nfc.Flipper.IFlipperTransportProvider, HidFlipperTransportProvider>();
 #endif
 
