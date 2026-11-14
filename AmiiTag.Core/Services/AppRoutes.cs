@@ -56,6 +56,15 @@ public static class AppRoutes
         new(typeof(DevicePage), title, $"device/{Uri.EscapeDataString(deviceId)}",
             new Dictionary<string, object?> { [nameof(DevicePage.DeviceId)] = deviceId });
 
+    public static AppRoute N2Elite() =>
+        new(typeof(N2ElitePage), "N2 Elite", "n2elite", NoParameters, RoutePresentation.Modal);
+
+    /// <summary>
+    /// The Flipper Zero emulation and its traffic log (<see cref="FlipperEmulationService"/>).
+    /// </summary>
+    public static AppRoute Emulate() =>
+        new(typeof(EmulatePage), "Emulate", "emulate", NoParameters, RoutePresentation.Modal);
+
     public static AppRoute Settings() =>
         new(typeof(SettingsPage), "Settings", "settings", NoParameters, RoutePresentation.Modal);
 }

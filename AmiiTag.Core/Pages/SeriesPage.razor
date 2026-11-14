@@ -1,6 +1,9 @@
 @page "/library/{SeriesId}"
 @inject IDatabaseContainer DatabaseContainer
 @inject IAppNavigator Navigator
+@inject ContextMenus Menus
+@inject TagActions Actions
+@inject IDialogService Dialogs
 
 <AppPage Title="@_title" Wide="true">
     @if (_figures.Count == 0)
@@ -12,8 +15,12 @@
         <ul class="list grid">
             @foreach (var figure in _figures)
             {
+                var items = FigureItems(figure);
                 <li>
-                    <button type="button" class="list-row with-image" @onclick="() => OpenFigure(figure)">
+                    <button type="button" class="list-row with-image"
+                            @onpointerdown="Menus.TrackPointer"
+                            @onclick="e => Menus.ClickAsync(e, figure.Name, items, tapShowsMenu: false)"
+                            @oncontextmenu="e => Menus.ShowAsync(e, figure.Name, items)" @oncontextmenu:preventDefault="true">
                         <FigureImage Figure="figure" Class="list-row-image" />
                         <span class="list-row-title">@figure.Name</span>
                     </button>
@@ -44,4 +51,45 @@
     }
 
     private Task OpenFigure(AmiiboFigure figure) => Navigator.NavigateAsync(AppRoutes.Figure(figure.Id.Id, figure.Name));
+
+    /// <summary>
+    /// Open is what a click does on desktop; writing or saving a freshly generated tag is in the context menu.
+    /// </summary>
+    private IReadOnlyList<ContextMenuItem> FigureItems(AmiiboFigure figure) =>
+    [
+        new("Open", () => OpenFigure(figure), IsDefault: true),
+        new("Write Tag", async () =>
+        {
+            if (await CreateAsync(figure) is { } image)
+            {
+                await Actions.WriteTagAsync(image);
+            }
+        }),
+        new("Save File", async () =>
+        {
+            if (await CreateAsync(figure) is { } image)
+            {
+                await Actions.SaveTagAsync(image);
+            }
+        }),
+    ];
+
+    private async Task<IAmiiboImage?> CreateAsync(AmiiboFigure figure)
+    {
+        try
+        {
+            var image = await Actions.CreateFromFigureAsync(figure);
+            if (image == null && await Dialogs.ConfirmAsync("Keys needed", "Generating a tag needs both amiibo keys. Load them in Settings?", "Settings", "Cancel"))
+            {
+                await Navigator.NavigateAsync(AppRoutes.Settings());
+            }
+
+            return image;
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.AlertAsync("Couldn't create the tag", ex.Message);
+            return null;
+        }
+    }
 }

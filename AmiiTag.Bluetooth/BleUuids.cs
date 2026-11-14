@@ -17,6 +17,11 @@ public static class BleUuids
     /// </summary>
     public static readonly Guid NordicUartNotify = Guid.Parse("6e400003-b5a3-f393-e0a9-e50e24dcca9e");
 
+    /// <summary>
+    /// Advertised (not served) by V2 AmiiboLinks: the UART UUID with 0000180F as its first group.
+    /// </summary>
+    public static readonly Guid AmiiboLinkV2AdvertisedService = Guid.Parse("0000180f-b5a3-f393-e0a9-e50e24dcca9e");
+
     public static readonly Guid LegacyPuckService = Guid.Parse("78290001-d52e-473f-a9f4-f03da7c67dd1");
     public static readonly Guid LegacyPuckCommand = Guid.Parse("78290002-d52e-473f-a9f4-f03da7c67dd1");
     public static readonly Guid LegacyPuckResponse = Guid.Parse("78290003-d52e-473f-a9f4-f03da7c67dd1");
@@ -27,9 +32,9 @@ public static class BleUuids
     /// </summary>
     public static BleScanFilter TagDeviceFilter { get; } = new()
     {
-        Services = [NordicUartService, LegacyPuckService],
-        Names = ["amiibolink"],
-        NamePrefixes = ["AmiLoop", "amiibolink", "Puck.js"],
+        Services = [NordicUartService, LegacyPuckService, AmiiboLinkV2AdvertisedService],
+        Names = ["amiibolink", "Pixl.js"],
+        NamePrefixes = ["AmiLoop", "amiibolink", "Puck.js", "Pixl"],
         OptionalServices = [NordicUartService, LegacyPuckService],
     };
 

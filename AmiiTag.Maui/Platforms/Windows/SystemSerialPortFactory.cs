@@ -1,5 +1,6 @@
 using System.IO.Ports;
 using System.Threading.Channels;
+using Microsoft.Win32;
 using AmiiTag.Nfc;
 using AmiiTag.Nfc.Mfrc522;
 
@@ -8,14 +9,24 @@ namespace AmiiTag.Maui.NfcProviders;
 /// <summary>
 /// COM ports through System.IO.Ports, for an MFRC522 on a USB serial adapter (driven directly in UART mode).
 /// </summary>
+/// <remarks>
+/// Ports of a Flipper Zero are left out: probing its USB serial (CLI) port with MFRC522 commands crashes it.
+/// </remarks>
 public sealed class SystemSerialPortFactory : ISerialPortFactory
 {
+    /// <summary>
+    /// The Flipper Zero's USB serial ID (its CLI). Composite variants (&amp;MI_xx) match too.
+    /// </summary>
+    private const string FlipperUsbId = "VID_0483&PID_5740";
+
     public bool IsSupported => true;
 
     public Task<IReadOnlyList<NfcReaderInfo>> GetPortsAsync(CancellationToken cancellationToken = default)
     {
+        var excluded = FlipperPorts();
         IReadOnlyList<NfcReaderInfo> ports = SerialPort.GetPortNames()
             .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Where(name => !excluded.Contains(name))
             .OrderBy(name => name.Length)
             .ThenBy(name => name, StringComparer.OrdinalIgnoreCase)
             .Select(name => new NfcReaderInfo(name, name))
@@ -23,8 +34,53 @@ public sealed class SystemSerialPortFactory : ISerialPortFactory
         return Task.FromResult(ports);
     }
 
+    /// <summary>
+    /// The COM ports Windows has assigned to a Flipper Zero, from the USB device entries in the registry.
+    /// </summary>
+    private static HashSet<string> FlipperPorts()
+    {
+        var ports = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        try
+        {
+            using var usb = Registry.LocalMachine.OpenSubKey(@"SYSTEM\CurrentControlSet\Enum\USB");
+            if (usb == null)
+            {
+                return ports;
+            }
+
+            foreach (var deviceName in usb.GetSubKeyNames())
+            {
+                if (!deviceName.StartsWith(FlipperUsbId, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                using var device = usb.OpenSubKey(deviceName);
+                foreach (var instance in device?.GetSubKeyNames() ?? [])
+                {
+                    using var parameters = device!.OpenSubKey(instance + @"\Device Parameters");
+                    if (parameters?.GetValue("PortName") is string portName)
+                    {
+                        ports.Add(portName);
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // No access to the device registry: list every port.
+        }
+
+        return ports;
+    }
+
     public Task<ISerialPortStream> OpenAsync(string portId, int baudRate, CancellationToken cancellationToken = default)
     {
+        if (FlipperPorts().Contains(portId))
+        {
+            throw new NfcException($"{portId} is a Flipper Zero, not an MFRC522 reader.");
+        }
+
         var port = new SerialPort(portId, baudRate)
         {
             ReadTimeout = SerialPort.InfiniteTimeout,

@@ -1,16 +1,4 @@
-﻿.text-color {
-    --text-color: #000;
-    fill: var(--text-color);
-}
-
-@media (prefers-color-scheme: dark) {
-    .text-color {
-        --text-color: #fff;
-    }
-}
-
-@media (prefers-color-scheme: light) {
-    .text-color {
-        --text-color: #000;
-    }
+﻿/* The wordmark follows the page's text colour (white in dark mode, near black in light mode). */
+.text-color {
+    fill: var(--text, #000);
 }

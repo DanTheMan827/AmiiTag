@@ -1,0 +1,11 @@
+App(
+    appid="nfc_bridge",
+    name="NFC Bridge",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="nfc_bridge_app",
+    requires=["gui"],
+    stack_size=4 * 1024,
+    fap_category="USB",
+    fap_version="2.0",
+    fap_description="General purpose NFC bridge over USB HID: card emulation and reader modes for ISO 14443-A/B, ISO 15693 and FeliCa",
+)

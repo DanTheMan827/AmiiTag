@@ -2,7 +2,7 @@ namespace AmiiTag.Tags;
 
 /// <summary>
 /// The 64 byte SRAM response a v3 figure's lock-on part serves at sector 0 pages F0-FF (pass-through mode):
-/// a 62 byte body followed by its CRC16/MCRF4XX (stored little endian).
+/// a 62 byte body followed by its CRC16/MCRF4XX (stored big endian, as Pixl.js does; little endian is accepted too).
 /// </summary>
 /// <remarks>
 /// Layout as described by AmiiboZero: payloads of 1-62 bytes are zero padded to the 62 byte body and given a CRC;
@@ -31,9 +31,10 @@ public static class LockOnResponse
 
         var response = new byte[Length];
         payload[..Math.Min(payload.Length, BodyLength)].CopyTo(response);
+        // Big endian, as the Pixl.js v3 emulator (which consoles accept) stores it at 0x3FE-0x3FF.
         var crc = Crc16Mcrf4xx(response.AsSpan(0, BodyLength));
-        response[BodyLength] = (byte)crc;
-        response[BodyLength + 1] = (byte)(crc >> 8);
+        response[BodyLength] = (byte)(crc >> 8);
+        response[BodyLength + 1] = (byte)crc;
         return response;
     }
 
@@ -44,8 +45,10 @@ public static class LockOnResponse
             return false;
         }
 
+        // Either byte order: responses generated before this followed AmiiboZero's notes (little endian).
         var crc = Crc16Mcrf4xx(response[..BodyLength]);
-        return response[BodyLength] == (byte)crc && response[BodyLength + 1] == (byte)(crc >> 8);
+        return (response[BodyLength] == (byte)(crc >> 8) && response[BodyLength + 1] == (byte)crc) ||
+               (response[BodyLength] == (byte)crc && response[BodyLength + 1] == (byte)(crc >> 8));
     }
 
     /// <summary>

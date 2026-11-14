@@ -33,12 +33,24 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Bluetooth", "AmiiTa
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Tests", "AmiiTag.Tests\AmiiTag.Tests.csproj", "{6D3A4F2E-9B1C-4E5A-8F7D-2C1B0A9E8D71}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Simulation", "AmiiTag.Simulation\AmiiTag.Simulation.csproj", "{3F1B6C2A-7D4E-4A8B-9C05-1E2D3F4A5B61}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Nfc.Flipper", "AmiiTag.Nfc.Flipper\AmiiTag.Nfc.Flipper.csproj", "{8C2E4A6B-1F3D-4E5A-B7C9-2D4F6A8B0C72}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3F1B6C2A-7D4E-4A8B-9C05-1E2D3F4A5B61}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3F1B6C2A-7D4E-4A8B-9C05-1E2D3F4A5B61}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3F1B6C2A-7D4E-4A8B-9C05-1E2D3F4A5B61}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3F1B6C2A-7D4E-4A8B-9C05-1E2D3F4A5B61}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8C2E4A6B-1F3D-4E5A-B7C9-2D4F6A8B0C72}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8C2E4A6B-1F3D-4E5A-B7C9-2D4F6A8B0C72}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8C2E4A6B-1F3D-4E5A-B7C9-2D4F6A8B0C72}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8C2E4A6B-1F3D-4E5A-B7C9-2D4F6A8B0C72}.Release|Any CPU.Build.0 = Release|Any CPU
 		{164A0AC7-87A9-4914-BED7-487D98367900}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{164A0AC7-87A9-4914-BED7-487D98367900}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{164A0AC7-87A9-4914-BED7-487D98367900}.Release|Any CPU.ActiveCfg = Release|Any CPU

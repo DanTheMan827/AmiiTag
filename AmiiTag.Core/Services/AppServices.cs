@@ -264,7 +264,12 @@ public static class ServiceCollectionExtensions
             return new TagDeviceDetector(() => keys.RawKeys);
         });
         services.AddSingleton<BleDeviceManager>();
+        services.AddSingleton<N2EliteService>();
+        services.AddSingleton<FlipperEmulationService>();
         services.AddSingleton<TagActions>();
+
+        // Per web view (each MAUI screen has its own), so the in-page menu shows on the screen that asked.
+        services.AddScoped<ContextMenus>();
         return services;
     }
 }

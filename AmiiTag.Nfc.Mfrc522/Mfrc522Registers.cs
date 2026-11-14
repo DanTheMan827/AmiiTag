@@ -29,6 +29,17 @@ public static class Mfrc522Reg
     public const byte CrcResultL = 0x22;
     public const byte ModWidth = 0x24;
     public const byte RfCfg = 0x26;
+    public const byte GsN = 0x27;
+    public const byte CWGsP = 0x28;
+
+    /// <summary>RfCfg RxGain = 48 dB (the maximum; the reset value is 33 dB).</summary>
+    public const byte RxGainMax = 0x70;
+
+    /// <summary>GsN: CWGsN at its maximum (bits 7-4) for a stronger field, ModGsN left at its reset value (8).</summary>
+    public const byte GsNMax = 0xF8;
+
+    /// <summary>CWGsP: P-driver conductance at its maximum (the reset value is 0x20).</summary>
+    public const byte CWGsPMax = 0x3F;
     public const byte TMode = 0x2A;
     public const byte TPrescaler = 0x2B;
     public const byte TReloadH = 0x2C;

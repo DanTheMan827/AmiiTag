@@ -80,6 +80,11 @@ public sealed class Ntag215Client
                 try
                 {
                     chunk = await _connection.TransceiveAsync([CmdFastRead, (byte)page, (byte)batchEnd], cancellationToken);
+                    if (chunk.Length == 1)
+                    {
+                        throw new NfcNakException(chunk[0], $"The tag refused FAST_READ {page:X2}-{batchEnd:X2} (NAK {chunk[0]:X}).");
+                    }
+
                     if (chunk.Length != (batchEnd - page + 1) * TagDump.PageSize)
                     {
                         throw new NfcException($"FAST_READ returned {chunk.Length} bytes.");
@@ -95,6 +100,11 @@ public sealed class Ntag215Client
             {
                 // READ always returns 4 pages, wrapping around; only keep what was asked for.
                 var read = await _connection.TransceiveAsync([CmdRead, (byte)page], cancellationToken);
+                if (read.Length == 1)
+                {
+                    throw new NfcNakException(read[0], $"The tag refused READ {page:X2} (NAK {read[0]:X}).");
+                }
+
                 if (read.Length < 16)
                 {
                     throw new NfcException($"READ returned {read.Length} bytes.");
@@ -148,7 +158,7 @@ public sealed class Ntag215Client
         var response = await _connection.TransceiveAsync(command, cancellationToken);
         if (response.Length == 1)
         {
-            throw new NfcException("Tag rejected the password.");
+            throw new NfcNakException(response[0], "Tag rejected the password.");
         }
 
         return response;

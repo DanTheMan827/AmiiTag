@@ -38,6 +38,10 @@ public sealed class PcscStrategySelector
     private readonly List<(Func<string, bool> Matches, Func<IPcscTransceiveStrategy> Create)> _specific = [];
     private readonly List<Func<IPcscTransceiveStrategy>> _generic = [];
 
+    // The strategy that last worked on each reader, tried first next time: probing the others means a failed attempt
+    // and a tag reset (an extra beep on ACR readers) on every connect.
+    private readonly Dictionary<string, string> _lastWorking = new(StringComparer.OrdinalIgnoreCase);
+
     public PcscStrategySelector()
     {
         // ACR122U: PN532 behind the reader, reached with direct transmit pseudo APDUs.
@@ -79,6 +83,17 @@ public sealed class PcscStrategySelector
             .OrderBy(strategy => strategy.IsDirect ? 0 : 1)
             .ToList();
 
+        string? known;
+        lock (_lastWorking)
+        {
+            _lastWorking.TryGetValue(readerName, out known);
+        }
+
+        if (known != null)
+        {
+            candidates = candidates.OrderBy(strategy => strategy.Name == known ? 0 : 1).ToList();
+        }
+
         // Every APDU and reply is recorded, so a reader that refuses everything can be diagnosed from the error.
         var log = new List<string>();
         card.Log = log;
@@ -90,6 +105,11 @@ public sealed class PcscStrategySelector
                 if (strategy.TryBegin(card) && (!strategy.IsDirect || ReachesTag(strategy, card)))
                 {
                     System.Diagnostics.Debug.WriteLine($"PC/SC: using \"{strategy.Name}\" for {readerName}.");
+                    lock (_lastWorking)
+                    {
+                        _lastWorking[readerName] = strategy.Name;
+                    }
+
                     return strategy;
                 }
 
@@ -262,13 +282,31 @@ public sealed class TransparentSessionStrategy : IPcscTransceiveStrategy
                 return false;
             }
 
-            // Ask for ISO 14443-A layer 3 so frames go straight to the tag. Not all readers need/allow this.
+            // Cycle the RF field (Turn Off RF 83, Turn On RF 84): some readers (ACR1552U) leave it off once a session has
+            // started, so the tag never answered; it also wakes a tag an earlier attempt left halted. Not every reader
+            // has these, so failures are ignored.
+            TryTransmit(card, [0xFF, 0xC2, 0x00, 0x00, 0x02, 0x83, 0x00]);
+            TryTransmit(card, [0xFF, 0xC2, 0x00, 0x00, 0x02, 0x84, 0x00]);
+
+            // Ask for ISO 14443-A layer 3 (the reader activates the tag again) so frames go straight to the tag. Not all
+            // readers need/allow this; the test READ that follows decides whether the session works.
             card.Transmit([0xFF, 0xC2, 0x00, 0x02, 0x04, 0x8F, 0x02, 0x00, 0x03]);
             return true;
         }
         catch
         {
             return false;
+        }
+    }
+
+    private static void TryTransmit(PcscCard card, byte[] apdu)
+    {
+        try
+        {
+            card.Transmit(apdu);
+        }
+        catch (PCSC.Exceptions.PCSCException)
+        {
         }
     }
 

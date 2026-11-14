@@ -1,0 +1,122 @@
+@* The in-page context menu, for where the platform's own can't be shown at the pointer (browsers, Mac). One per
+   screen, inside AppPage. Styled after desktop menus: compact rows, hover highlight, destructive items in red. *@
+@implements IDisposable
+@inject ContextMenus Menus
+
+@if (_items != null)
+{
+    <div class="context-menu-backdrop" @onclick="() => Close(-1)" @oncontextmenu="() => Close(-1)" @oncontextmenu:preventDefault="true"></div>
+    <div class="context-menu" role="menu" tabindex="-1" @ref="_element" @onkeydown="OnKeyDown"
+         style="@($"left: min({Px(_x)}, calc(100vw - 236px)); top: min({Px(_y)}, calc(100vh - {Px(EstimatedHeight)} - 8px));")">
+        @if (!string.IsNullOrEmpty(_title))
+        {
+            <div class="context-menu-title">@_title</div>
+        }
+        @for (var i = 0; i < _items.Count; i++)
+        {
+            var index = i;
+            var item = _items[i];
+            @if (item.IsDestructive && index > 0 && !_items[index - 1].IsDestructive)
+            {
+                <div class="context-menu-separator" role="separator"></div>
+            }
+            <button type="button" role="menuitem" class="context-menu-item @(item.IsDestructive ? "destructive" : "") @(item.IsDefault ? "default" : "") @(index == _focused ? "focused" : "")"
+                    @onclick="() => Close(index)" @onmouseover="() => _focused = index">
+                @item.Title
+            </button>
+        }
+    </div>
+}
+
+@code {
+    private IReadOnlyList<ContextMenuItem>? _items;
+    private string? _title;
+    private double _x;
+    private double _y;
+    private int _focused = -1;
+    private ElementReference _element;
+    private TaskCompletionSource<int>? _choice;
+    private bool _focusPending;
+    private Func<double, double, string?, IReadOnlyList<ContextMenuItem>, Task<int>>? _presenter;
+
+    private double EstimatedHeight => (_items?.Count ?? 0) * 30 + (string.IsNullOrEmpty(_title) ? 0 : 28) + 12;
+
+    protected override void OnInitialized()
+    {
+        _presenter = ShowAsync;
+        Menus.Presenter = _presenter;
+    }
+
+    private Task<int> ShowAsync(double x, double y, string? title, IReadOnlyList<ContextMenuItem> items)
+    {
+        _choice?.TrySetResult(-1);
+        _choice = new TaskCompletionSource<int>();
+        _x = x;
+        _y = y;
+        _title = title;
+        _items = items;
+        _focused = -1;
+        _focusPending = true;
+        InvokeAsync(StateHasChanged);
+        return _choice.Task;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_focusPending && _items != null)
+        {
+            _focusPending = false;
+            try
+            {
+                await _element.FocusAsync();
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    private void Close(int index)
+    {
+        _items = null;
+        _choice?.TrySetResult(index);
+        _choice = null;
+        StateHasChanged();
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (_items == null)
+        {
+            return;
+        }
+
+        switch (e.Key)
+        {
+            case "Escape":
+                Close(-1);
+                break;
+            case "ArrowDown":
+                _focused = (_focused + 1) % _items.Count;
+                break;
+            case "ArrowUp":
+                _focused = _focused <= 0 ? _items.Count - 1 : _focused - 1;
+                break;
+            case "Enter" or " " when _focused >= 0:
+                Close(_focused);
+                break;
+        }
+    }
+
+    private static string Px(double value) => $"{value.ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)}px";
+
+    public void Dispose()
+    {
+        if (ReferenceEquals(Menus.Presenter, _presenter))
+        {
+            Menus.Presenter = null;
+        }
+
+        _choice?.TrySetResult(-1);
+    }
+}

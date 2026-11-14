@@ -7,7 +7,7 @@ namespace AmiiTag.Nfc.PcSc;
 /// NFC through any PC/SC contactless reader. Raw NTAG commands are tunnelled through a
 /// reader specific <see cref="IPcscTransceiveStrategy"/> chosen by <see cref="PcscStrategySelector"/>.
 /// </summary>
-public sealed class PcscNfcProvider : INfcProvider
+public sealed class PcscNfcProvider : INfcProvider, INfcPresenceProvider
 {
     private readonly PcscStrategySelector _selector;
 
@@ -77,9 +77,20 @@ public sealed class PcscNfcProvider : INfcProvider
         var context = ContextFactory.Instance.Establish(SCardScope.System);
         try
         {
+            var failedConnects = 0;
             while (true)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+
+                // Wait on the reader's status, which doesn't touch the field. Connecting with no tag there makes some
+                // readers (ACR1552U) power up the field and beep on every attempt, then fail with "card removed".
+                if (!IsCardPresent(context, readerName))
+                {
+                    failedConnects = 0;
+                    await Task.Delay(250, cancellationToken);
+                    continue;
+                }
+
                 ICardReader reader;
                 try
                 {
@@ -87,11 +98,13 @@ public sealed class PcscNfcProvider : INfcProvider
                 }
                 catch (PCSCException ex) when (IsNoCard(ex))
                 {
-                    await Task.Delay(300, cancellationToken);
+                    // Reported present but gone again (moving tag, or a reader that flickers): back off, more each time.
+                    failedConnects++;
+                    await Task.Delay(Math.Min(300 * failedConnects, 2000), cancellationToken);
                     continue;
                 }
 
-                var card = new PcscCard(reader);
+                var card = new PcscCard(reader, () => context.ConnectReader(readerName, SCardShareMode.Shared, SCardProtocol.Any));
                 try
                 {
                     var strategy = await Task.Run(() => _selector.Select(readerName, card), cancellationToken);
@@ -119,6 +132,41 @@ public sealed class PcscNfcProvider : INfcProvider
         }
     }
 
+    /// <summary>
+    /// Reads the reader's state (SCardGetStatusChange) without connecting, so the tag isn't reset or reselected.
+    /// </summary>
+    public async Task<bool?> IsTagPresentAsync(string? readerId, CancellationToken cancellationToken = default)
+    {
+        var readerName = readerId;
+        if (string.IsNullOrEmpty(readerName))
+        {
+            readerName = (await GetReadersAsync(cancellationToken)).FirstOrDefault()?.Id;
+            if (readerName == null)
+            {
+                return null;
+            }
+        }
+
+        return await Task.Run<bool?>(() =>
+        {
+            try
+            {
+                using var context = ContextFactory.Instance.Establish(SCardScope.System);
+                var state = context.GetReaderStatus(readerName).EventState;
+                if (state.HasFlag(SCRState.Unknown) || state.HasFlag(SCRState.Unavailable))
+                {
+                    return null;
+                }
+
+                return state.HasFlag(SCRState.Present) && !state.HasFlag(SCRState.Mute);
+            }
+            catch
+            {
+                return null;
+            }
+        }, cancellationToken);
+    }
+
     private static bool IsCardPresent(ISCardContext context, string readerName)
     {
         try
@@ -140,11 +188,15 @@ public sealed class PcscNfcProvider : INfcProvider
 /// </summary>
 public sealed class PcscCard : IDisposable
 {
-    private readonly ICardReader _reader;
+    private readonly Func<ICardReader>? _reopen;
+    private ICardReader _reader;
 
-    public PcscCard(ICardReader reader)
+    /// <param name="reader">The connected card.</param>
+    /// <param name="reopen">Connects to the card again, for when the reader drops it (it does at the end of a session).</param>
+    public PcscCard(ICardReader reader, Func<ICardReader>? reopen = null)
     {
         _reader = reader;
+        _reopen = reopen;
     }
 
     /// <summary>
@@ -185,10 +237,48 @@ public sealed class PcscCard : IDisposable
         {
             _reader.Reconnect(SCardShareMode.Shared, SCardProtocol.Any, SCardReaderDisposition.Reset);
             Log?.Add("(card reset)");
+            return;
         }
         catch (Exception ex)
         {
             Log?.Add($"(card reset failed: {ex.Message})");
+        }
+
+        // The reader dropped the card (ending a transparent session restarts its polling, which re-detects the tag as a
+        // new card): connect to it again, giving it a moment to come back.
+        if (_reopen == null)
+        {
+            return;
+        }
+
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (true)
+        {
+            try
+            {
+                var fresh = _reopen();
+                try
+                {
+                    _reader.Dispose();
+                }
+                catch
+                {
+                }
+
+                _reader = fresh;
+                Log?.Add("(reconnected)");
+                return;
+            }
+            catch (Exception ex) when (DateTime.UtcNow < deadline)
+            {
+                _ = ex;
+                Thread.Sleep(200);
+            }
+            catch (Exception ex)
+            {
+                Log?.Add($"(reconnect failed: {ex.Message})");
+                return;
+            }
         }
     }
 

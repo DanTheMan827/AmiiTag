@@ -211,6 +211,40 @@ public sealed class NfcService
             var settings = await _settings.GetAsync();
             var readerId = settings.NfcProviderId == provider.Id ? settings.NfcReaderId : null;
 
+            // A known tag is still on the reader: where the reader can say so without a connection (PC/SC status), ask
+            // that rather than reconnecting every half second, which makes some readers reset the tag and beep each time.
+            if (_lastUid != null && provider is INfcPresenceProvider presence)
+            {
+                bool? present;
+                try
+                {
+                    present = await presence.IsTagPresentAsync(readerId, cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    return;
+                }
+
+                if (present == true)
+                {
+                    if (!await DelayAsync(TimeSpan.FromMilliseconds(400), cancellationToken))
+                    {
+                        return;
+                    }
+
+                    continue;
+                }
+
+                if (present == false)
+                {
+                    // Taken off.
+                    _lastUid = null;
+                    continue;
+                }
+
+                // Unknown: fall back to connecting.
+            }
+
             INfcTagConnection? connection = null;
             try
             {

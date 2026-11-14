@@ -24,6 +24,7 @@ public sealed class TagActions
     private readonly IFileService _files;
     private readonly IQrScanner _qr;
     private readonly DeviceCapabilities _capabilities;
+    private readonly N2EliteService _n2;
 
     public TagActions(
         NfcService nfc,
@@ -37,9 +38,11 @@ public sealed class TagActions
         AmiiboLookup lookup,
         IFileService files,
         IQrScanner qr,
-        DeviceCapabilities capabilities)
+        DeviceCapabilities capabilities,
+        N2EliteService n2)
     {
         _capabilities = capabilities;
+        _n2 = n2;
         _nfc = nfc;
         _ble = ble;
         _dialogs = dialogs;
@@ -91,7 +94,7 @@ public sealed class TagActions
                 "Connect", "Cancel");
             if (connect)
             {
-                await _navigator.NavigateAsync(AppRoutes.Devices());
+                await OpenBluetoothDevicesAsync();
             }
 
             return;
@@ -253,17 +256,36 @@ public sealed class TagActions
         if (_nfc.IsAvailable)
         {
             targets.Add(("NFC tag", () => WriteNfcAsync(dump)));
+            targets.Add(("N2 Elite bank...", () => _n2.WriteToChosenBankAsync(dump)));
         }
 
+        // Devices already connected stay connected afterwards.
         foreach (var device in _ble.Connected)
         {
             targets.Add(($"{device.Name} ({TagDeviceDetector.Describe(device.Kind)})", () => WriteToDeviceAsync(device, dump)));
         }
 
+        // Devices the background scan found: connect, write (choosing a slot or file name), disconnect.
+        var nearby = NearbyTagDevices();
+        foreach (var info in nearby)
+        {
+            var kind = TagDeviceDetector.GuessKind(info);
+            var description = kind == TagDeviceKind.Unknown ? "Bluetooth" : TagDeviceDetector.Describe(kind);
+            targets.Add(($"{info.DisplayName} ({description})", () => ConnectWriteDisconnectAsync(info, dump)));
+        }
+
         var canConnect = _capabilities.HasBluetooth;
         if (canConnect)
         {
-            targets.Add(("Connect a Bluetooth device...", () => _navigator.NavigateAsync(AppRoutes.Devices())));
+            // Browsers can't scan: their device picker is the list. The apps fall back to the device screen.
+            if (UsesBrowserDevicePicker)
+            {
+                targets.Add(("Bluetooth device...", () => PickWriteDisconnectAsync(dump)));
+            }
+            else
+            {
+                targets.Add((nearby.Count > 0 ? "Other Bluetooth device..." : "Connect a Bluetooth device...", () => OpenBluetoothDevicesAsync()));
+            }
         }
 
         if (targets.Count == 0)
@@ -272,8 +294,8 @@ public sealed class TagActions
             return;
         }
 
-        // Only NFC is ready; behave like the Swift app and go straight to it.
-        if (_nfc.IsAvailable && targets.Count == (canConnect ? 2 : 1))
+        // Only NFC is ready (no Bluetooth device connected or nearby); behave like the Swift app and go straight to it.
+        if (_nfc.IsAvailable && _ble.Connected.Count == 0 && nearby.Count == 0)
         {
             await targets[0].Run();
             return;
@@ -326,13 +348,30 @@ public sealed class TagActions
 
     public async Task WriteToDeviceAsync(ITagDevice device, TagDump dump)
     {
+        if (await WriteToDeviceCoreAsync(device, dump) is { } done)
+        {
+            await _dialogs.AlertAsync("Done", done);
+        }
+    }
+
+    /// <summary>
+    /// Writes to a connected device, asking for a slot or file name where it has them. Returns what to tell the user
+    /// when it worked, or null if it was cancelled or failed (failures are shown).
+    /// </summary>
+    private async Task<string?> WriteToDeviceCoreAsync(ITagDevice device, TagDump dump)
+    {
+        if (device is IFileTagDevice files)
+        {
+            return await UploadToFileDeviceAsync(files, dump, null) ? $"Uploaded to {files.Name}." : null;
+        }
+
         int? slot = null;
         if (device is ISlotTagDevice slotDevice)
         {
             slot = await ChooseSlotAsync(slotDevice, "Write to Slot");
             if (slot == null)
             {
-                return;
+                return null;
             }
         }
 
@@ -342,9 +381,204 @@ public sealed class TagActions
             return true;
         });
 
-        if (ok)
+        return ok ? $"Written to {device.Name}{(slot != null ? $" slot {slot + 1}" : string.Empty)}." : null;
+    }
+
+    /// <summary>
+    /// Connects to a nearby device, writes to it and disconnects again (the "Done" message comes after disconnecting).
+    /// </summary>
+    public async Task ConnectWriteDisconnectAsync(BleDeviceInfo info, TagDump dump)
+    {
+        if (await ConnectDeviceAsync(info) is not { } device)
         {
-            await _dialogs.AlertAsync("Done", $"Written to {device.Name}{(slot != null ? $" slot {slot + 1}" : string.Empty)}.");
+            return;
+        }
+
+        string? done;
+        try
+        {
+            done = await WriteToDeviceCoreAsync(device, dump);
+        }
+        finally
+        {
+            await _ble.DisconnectAsync(device);
+        }
+
+        if (done != null)
+        {
+            await _dialogs.AlertAsync("Done", done);
+        }
+    }
+
+    /// <summary>
+    /// Browsers: the device picker, then connect, write and disconnect.
+    /// </summary>
+    private async Task PickWriteDisconnectAsync(TagDump dump)
+    {
+        BleDeviceInfo? info;
+        try
+        {
+            info = await _ble.RequestDeviceAsync();
+        }
+        catch (Exception ex)
+        {
+            await _dialogs.AlertAsync("Bluetooth", ex.Message);
+            return;
+        }
+
+        if (info != null)
+        {
+            await ConnectWriteDisconnectAsync(info, dump);
+        }
+    }
+
+    /// <summary>
+    /// Devices the scan has found that look like tag devices (by name or service) and aren't connected.
+    /// </summary>
+    public IReadOnlyList<BleDeviceInfo> NearbyTagDevices() =>
+        _ble.Discovered
+            .Where(d => _ble.GetConnected(d.Id) == null &&
+                        (TagDeviceDetector.GuessKind(d) != TagDeviceKind.Unknown || _ble.Filter.Matches(d)))
+            .ToList();
+
+    /// <summary>
+    /// Scans in the background (apps only) once Bluetooth has been used, so the permission prompt never comes out of the
+    /// blue. Returns true if this started the scan (the caller stops it).
+    /// </summary>
+    public async Task<bool> StartBackgroundBluetoothScanAsync()
+    {
+        if (!_capabilities.HasBluetooth || !_ble.Adapter.CanScan || _ble.IsScanning)
+        {
+            return false;
+        }
+
+        var settings = await _settings.GetAsync();
+        if (!settings.BluetoothUsed)
+        {
+            return false;
+        }
+
+        return await _ble.StartScanningAsync() == null && _ble.IsScanning;
+    }
+
+    /// <summary>
+    /// Records that Bluetooth has been used (permission granted), enabling background scans.
+    /// </summary>
+    public async Task RememberBluetoothUsedAsync()
+    {
+        var settings = await _settings.GetAsync();
+        if (!settings.BluetoothUsed)
+        {
+            settings.BluetoothUsed = true;
+            await _settings.SaveAsync();
+        }
+    }
+
+    /// <summary>
+    /// Asks for a file name (the tag's name by default) and uploads the tag to a file based device such as a Pixl.js.
+    /// Returns false if cancelled or it failed.
+    /// </summary>
+    public async Task<bool> UploadToFileDeviceAsync(IFileTagDevice device, TagDump dump, string? folder)
+    {
+        var target = folder ?? device.DefaultFolder;
+        var name = await _dialogs.PromptAsync("File Name", $"Save to {target} on {device.Name} as:", FileBaseName(dump), 43);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return false;
+        }
+
+        name = name.Trim();
+        if (!name.EndsWith(".bin", StringComparison.OrdinalIgnoreCase))
+        {
+            name += ".bin";
+        }
+
+        if (PixlPath.ValidateName(name, target) is { } problem)
+        {
+            await _dialogs.AlertAsync("Invalid name", problem);
+            return false;
+        }
+
+        var ok = await WithProgressAsync($"Uploading to {device.Name}", async (progress, ct) =>
+        {
+            await device.UploadTagAsync(name, dump, target, progress, ct);
+            return true;
+        });
+
+        return ok;
+    }
+
+    // ---------------------------------------------------------------- Bluetooth devices
+
+    /// <summary>
+    /// True in browsers: they can't scan, but show their own device picker, so there's no device list screen.
+    /// </summary>
+    public bool UsesBrowserDevicePicker => _ble.Adapter.CanRequestDevice && !_ble.Adapter.CanScan;
+
+    /// <summary>
+    /// Where Bluetooth devices are managed from: the device list (apps), or straight to the browser's picker and then
+    /// the chosen device's screen (web). Must be called from a user gesture in the browser.
+    /// </summary>
+    public async Task OpenBluetoothDevicesAsync()
+    {
+        if (!UsesBrowserDevicePicker)
+        {
+            await _navigator.NavigateAsync(AppRoutes.Devices());
+            return;
+        }
+
+        if (!_ble.Adapter.IsAvailable)
+        {
+            await _dialogs.AlertAsync("Bluetooth unavailable", "Bluetooth isn't available in this browser. Use Chrome or Edge on desktop or Android.");
+            return;
+        }
+
+        BleDeviceInfo? device;
+        try
+        {
+            device = await _ble.RequestDeviceAsync();
+        }
+        catch (Exception ex)
+        {
+            await _dialogs.AlertAsync("Bluetooth", ex.Message);
+            return;
+        }
+
+        if (device != null && await ConnectDeviceAsync(device) is { } connected)
+        {
+            await _navigator.NavigateAsync(AppRoutes.Device(connected.Info.Id, connected.Name));
+        }
+    }
+
+    /// <summary>
+    /// Connects to a device (identifying what it is) behind a progress dialog. Returns null if cancelled or it failed.
+    /// </summary>
+    public async Task<ITagDevice?> ConnectDeviceAsync(BleDeviceInfo device, TagDeviceKind? kind = null)
+    {
+        // Pucks with amiitool support get our keys while connecting, so have them loaded first.
+        await _keys.EnsureLoadedAsync();
+        using var cts = new CancellationTokenSource();
+        var dialog = _dialogs.ShowProgress("Please Wait", $"Connecting to {device.DisplayName}...", cts);
+        try
+        {
+            var status = new Progress<string>(message => dialog.Update(message));
+            var connected = await _ble.ConnectAsync(device, kind, status, cts.Token);
+            await RememberBluetoothUsedAsync();
+            return connected;
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        catch (Exception ex)
+        {
+            await dialog.DisposeAsync();
+            await _dialogs.AlertAsync("Couldn't connect", ex.Message);
+            return null;
+        }
+        finally
+        {
+            await dialog.DisposeAsync();
         }
     }
 

@@ -12,6 +12,9 @@
         <!-- Bluetooth LE (pucks, AmiiboLink, AmiLoop) from inside the sandbox. -->
         <key>com.apple.security.device.bluetooth</key>
         <true/>
+        <!-- USB HID: the Flipper Zero bridge -->
+        <key>com.apple.security.device.usb</key>
+        <true/>
         <!-- Opening and saving tag files the user picks. -->
         <key>com.apple.security.files.user-selected.read-write</key>
         <true/>

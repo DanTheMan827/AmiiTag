@@ -3,6 +3,11 @@
 @inject BleDeviceManager Manager
 @inject IAppNavigator Navigator
 @inject IDialogService Dialogs
+@inject TagActions Actions
+@inject ContextMenus Menus
+
+@* The apps' Bluetooth device list. Browsers have their own device picker, which Manage Puck opens directly, so the
+   web only lands here from a bookmark. *@
 
 <AppPage Title="Devices">
     @if (!Manager.Adapter.IsAvailable)
@@ -29,8 +34,12 @@
             <ul class="list">
                 @foreach (var device in Manager.Connected)
                 {
+                    var items = ConnectedItems(device);
                     <li>
-                        <button type="button" class="list-row" @onclick="() => OpenDevice(device)">
+                        <button type="button" class="list-row"
+                                @onpointerdown="Menus.TrackPointer"
+                                @onclick="e => Menus.ClickAsync(e, device.Name, items, tapShowsMenu: false)"
+                                @oncontextmenu="e => Menus.ShowAsync(e, device.Name, items)" @oncontextmenu:preventDefault="true">
                             <span class="list-row-title">
                                 @device.Name
                                 <span class="list-row-subtitle">@TagDeviceDetector.Describe(device.Kind)@(device.Firmware != null ? $" · {device.Firmware}" : "")</span>
@@ -54,7 +63,7 @@
         @if (nearby.Count == 0)
         {
             <p class="empty-state small">
-                @(Manager.Adapter.CanScan ? "Looking for pucks, AmiiboLinks and AmiLoops..." : "Use \"Pair a Device\" to choose a puck, AmiiboLink or AmiLoop.")
+                @(Manager.Adapter.CanScan ? "Looking for pucks, Pixl.js, AmiiboLinks and AmiLoops..." : "Use \"Pair a Device\" to choose a puck, Pixl.js, AmiiboLink or AmiLoop.")
             </p>
         }
         else
@@ -63,14 +72,17 @@
                 @foreach (var device in nearby)
                 {
                     var guess = TagDeviceDetector.GuessKind(device);
-                    <li class="list-row-split">
-                        <button type="button" class="list-row" @onclick="() => Connect(device, null)">
+                    var items = NearbyItems(device);
+                    <li>
+                        <button type="button" class="list-row"
+                                @onpointerdown="Menus.TrackPointer"
+                                @onclick="e => Menus.ClickAsync(e, device.DisplayName, items, tapShowsMenu: false)"
+                                @oncontextmenu="e => Menus.ShowAsync(e, device.DisplayName, items)" @oncontextmenu:preventDefault="true">
                             <span class="list-row-title">
                                 @device.DisplayName
                                 <span class="list-row-subtitle">@(guess == TagDeviceKind.Unknown ? "Will detect on connect" : TagDeviceDetector.Describe(guess))@(device.Rssi != 0 ? $" · {device.Rssi} dBm" : "")</span>
                             </span>
                         </button>
-                        <button type="button" class="link-button" @onclick="() => ConnectAs(device)">Connect as...</button>
                     </li>
                 }
             </ul>
@@ -97,12 +109,28 @@
         {
             _startedScan = !Manager.IsScanning;
             _problem = await Manager.StartScanningAsync();
+            if (_problem == null)
+            {
+                await Actions.RememberBluetoothUsedAsync();
+            }
         }
     }
 
     private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
 
     private void ToggleShowAll(ChangeEventArgs e) => Manager.ShowAllDevices = e.Value is true;
+
+    // A tap or click opens (connects); right click or long press shows the rest.
+    private IReadOnlyList<ContextMenuItem> ConnectedItems(ITagDevice device) =>
+    [
+        new("Open", () => OpenDevice(device), IsDefault: true),
+        new("Disconnect", () => Manager.DisconnectAsync(device), IsDestructive: true),
+    ];
+
+    private IReadOnlyList<ContextMenuItem> NearbyItems(BleDeviceInfo device) =>
+    [
+        new("Connect", () => Connect(device), IsDefault: true),
+    ];
 
     private async Task RequestDevice()
     {
@@ -111,7 +139,7 @@
             var device = await Manager.RequestDeviceAsync();
             if (device != null)
             {
-                await Connect(device, null);
+                await Connect(device);
             }
         }
         catch (Exception ex)
@@ -120,40 +148,9 @@
         }
     }
 
-    private async Task ConnectAs(BleDeviceInfo device)
+    private async Task Connect(BleDeviceInfo device)
     {
-        TagDeviceKind[] kinds = [TagDeviceKind.Puck, TagDeviceKind.LegacyPuck, TagDeviceKind.AmiiboLink, TagDeviceKind.AmiLoop];
-        var choice = await Dialogs.ChooseAsync($"Connect to {device.DisplayName} as", kinds.Select(TagDeviceDetector.Describe).ToList());
-        if (choice >= 0)
-        {
-            await Connect(device, kinds[choice]);
-        }
-    }
-
-    private async Task Connect(BleDeviceInfo device, TagDeviceKind? kind)
-    {
-        using var cts = new CancellationTokenSource();
-        var dialog = Dialogs.ShowProgress("Please Wait", $"Connecting to {device.DisplayName}...", cts);
-        ITagDevice? connected = null;
-        try
-        {
-            var status = new Progress<string>(message => dialog.Update(message));
-            connected = await Manager.ConnectAsync(device, kind, status, cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-        catch (Exception ex)
-        {
-            await dialog.DisposeAsync();
-            await Dialogs.AlertAsync("Couldn't connect", ex.Message);
-        }
-        finally
-        {
-            await dialog.DisposeAsync();
-        }
-
-        if (connected != null)
+        if (await Actions.ConnectDeviceAsync(device) is { } connected)
         {
             await OpenDevice(connected);
         }

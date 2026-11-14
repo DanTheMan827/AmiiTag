@@ -77,6 +77,13 @@ public sealed class Mfrc522Reader
             (Mfrc522Reg.TxAsk, 0x40),                // Force 100% ASK.
             (Mfrc522Reg.Mode, 0x3D),                 // CRC preset 6363h.
             (Mfrc522Reg.Coll, 0x00),                 // Keep received bits after a collision cleared.
+
+            // Strongest field and most sensitive receiver. v3 amiibo (NTAG I²C Plus) also power the figure's own
+            // microcontroller from the field, and on cheap boards at the reset settings they can brown out part way
+            // through a read and stop answering.
+            (Mfrc522Reg.RfCfg, Mfrc522Reg.RxGainMax),
+            (Mfrc522Reg.GsN, Mfrc522Reg.GsNMax),
+            (Mfrc522Reg.CWGsP, Mfrc522Reg.CWGsPMax),
         ], cancellationToken);
 
         await _uart.SetBitsAsync(Mfrc522Reg.TxControl, Mfrc522Reg.AntennaOn, cancellationToken);
@@ -139,7 +146,7 @@ public sealed class Mfrc522Reader
         if (answer is not { } response)
         {
             System.Diagnostics.Debug.WriteLine($"MFRC522 > {Hex.ToSpacedHex(command)}  < (no answer)");
-            throw new NfcException("The tag didn't respond.");
+            throw new NfcException($"The tag didn't respond (to {DescribeCommand(command)}).");
         }
 
         System.Diagnostics.Debug.WriteLine(
@@ -157,6 +164,21 @@ public sealed class Mfrc522Reader
 
         return response.Data.AsSpan(0, response.Data.Length - 2).ToArray();
     }
+
+    /// <summary>
+    /// Names a command for error messages: "FAST_READ 30-3E", "READ 15"...
+    /// </summary>
+    private static string DescribeCommand(byte[] command) => command switch
+    {
+        [0x30, var page] => $"READ {page:X2}",
+        [0x3A, var start, var end] => $"FAST_READ {start:X2}-{end:X2}",
+        [0x60] => "GET_VERSION",
+        [0x3C, ..] => "READ_SIG",
+        [0xA2, var page, ..] => $"WRITE {page:X2}",
+        [0x1B, ..] => "PWD_AUTH",
+        [0xC2, 0xFF] => "SECTOR_SELECT",
+        _ => Hex.ToSpacedHex(command),
+    };
 
     /// <summary>
     /// HLTA. The tag doesn't answer; it stays halted until the next WUPA.

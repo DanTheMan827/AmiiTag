@@ -49,6 +49,16 @@ namespace AmiiTag.Maui
             builder.Services.AddSingleton<IFigureImageProvider, MauiFigureImageProvider>();
             builder.Services.AddSingleton<IQrScanner, CameraQrScanner>();
             builder.Services.AddSingleton<IBleAdapter, PluginBleAdapter>();
+#if WINDOWS || MACCATALYST
+            builder.Services.AddSingleton<AmiiTag.Nfc.Flipper.IFlipperTransportProvider, HidFlipperTransportProvider>();
+#endif
+
+            // Native context menus where they can open at the pointer (Mac uses the page's own menu).
+#if WINDOWS
+            builder.Services.AddSingleton<INativeContextMenu, AmiiTag.Maui.WinUI.WindowsContextMenu>();
+#elif ANDROID || IOS
+            builder.Services.AddSingleton<INativeContextMenu, SheetContextMenu>();
+#endif
             builder.Services.AddSingleton(sp => new AppEnvironment()
             {
 #if ANDROID

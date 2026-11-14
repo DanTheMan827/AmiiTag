@@ -14,6 +14,9 @@ public enum TagDeviceKind
 
     AmiiboLink,
     AmiLoop,
+
+    /// <summary>A Pixl.js (solosky/pixl.js) managed through its BLE file system protocol.</summary>
+    Pixl,
 }
 
 public readonly record struct TransferProgress(int Current, int Total, string? Message = null)
@@ -85,6 +88,22 @@ public interface IRenamableTagDevice : ITagDevice
     /// Renames the device. Most devices disconnect afterwards.
     /// </summary>
     Task RenameAsync(string name, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// A device that stores amiibo as files (Pixl.js) instead of slots.
+/// </summary>
+public interface IFileTagDevice : ITagDevice
+{
+    /// <summary>
+    /// Where amiibo uploaded from elsewhere in the app go.
+    /// </summary>
+    string DefaultFolder { get; }
+
+    /// <summary>
+    /// Uploads an amiibo as a .bin file into <paramref name="folder"/> (or <see cref="DefaultFolder"/>).
+    /// </summary>
+    Task UploadTagAsync(string fileName, TagDump dump, string? folder = null, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
 }
 
 public interface IUartTagDevice : ITagDevice

@@ -1,0 +1,273 @@
+@page "/emulate"
+@using AmiiTag.Nfc.Flipper
+@implements IDisposable
+@inject FlipperEmulationService Flipper
+@inject IFileService Files
+@inject IDialogService Dialogs
+@inject IJSRuntime JS
+
+<AppPage Title="Emulate" Wide="true">
+    <HeaderActions>
+        @if (Session != null)
+        {
+            <span class="header-buttons">
+                <button type="button" class="link-button" @onclick="CopyLog">Copy Log</button>
+                <button type="button" class="link-button" @onclick="SaveLog">Save Log</button>
+            </span>
+        }
+    </HeaderActions>
+    <ChildContent>
+        @if (Session is not { } session)
+        {
+            <p class="empty-state">Nothing is being emulated. Open a tag and choose Emulate while the Flipper is plugged in.</p>
+        }
+        else
+        {
+            <div class="emulate-summary">
+                <div class="emulate-title">
+                    <span class="emulate-light @(session.IsRunning ? (session.FieldPresent ? "field" : "ready") : "stopped")" aria-hidden="true"></span>
+                    <span>
+                        <strong>@session.TagName</strong>
+                        <span class="list-row-subtitle">
+                            @(session.IsRunning ? (session.FieldPresent ? "A reader is talking to the Flipper" : "Hold the Flipper to a reader") : "Stopped")
+                            @if (session.Hello is { } hello)
+                            {
+                                <text> · @hello.Firmware</text>
+                            }
+                        </span>
+                    </span>
+                </div>
+
+                <div class="n2-summary">
+                    <div class="n2-stat">
+                        <span class="n2-stat-value">@session.Frames</span>
+                        <span class="n2-stat-label">Reader frames</span>
+                    </div>
+                    <div class="n2-stat">
+                        <span class="n2-stat-value">@session.Answered</span>
+                        <span class="n2-stat-label">Answered by AmiiTag</span>
+                    </div>
+                    @if (session.UsesAnswerTable)
+                    {
+                        <div class="n2-stat">
+                            <span class="n2-stat-value">@session.TableHits</span>
+                            <span class="n2-stat-label">Answered by the Flipper</span>
+                        </div>
+                    }
+                    <div class="n2-stat">
+                        <span class="n2-stat-value">@(session.DeviceStatus?.Timeouts.ToString() ?? "–")</span>
+                        <span class="n2-stat-label">Too slow</span>
+                    </div>
+                    <div class="n2-stat">
+                        <span class="n2-stat-value">@(session.DeviceStatus is { } s ? $"{s.WorstRoundTripMicros / 1000.0:F1} ms" : "–")</span>
+                        <span class="n2-stat-label">Worst round trip</span>
+                    </div>
+                </div>
+
+                @if (session.Error != null)
+                {
+                    <p class="notice">@session.Error.Message</p>
+                }
+
+                <div class="button-stack horizontal">
+                    @if (session.IsRunning)
+                    {
+                        <BigButton OnClick="Stop" Class="secondary">Stop Emulating</BigButton>
+                    }
+                    <BigButton OnClick="ClearLog" Class="secondary">Clear Log</BigButton>
+                </div>
+            </div>
+
+            <div class="log-header">
+                <h2 class="section-title">Traffic <span class="list-row-subtitle">R&gt; reader, &lt;T answer</span></h2>
+                <div class="segmented" role="tablist" aria-label="Log view">
+                    <button type="button" role="tab" aria-selected="@(!_textView)" class="@(_textView ? "" : "selected")" @onclick="() => ShowText(false)">Live</button>
+                    <button type="button" role="tab" aria-selected="@_textView" class="@(_textView ? "selected" : "")" @onclick="() => ShowText(true)">Text</button>
+                </div>
+            </div>
+            @if (_textView)
+            {
+                @* The whole log as plain text, to select and copy. *@
+                <textarea class="emulate-log emulate-text" readonly spellcheck="false" aria-label="Log text" value="@_text"
+                          @ref="_textArea" @onfocus="() => _textFocused = true" @onblur="() => _textFocused = false"></textarea>
+                @if (_textFocused)
+                {
+                    <p class="footnote">Updates pause while the text is selected.</p>
+                }
+            }
+            else
+            {
+                <pre class="emulate-log">@foreach (var entry in _lines)
+{
+<span class="emulate-@entry.Kind.ToString().ToLowerInvariant()">@entry.Format()
+</span>}</pre>
+            }
+        }
+    </ChildContent>
+</AppPage>
+
+@code {
+    private const int ShownLines = 400;
+
+    private EmulationSession? _subscribed;
+    private IReadOnlyList<EmulationLogEntry> _lines = [];
+    private Timer? _refresh;
+    private int _dirty;
+    private int _ticks;
+    private bool _textView;
+    private string _text = string.Empty;
+    private ElementReference _textArea;
+    private bool _textFocused;
+
+    private EmulationSession? Session => Flipper.Session;
+
+    protected override void OnInitialized()
+    {
+        Flipper.Changed += OnFlipperChanged;
+        Subscribe();
+        _refresh = new Timer(_ => _ = InvokeAsync(RefreshAsync), null, TimeSpan.FromMilliseconds(250), TimeSpan.FromMilliseconds(250));
+    }
+
+    private void Subscribe()
+    {
+        if (ReferenceEquals(_subscribed, Session))
+        {
+            return;
+        }
+
+        if (_subscribed != null)
+        {
+            _subscribed.Changed -= MarkDirty;
+        }
+
+        _subscribed = Session;
+        if (_subscribed != null)
+        {
+            _subscribed.Changed += MarkDirty;
+            _lines = _subscribed.Log.Tail(ShownLines);
+        }
+    }
+
+    // Frames arrive far faster than the page can render: mark and redraw on the timer.
+    private void MarkDirty() => Interlocked.Exchange(ref _dirty, 1);
+
+    private async Task RefreshAsync()
+    {
+        // The Flipper's own counters (timeouts, round trip) once a second.
+        if (++_ticks % 4 == 0 && Session is { IsRunning: true } running)
+        {
+            try
+            {
+                await running.RefreshStatusAsync();
+            }
+            catch
+            {
+                // Shown through the session's error when the connection is gone.
+            }
+        }
+
+        // The text view holds the whole log, so it refreshes once a second rather than four times.
+        // It also holds still while focused, so a selection isn't lost.
+        if ((!_textView || (_ticks % 4 == 0 && !_textFocused)) && Interlocked.Exchange(ref _dirty, 0) == 1 && Session is { } session)
+        {
+            if (_textView)
+            {
+                _text = LogText(session);
+            }
+            else
+            {
+                _lines = session.Log.Tail(ShownLines);
+            }
+
+            StateHasChanged();
+        }
+    }
+
+    private void OnFlipperChanged(object? sender, EventArgs e) => _ = InvokeAsync(() =>
+    {
+        Subscribe();
+        StateHasChanged();
+    });
+
+    private Task Stop() => Flipper.StopAsync();
+
+    private void ClearLog()
+    {
+        Session?.Log.Clear();
+        _lines = [];
+        _text = string.Empty;
+    }
+
+    private void ShowText(bool text)
+    {
+        _textView = text;
+        if (Session is { } session)
+        {
+            if (text)
+            {
+                _text = LogText(session);
+            }
+            else
+            {
+                _lines = session.Log.Tail(ShownLines);
+            }
+        }
+    }
+
+    private static string LogText(EmulationSession session) =>
+        session.Log.ToText($"AmiiTag emulation log: {session.TagName}\n{session.Hello?.Firmware}\n{DateTimeOffset.Now:yyyy-MM-dd HH:mm:ss zzz}");
+
+    private async Task CopyLog()
+    {
+        if (Session is not { } session)
+        {
+            return;
+        }
+
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", LogText(session));
+            await Dialogs.AlertAsync("Log copied", $"{session.Log.Count:N0} lines are on the clipboard.");
+        }
+        catch (JSException)
+        {
+            // No clipboard access here: show the text, selected, to copy by hand.
+            ShowText(true);
+            StateHasChanged();
+            await Task.Yield();
+            try
+            {
+                await JS.InvokeVoidAsync("HTMLTextAreaElement.prototype.select.call", _textArea);
+            }
+            catch (JSException)
+            {
+            }
+
+            await Dialogs.AlertAsync("Copy the log", "The clipboard isn't available here. The log is shown as text: select it and copy.");
+        }
+    }
+
+    private Task SaveLog()
+    {
+        if (Session is not { } session)
+        {
+            return Task.CompletedTask;
+        }
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(LogText(session));
+        return Files.SaveFileAsync($"AmiiTag-emulation-{DateTime.Now:yyyyMMdd-HHmmss}.txt", bytes, "text/plain");
+    }
+
+    public void Dispose()
+    {
+        _refresh?.Dispose();
+        Flipper.Changed -= OnFlipperChanged;
+        if (_subscribed != null)
+        {
+            _subscribed.Changed -= MarkDirty;
+        }
+
+        // Leaving the screen ends the emulation, so the Flipper doesn't keep answering readers unseen.
+        _ = Flipper.StopAsync();
+    }
+}

@@ -76,12 +76,13 @@ public sealed class PluginBleAdapter : IBleAdapter
             options = new ScanFilterOptions { ServiceUuids = filter.Services.ToArray() };
         }
 
-        // Each scan stops after ScanTimeout; keep restarting until cancelled.
+        // Each scan stops after ScanTimeout; keep restarting until cancelled. Duplicates are allowed so every
+        // advertisement is reported (DeviceAdvertised): the device list drops devices that stop advertising.
         while (!cancellationToken.IsCancellationRequested)
         {
             try
             {
-                await Adapter.StartScanningForDevicesAsync(options, null, false, cancellationToken);
+                await Adapter.StartScanningForDevicesAsync(options, null, true, cancellationToken);
             }
             catch (OperationCanceledException)
             {
@@ -103,18 +104,41 @@ public sealed class PluginBleAdapter : IBleAdapter
 
     public async Task<IBleConnection> ConnectAsync(BleDeviceInfo device, CancellationToken cancellationToken = default)
     {
-        if (device.Native is not BleDeviceContract native)
+        // On iOS a device object stops being usable once a new scan starts (and scans restart every 30 seconds), so
+        // prefer the one from the current scan; failing that, connect by identifier, which doesn't depend on a scan
+        // (retrievePeripheralsWithIdentifiers on iOS, the address on Android).
+        Guid.TryParse(device.Id, out var id);
+        var native = Adapter.DiscoveredDevices.FirstOrDefault(d => d.Id == id) ?? device.Native as BleDeviceContract;
+
+        Exception? failure = null;
+        if (native != null)
         {
-            throw new BleException("This device is no longer available. Scan again.");
+            try
+            {
+                await Adapter.ConnectToDeviceAsync(native, cancellationToken: cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                failure = ex;
+                native = null;
+            }
         }
 
-        try
+        if (native == null)
         {
-            await Adapter.ConnectToDeviceAsync(native, cancellationToken: cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            throw new BleException($"Couldn't connect to {device.DisplayName}: {ex.Message}", ex);
+            if (id == Guid.Empty)
+            {
+                throw new BleException($"Couldn't connect to {device.DisplayName}: {failure?.Message ?? "it's no longer available"}.", failure ?? new InvalidOperationException());
+            }
+
+            try
+            {
+                native = await Adapter.ConnectToKnownDeviceAsync(id, cancellationToken: cancellationToken);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                throw new BleException($"Couldn't connect to {device.DisplayName}: {(failure ?? ex).Message}", failure ?? ex);
+            }
         }
 
         var connection = new PluginBleConnection(Adapter, native, device);
@@ -240,52 +264,151 @@ internal sealed class PluginBleConnection : IBleConnection
 
     public async Task DisconnectAsync()
     {
+        // Turn notifications off first: Windows keeps the link up while any subscription (or service object) is alive,
+        // so a plain disconnect could leave the device connected.
+        List<PluginBleCharacteristic> characteristics;
+        lock (_characteristics)
+        {
+            characteristics = _characteristics.Values.ToList();
+            _characteristics.Clear();
+        }
+
+        foreach (var characteristic in characteristics)
+        {
+            try
+            {
+                await characteristic.StopNotificationsAsync();
+            }
+            catch
+            {
+                // Never started, or the link is already gone.
+            }
+
+            characteristic.Release();
+        }
+
         try
         {
             await _adapter.DisconnectDeviceAsync(_device);
         }
+        catch
+        {
+        }
         finally
         {
+#if WINDOWS
+            await ReleaseWindowsLinkAsync();
+#endif
             OnDisconnected();
         }
     }
 
     public async ValueTask DisposeAsync() => await DisconnectAsync();
+
+#if WINDOWS
+    /// <summary>
+    /// Windows has no "disconnect": the link drops once nothing in the app holds the device, its GATT session or any
+    /// of its services. Plugin.BLE disposes its session and services; this disposes the device too, then collects the
+    /// WinRT wrappers still waiting for the garbage collector (each one keeps the link up until it's finalized).
+    /// </summary>
+    private async Task ReleaseWindowsLinkAsync()
+    {
+        var native = _device.NativeDevice as global::Windows.Devices.Bluetooth.BluetoothLEDevice;
+        var deviceId = native?.DeviceId;
+        try
+        {
+            _device.Dispose();
+        }
+        catch
+        {
+        }
+
+        native = null;
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+
+        if (deviceId != null)
+        {
+            _ = LogWindowsLinkStateAsync(deviceId);
+        }
+
+        await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Windows takes a moment to drop the link; logs what it ends up as. A paired device stays connected, as Windows
+    /// itself keeps paired devices connected.
+    /// </summary>
+    private async Task LogWindowsLinkStateAsync(string deviceId)
+    {
+        await Task.Delay(1500);
+        try
+        {
+            using var check = await global::Windows.Devices.Bluetooth.BluetoothLEDevice.FromIdAsync(deviceId);
+            System.Diagnostics.Debug.WriteLine(
+                $"BLE disconnect {Device.DisplayName}: Windows reports {check?.ConnectionStatus}, paired: {check?.DeviceInformation?.Pairing?.IsPaired}");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"BLE disconnect check failed: {ex.Message}");
+        }
+    }
+#endif
 }
 
 internal sealed class PluginBleCharacteristic : IBleCharacteristic
 {
-    private readonly BleCharacteristicContract _characteristic;
+    private BleCharacteristicContract? _characteristic;
 
     public PluginBleCharacteristic(BleCharacteristicContract characteristic)
     {
         _characteristic = characteristic;
         _characteristic.ValueUpdated += OnValueUpdated;
+        Id = characteristic.Id;
     }
 
-    public Guid Id => _characteristic.Id;
+    public Guid Id { get; }
 
     public event EventHandler<byte[]>? ValueUpdated;
+
+    // Released when the connection closes, so the native object (which keeps a Windows link alive) can go.
+    private BleCharacteristicContract Native => _characteristic ?? throw new BleException("The device isn't connected.");
 
     private void OnValueUpdated(object? sender, CharacteristicUpdatedEventArgs e) =>
         ValueUpdated?.Invoke(this, e.Characteristic.Value ?? Array.Empty<byte>());
 
     public async Task WriteAsync(byte[] data, bool withResponse = true, CancellationToken cancellationToken = default)
     {
-        _characteristic.WriteType = withResponse ? CharacteristicWriteType.WithResponse : CharacteristicWriteType.WithoutResponse;
+        var native = Native;
+        native.WriteType = withResponse ? CharacteristicWriteType.WithResponse : CharacteristicWriteType.WithoutResponse;
         cancellationToken.ThrowIfCancellationRequested();
-        await _characteristic.WriteAsync(data);
+        await native.WriteAsync(data);
     }
 
     public async Task<byte[]> ReadAsync(CancellationToken cancellationToken = default)
     {
         // Plugin.BLE 3 returns (data, resultCode); reading Value afterwards works with every version.
+        var native = Native;
         cancellationToken.ThrowIfCancellationRequested();
-        await _characteristic.ReadAsync();
-        return _characteristic.Value ?? Array.Empty<byte>();
+        await native.ReadAsync();
+        return native.Value ?? Array.Empty<byte>();
     }
 
-    public Task StartNotificationsAsync(CancellationToken cancellationToken = default) => _characteristic.StartUpdatesAsync();
+    public Task StartNotificationsAsync(CancellationToken cancellationToken = default) => Native.StartUpdatesAsync();
 
-    public Task StopNotificationsAsync(CancellationToken cancellationToken = default) => _characteristic.StopUpdatesAsync();
+    public Task StopNotificationsAsync(CancellationToken cancellationToken = default) =>
+        _characteristic?.StopUpdatesAsync() ?? Task.CompletedTask;
+
+    /// <summary>
+    /// Stops forwarding values and lets go of the native characteristic (the connection is closing).
+    /// </summary>
+    internal void Release()
+    {
+        if (_characteristic != null)
+        {
+            _characteristic.ValueUpdated -= OnValueUpdated;
+            _characteristic = null;
+        }
+    }
 }

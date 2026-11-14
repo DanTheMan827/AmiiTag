@@ -16,6 +16,11 @@ public abstract class UartPacketDeviceBase : TagDeviceBase
 
     protected TimeSpan AckTimeout { get; init; } = TimeSpan.FromSeconds(5);
 
+    /// <summary>
+    /// The MTU the platform reported after asking for a larger one, or 0 if it doesn't say (Web Bluetooth).
+    /// </summary>
+    protected int NegotiatedMtu { get; private set; }
+
     protected async Task<bool> SetupUartAsync(CancellationToken cancellationToken)
     {
         _write = await TryGetCharacteristicAsync(BleUuids.NordicUartService, BleUuids.NordicUartWrite, cancellationToken);
@@ -26,7 +31,7 @@ public abstract class UartPacketDeviceBase : TagDeviceBase
         }
 
         // AmiLoop packets are up to 135 bytes; ask for room so they aren't split into long writes.
-        await Connection.RequestMtuAsync(247, cancellationToken);
+        NegotiatedMtu = await Connection.RequestMtuAsync(247, cancellationToken);
 
         _responses = new BleNotificationQueue(notify);
         await notify.StartNotificationsAsync(cancellationToken);

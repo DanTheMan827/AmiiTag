@@ -193,7 +193,7 @@ public sealed class KeyStore
     /// <summary>
     /// The raw key file (for uploading to pucks), if both keys are loaded.
     /// </summary>
-    public byte[]? RawKeys => Keys?.Raw;
+    public byte[]? RawKeys => Keys is { CanEncrypt: true } keys ? keys.Raw : null;
 }
 
 /// <summary>
@@ -286,6 +286,12 @@ public sealed class AppSettings
     /// UART speed for an MFRC522 serial reader (it's switched to this from its power-on 9600).
     /// </summary>
     public int Mfrc522BaudRate { get; set; } = 921600;
+
+    /// <summary>
+    /// Set once Bluetooth has been used (permission granted), after which tag screens scan in the background so nearby
+    /// devices can be offered when writing, without a surprise permission prompt.
+    /// </summary>
+    public bool BluetoothUsed { get; set; }
 }
 
 public sealed class SettingsStore

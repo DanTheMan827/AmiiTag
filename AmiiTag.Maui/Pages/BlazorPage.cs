@@ -21,10 +21,10 @@ public sealed class BlazorPage : ContentPage
         }
         else
         {
-            this.SetAppThemeColor(BackgroundColorProperty, Color.FromArgb("#F2F2F7"), Color.FromArgb("#1C1C1E"));
+            this.SetAppThemeColor(BackgroundColorProperty, Color.FromArgb("#F2F2F7"), Color.FromArgb("#000000"));
         }
 
-        var webView = new BlazorWebView
+        var webView = new AppBlazorWebView
         {
             HostPage = "wwwroot/index.html",
         };

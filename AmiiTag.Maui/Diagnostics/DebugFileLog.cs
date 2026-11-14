@@ -60,6 +60,12 @@ internal static class DebugFileLog
         }
 #elif IOS
         yield return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+#elif WINDOWS
+        // The exe's own folder: a single file publish runs from a temporary extraction folder (AppContext.BaseDirectory).
+        if (Path.GetDirectoryName(Environment.ProcessPath) is { Length: > 0 } exeFolder)
+        {
+            yield return exeFolder;
+        }
 #else
         yield return AppContext.BaseDirectory;
 #endif

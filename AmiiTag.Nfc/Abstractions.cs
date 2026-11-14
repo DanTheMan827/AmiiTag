@@ -92,6 +92,31 @@ public sealed class NfcConnectOptions
 }
 
 /// <summary>
+/// Implemented by connections that can activate the same tag again after it dropped out of the session (an NTAG goes
+/// idle after any NAK). v3 amiibo figures need this: while the figure's microcontroller is using the NTAG I²C Plus
+/// memory over I²C, NFC commands are refused, so a read has to wait, reselect the tag and carry on.
+/// </summary>
+public interface INfcReselectable
+{
+    /// <summary>
+    /// Wakes and selects the tag again, without cycling the field (that would reset a v3 figure's microcontroller).
+    /// Throws if no tag, or a different one, answers.
+    /// </summary>
+    Task ReselectAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// Implemented by providers that can tell whether a tag is on a reader without connecting to it (PC/SC reader status).
+/// The background monitor uses it to wait for a tag to be taken off: connecting every half second makes some readers
+/// restart polling and beep each time.
+/// </summary>
+public interface INfcPresenceProvider
+{
+    /// <returns>True or false, or null if the provider can't tell right now (then the monitor connects instead).</returns>
+    Task<bool?> IsTagPresentAsync(string? readerId, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
 /// Implemented by providers that keep something open between scans (a COM port, a session). The provider reopens it
 /// on its next connect; this just lets it go, e.g. when the user picks a different reader.
 /// </summary>
@@ -149,6 +174,19 @@ public class NfcException : Exception
     public NfcException(string message, Exception innerException) : base(message, innerException)
     {
     }
+}
+
+/// <summary>
+/// The tag answered a command with a NAK (4 bit, not ACK): it refused it, as opposed to not answering at all.
+/// </summary>
+public class NfcNakException : NfcException
+{
+    public NfcNakException(byte nak, string message) : base(message)
+    {
+        Nak = nak;
+    }
+
+    public byte Nak { get; }
 }
 
 /// <summary>

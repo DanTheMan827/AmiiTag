@@ -11,8 +11,14 @@
     <RootNamespace>AmiiTag.Maui</RootNamespace>
     <UseMaui>true</UseMaui>
     <SingleProject>true</SingleProject>
+	 
     <ImplicitUsings>enable</ImplicitUsings>
     <EnableDefaultCssItems>false</EnableDefaultCssItems>
+    <!--
+      No precompressed (.br/.gz) static web assets: they're for web servers. A publish otherwise maps app.css and the
+      rest to their Brotli copies, which the BlazorWebView serves as is, so the pages load without any styles.
+    -->
+    <CompressionEnabled>false</CompressionEnabled>
     <Nullable>enable</Nullable>
     <!-- Display name -->
     <ApplicationTitle>AmiiTag</ApplicationTitle>
@@ -27,6 +33,51 @@
     <TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
     <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.19041.0</SupportedOSPlatformVersion>
   </PropertyGroup>
+  <!--
+    Windows runs unpackaged and self-contained: a plain exe carrying .NET and the Windows App SDK runtime, nothing to
+    install (see Properties\PublishProfiles\win-x64.pubxml for the single file publish). Set here rather than only in the
+    publish profile: the Windows App SDK decides whether to copy its runtime (Microsoft.UI.Xaml.dll...) into the build from
+    WindowsAppSDKSelfContained, and without it a clean build's exe can't start WinUI.
+  -->
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <WindowsPackageType>None</WindowsPackageType>
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  </PropertyGroup>
+  <!--
+    Publishing this unpackaged, self-contained Windows app doesn't reliably include everything the build output has: after
+    a clean build the Windows App SDK runtime (Microsoft.UI.Xaml.dll and ~280 other native, .winmd, .pri and .mui files)
+    was missing from the single file exe, so it crashed at startup ("ClassFactory cannot supply requested class"), and
+    wwwroot's stylesheets were missing too. The build output runs, so publish whatever it has that the publish doesn't
+    (except symbols and the WebView2 data folder of a build that was run). In a single file publish these go inside the
+    exe (IncludeAllContentForSelfExtract), which extracts them with everything else.
+  -->
+  <Target Name="AmiiTagPublishBuildOutput" AfterTargets="ComputeResolvedFilesToPublishList" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <ItemGroup>
+      <_AmiiTagBuilt Include="$(OutDir)**\*" Exclude="$(OutDir)**\*.pdb;$(OutDir)*.WebView2\**;$(OutDir)publish\**" Source="%(FullPath)" PublishPath="%(RecursiveDir)%(Filename)%(Extension)" />
+      <_AmiiTagBuiltPaths Include="@(_AmiiTagBuilt->'%(PublishPath)')" />
+      <_AmiiTagPublishedPaths Include="@(ResolvedFileToPublish->'%(RelativePath)')" />
+      <_AmiiTagMissing Include="@(_AmiiTagBuiltPaths)" Exclude="@(_AmiiTagPublishedPaths)" />
+      <ResolvedFileToPublish Include="%(_AmiiTagMissing.Source)" RelativePath="%(_AmiiTagMissing.Identity)" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="false" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_AmiiTagMissingCount>@(_AmiiTagMissing->Count())</_AmiiTagMissingCount>
+    </PropertyGroup>
+    <Message Importance="high" Text="AmiiTag: added $(_AmiiTagMissingCount) file(s) from the build output that the publish was missing." />
+    <Error Condition="!Exists('$(OutDir)wwwroot\index.html')" Text="wwwroot wasn't found in $(OutDir); the published app would have no pages." />
+    <Error Condition="!Exists('$(OutDir)Microsoft.UI.Xaml.dll')" Text="The Windows App SDK runtime isn't in $(OutDir) (Microsoft.UI.Xaml.dll); the published app wouldn't start." />
+  </Target>
+  <!--
+    Static web assets are published marked ExcludeFromSingleFile (they're meant to be served from disk). Bundle them too,
+    so the single file exe carries wwwroot (it's served from the extraction folder, see Pages\AppBlazorWebView.cs).
+  -->
+  <Target Name="AmiiTagBundleWwwroot" BeforeTargets="_ComputeFilesToBundle;GenerateSingleFileBundle" Condition="'$(PublishSingleFile)' == 'true' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <ItemGroup>
+      <ResolvedFileToPublish Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('/', '\').ToLowerInvariant().StartsWith('wwwroot\'))">
+        <ExcludeFromSingleFile>false</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
   <PropertyGroup Condition="'$(TargetFramework)'=='net10.0-ios'">
     <CodesignKey>Apple Development: Created via API (NZ326X9B6Z)</CodesignKey>
     <CodesignProvision>VS: WildCard Development</CodesignProvision>
@@ -58,6 +109,8 @@
     <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.130" />
     <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
     <PackageReference Include="Plugin.BLE" Version="3.2.1" />
+    <!-- USB HID for the Flipper Zero bridge (desktop only). -->
+    <PackageReference Include="HidSharp" Version="2.1.0" Condition="$(TargetFramework.Contains('-windows')) Or $(TargetFramework.Contains('-maccatalyst'))" />
   </ItemGroup>
   <!-- Camera QR scanning (ZXing.Net.Maui supports Android and iOS cameras). -->
   <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' Or $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">

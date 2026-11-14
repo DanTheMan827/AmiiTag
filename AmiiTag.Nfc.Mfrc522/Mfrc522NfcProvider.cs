@@ -376,7 +376,7 @@ public sealed class Mfrc522NfcProvider : INfcProvider, INfcReaderRequester, INfc
     public async ValueTask DisposeAsync() => await ResetAsync();
 }
 
-internal sealed class Mfrc522TagConnection : INfcTagConnection
+internal sealed class Mfrc522TagConnection : INfcTagConnection, INfcReselectable
 {
     private readonly Mfrc522Reader _reader;
     private readonly SemaphoreSlim _lock = new(1, 1);
@@ -400,6 +400,45 @@ internal sealed class Mfrc522TagConnection : INfcTagConnection
         try
         {
             return await _reader.TransceiveAsync(command, cancellationToken);
+        }
+        catch (Exception ex) when (ex is TimeoutException or IOException)
+        {
+            throw new NfcException("Lost contact with the MFRC522.", ex);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
+
+    public async Task ReselectAsync(CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            // WUPA wakes a tag that went idle or halted after a NAK. Only if that fails is the field cycled, which also
+            // restarts a v3 figure's microcontroller.
+            Mfrc522Card? card = null;
+            for (var attempt = 0; attempt < 3 && card == null; attempt++)
+            {
+                card = await _reader.SelectAsync(cancellationToken);
+            }
+
+            if (card == null)
+            {
+                await _reader.ResetFieldAsync(cancellationToken);
+                card = await _reader.SelectAsync(cancellationToken);
+            }
+
+            if (card == null)
+            {
+                throw new NfcException("The tag was moved away from the reader.");
+            }
+
+            if (!card.Uid.AsSpan().SequenceEqual(Card.Uid))
+            {
+                throw new NfcException("A different tag is on the reader now.");
+            }
         }
         catch (Exception ex) when (ex is TimeoutException or IOException)
         {

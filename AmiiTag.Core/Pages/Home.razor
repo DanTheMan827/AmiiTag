@@ -21,6 +21,10 @@
         {
             <BigButton OnClick="Actions.ScanTagAsync">Scan Tag</BigButton>
         }
+        @if (Capabilities.CanUseTags)
+        {
+            <BigButton OnClick="OpenN2Elite">Manage N2 Elite</BigButton>
+        }
         @if (Capabilities.HasCamera)
         {
             <BigButton OnClick="Actions.ScanQrAsync">Scan QR Code</BigButton>
@@ -78,7 +82,10 @@
 
     private Task OpenGames() => Navigator.NavigateAsync(AppRoutes.Games());
 
-    private Task OpenDevices() => Navigator.NavigateAsync(AppRoutes.Devices());
+    // In a browser this opens its device picker straight away (it needs this click as the user gesture).
+    private Task OpenDevices() => Actions.OpenBluetoothDevicesAsync();
+
+    private Task OpenN2Elite() => Navigator.NavigateAsync(AppRoutes.N2Elite());
 
     private Task OpenSettings() => Navigator.NavigateAsync(AppRoutes.Settings());
 

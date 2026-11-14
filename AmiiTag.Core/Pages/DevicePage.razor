@@ -9,6 +9,7 @@
 @inject IFileService Files
 @inject KeyStore Keys
 @inject ScreenEvents Screens
+@inject ContextMenus Menus
 
 <AppPage Title="@(_device?.Name ?? "Device")" Wide="true">
     <HeaderActions>
@@ -22,7 +23,7 @@
         {
             <p class="empty-state">This device isn't connected.</p>
             <div class="button-stack">
-                <BigButton OnClick="OpenDevices">Devices</BigButton>
+                <BigButton OnClick="OpenDevices">Connect a Device</BigButton>
             </div>
         }
         else
@@ -33,9 +34,17 @@
                 {
                     <span> · @_device.Firmware</span>
                 }
+                @if (_device is PixlDevice { Address: { Length: > 0 } address })
+                {
+                    <span> · @address</span>
+                }
             </p>
 
-            @if (_device is ISlotTagDevice)
+            @if (_device is PixlDevice pixl)
+            {
+                <PixlBrowser @ref="_pixl" Device="pixl" OnOpeningChild="() => _openingChild = true" />
+            }
+            else if (_device is ISlotTagDevice)
             {
                 @if (_slots == null)
                 {
@@ -47,8 +56,13 @@
                         @foreach (var slot in _slots)
                         {
                             var figure = Lookup.GetSlotFigure(slot.Dump);
+                            var title = SlotTitle(slot);
+                            var items = SlotItems(slot);
                             <li>
-                                <button type="button" class="list-row with-image @(AmiiboLookup.IsAmiiboSummary(slot.Dump) ? "" : "dimmed")" @onclick="() => SlotTapped(slot)">
+                                <button type="button" class="list-row with-image @(AmiiboLookup.IsAmiiboSummary(slot.Dump) ? "" : "dimmed")"
+                                        @onpointerdown="Menus.TrackPointer"
+                                        @onclick="e => Menus.ClickAsync(e, title, items)"
+                                        @oncontextmenu="e => Menus.ShowAsync(e, title, items)" @oncontextmenu:preventDefault="true">
                                     <FigureImage Figure="figure" Class="list-row-image" />
                                     <span class="list-row-title">
                                         @Lookup.GetSlotDisplayName(slot.Dump)
@@ -100,6 +114,7 @@
     private bool _pickerOpen;
     private int? _pickerSlot;
     private bool _leaving;
+    private PixlBrowser? _pixl;
 
     [Parameter] public string? DeviceId { get; set; }
 
@@ -164,7 +179,7 @@
         if (disconnected && !_leaving)
         {
             _leaving = true;
-            await Navigator.PopToAsync(AppRoutes.Devices());
+            await Navigator.PopToAsync(Actions.UsesBrowserDevicePicker ? AppRoutes.Home() : AppRoutes.Devices());
         }
     });
 
@@ -189,21 +204,26 @@
         }
     }
 
-    private async Task SlotTapped(SlotInfo slot)
+    private string SlotTitle(SlotInfo slot) => $"Slot {slot.Slot + 1}: {Lookup.GetSlotDisplayName(slot.Dump)}";
+
+    /// <summary>
+    /// A slot's actions: making it the active slot is what a click does on desktop; the rest are in its context menu.
+    /// </summary>
+    private IReadOnlyList<ContextMenuItem> SlotItems(SlotInfo slot)
     {
         if (_device is not ISlotTagDevice device)
         {
-            return;
+            return [];
         }
 
-        var options = new List<(string Title, Func<Task> Run)>
+        var items = new List<ContextMenuItem>
         {
-            ("Make active", async () =>
+            new("Make active", async () =>
             {
                 await Actions.WithProgressAsync("Changing slot", async (_, ct) => { await device.SelectSlotAsync(slot.Slot, ct); return true; });
                 _activeSlot = slot.Slot;
-            }),
-            ("Open", async () =>
+            }, IsDefault: true),
+            new("Open", async () =>
             {
                 var dump = await Actions.WithProgressAsync($"Reading slot {slot.Slot + 1}", (progress, ct) => device.ReadSlotAsync(slot.Slot, progress, ct));
                 if (dump != null)
@@ -212,25 +232,21 @@
                     await Actions.OpenTagAsync(dump, modal: false);
                 }
             }),
-            ("Write tag file here", () => WriteFile(slot.Slot)),
-            ("Write character here", () => PickCharacter(slot.Slot)),
-            ("Clear slot", () => ClearSlot(device, slot)),
+            new("Write tag file here", () => WriteFile(slot.Slot)),
+            new("Write character here", () => PickCharacter(slot.Slot)),
         };
 
         if (device is IAmiitoolTagDevice { AmiitoolEnabled: true, AmiitoolKeysLoaded: true } amiitool)
         {
-            options.Add(("Randomize UID", async () =>
+            items.Add(new("Randomize UID", async () =>
             {
                 await Actions.WithProgressAsync("Randomizing UID", (_, ct) => amiitool.RandomizeUidAsync(slot.Slot, ct));
                 await RefreshSlots();
             }));
         }
 
-        var choice = await Dialogs.ChooseAsync($"Slot {slot.Slot + 1}: {Lookup.GetSlotDisplayName(slot.Dump)}", options.Select(o => o.Title).ToList());
-        if (choice >= 0)
-        {
-            await options[choice].Run();
-        }
+        items.Add(new("Clear slot", () => ClearSlot(device, slot), IsDestructive: true));
+        return items;
     }
 
     private async Task ClearSlot(ISlotTagDevice device, SlotInfo slot)
@@ -372,6 +388,28 @@
             options.Add(("Upload amiitool keys", () => UploadKeys(amiitool)));
         }
 
+        if (device is PixlDevice pixl)
+        {
+            foreach (var drive in _pixl?.Drives ?? Array.Empty<PixlDrive>())
+            {
+                options.Add(($"Format drive {drive.Label}:", async () =>
+                {
+                    if (await Dialogs.ConfirmAsync($"Format drive {drive.Label}?", "Everything on it will be erased.", "Format", "Cancel") && _pixl != null)
+                    {
+                        await _pixl.FormatDrive(drive);
+                    }
+                }));
+            }
+
+            options.Add(("Firmware update mode (DFU)", async () =>
+            {
+                if (await Dialogs.ConfirmAsync("Enter DFU mode?", "The Pixl.js restarts into its bootloader and disconnects, ready for a firmware update with nRF Connect or the Pixl.js web app.", "Continue", "Cancel"))
+                {
+                    await Actions.WithProgressAsync("Entering DFU mode", async (_, ct) => { await pixl.EnterDfuAsync(ct); return true; });
+                }
+            }));
+        }
+
         if (device is IUartTagDevice uart)
         {
             options.Add(("Enable UART", async () =>
@@ -383,6 +421,8 @@
 
         options.Add(("Disconnect", async () =>
         {
+            // Leaving on purpose: one step back, rather than the "device went away" handling navigating as well.
+            _leaving = true;
             await Manager.DisconnectAsync(device);
             await Navigator.GoBackAsync();
         }));
@@ -422,7 +462,7 @@
         await Dialogs.AlertAsync(ok ? "Keys uploaded" : "The puck rejected the keys");
     }
 
-    private Task OpenDevices() => Navigator.NavigateAsync(AppRoutes.Devices());
+    private Task OpenDevices() => Actions.OpenBluetoothDevicesAsync();
 
     public void Dispose()
     {

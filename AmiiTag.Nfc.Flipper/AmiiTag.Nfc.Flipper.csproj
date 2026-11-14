@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Host side of the Flipper Zero NFC bridge (flipper/nfc_bridge): the USB HID protocol, and an emulation
+       session that answers a real reader with one of the AmiiTag.Simulation tag models while logging the traffic.
+       The HID transport itself is platform specific and supplied by the app (IFlipperTransportProvider). -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AmiiTag.Nfc.Flipper</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AmiiTag.Simulation\AmiiTag.Simulation.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -10,6 +10,7 @@ public sealed class BleDeviceManager
     private readonly object _sync = new();
     private readonly Dictionary<string, BleDeviceInfo> _discovered = new();
     private readonly Dictionary<string, ITagDevice> _connected = new();
+    private readonly Dictionary<string, DateTime> _lastSeen = new();
     private CancellationTokenSource? _scanCts;
 
     public BleDeviceManager(IBleAdapter adapter, TagDeviceDetector detector)
@@ -31,6 +32,11 @@ public sealed class BleDeviceManager
     public bool ShowAllDevices { get; set; }
 
     public bool IsScanning => _scanCts != null;
+
+    /// <summary>
+    /// While scanning, a device that hasn't advertised for this long is taken off the list (unless it's connected).
+    /// </summary>
+    public TimeSpan StaleAfter { get; set; } = TimeSpan.FromSeconds(10);
 
     /// <summary>
     /// Raised (possibly on a background thread) whenever the lists change.
@@ -128,7 +134,50 @@ public sealed class BleDeviceManager
             }
         });
 
+        _ = PruneWhileScanningAsync(cts.Token);
         return null;
+    }
+
+    /// <summary>
+    /// Drops devices that stopped advertising. Only while scanning: without a scan (browsers) nothing says whether a
+    /// device is still around, so the granted devices stay listed.
+    /// </summary>
+    private async Task PruneWhileScanningAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(2), cancellationToken);
+                if (PruneStale(DateTime.UtcNow))
+                {
+                    Changed?.Invoke(this, EventArgs.Empty);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
+
+    /// <summary>
+    /// Removes devices not seen since <see cref="StaleAfter"/> before <paramref name="now"/>. Returns true if any went.
+    /// </summary>
+    public bool PruneStale(DateTime now)
+    {
+        lock (_sync)
+        {
+            var stale = _discovered.Keys
+                .Where(id => !_connected.ContainsKey(id) && (!_lastSeen.TryGetValue(id, out var seen) || now - seen > StaleAfter))
+                .ToList();
+            foreach (var id in stale)
+            {
+                _discovered.Remove(id);
+                _lastSeen.Remove(id);
+            }
+
+            return stale.Count > 0;
+        }
     }
 
     public async Task StopScanningAsync()
@@ -169,6 +218,9 @@ public sealed class BleDeviceManager
     /// </summary>
     public async Task<ITagDevice> ConnectAsync(BleDeviceInfo device, TagDeviceKind? forcedKind = null, IProgress<string>? status = null, CancellationToken cancellationToken = default)
     {
+        // Use the latest advertisement's details: on iOS the platform object from an earlier scan can be stale.
+        device = GetDiscovered(device.Id) ?? device;
+
         var existing = GetConnected(device.Id);
         if (existing is { IsConnected: true } && (forcedKind == null || existing.Kind == forcedKind))
         {
@@ -197,6 +249,9 @@ public sealed class BleDeviceManager
         lock (_sync)
         {
             _connected.Remove(device.Info.Id);
+
+            // Give it a moment to show up advertising again before it counts as gone.
+            _lastSeen[device.Info.Id] = DateTime.UtcNow;
         }
 
         device.Disconnected -= OnDriverDisconnected;
@@ -229,6 +284,7 @@ public sealed class BleDeviceManager
                 if (_connected.TryGetValue(device.Info.Id, out var current) && ReferenceEquals(current, device))
                 {
                     _connected.Remove(device.Info.Id);
+                    _lastSeen[device.Info.Id] = DateTime.UtcNow;
                 }
             }
 
@@ -248,17 +304,27 @@ public sealed class BleDeviceManager
 
     private void AddDiscovered(BleDeviceInfo device)
     {
+        bool changed;
         lock (_sync)
         {
+            var known = _discovered.TryGetValue(device.Id, out var existing);
+
             // Keep the name we already know if a later advertisement packet omits it.
-            if (_discovered.TryGetValue(device.Id, out var existing) && string.IsNullOrEmpty(device.Name) && !string.IsNullOrEmpty(existing.Name))
+            if (known && string.IsNullOrEmpty(device.Name) && !string.IsNullOrEmpty(existing!.Name))
             {
                 device = device with { Name = existing.Name };
             }
 
-            _discovered[device.Id] = device;
+            // Advertisements repeat several times a second; only a new device, a new name or a clear change in
+            // signal is worth redrawing the list for.
+            changed = !known || existing!.Name != device.Name || Math.Abs(existing.Rssi - device.Rssi) >= 6;
+            _discovered[device.Id] = changed || !known ? device : existing! with { Native = device.Native ?? existing.Native };
+            _lastSeen[device.Id] = DateTime.UtcNow;
         }
 
-        Changed?.Invoke(this, EventArgs.Empty);
+        if (changed)
+        {
+            Changed?.Invoke(this, EventArgs.Empty);
+        }
     }
 }

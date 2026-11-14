@@ -29,7 +29,7 @@ public class AmiiboV3Tests
     }
 
     [Fact]
-    public void LockOn_PayloadIsPaddedAndGetsALittleEndianCrc()
+    public void LockOn_PayloadIsPaddedAndGetsABigEndianCrc()
     {
         var response = LockOnResponse.Normalize([0x01, 0x02, 0x03]);
         Assert.Equal(LockOnResponse.Length, response.Length);
@@ -37,9 +37,14 @@ public class AmiiboV3Tests
         Assert.All(response[3..62], b => Assert.Equal(0, b));
 
         var crc = LockOnResponse.Crc16Mcrf4xx(response.AsSpan(0, 62));
-        Assert.Equal((byte)crc, response[62]);
-        Assert.Equal((byte)(crc >> 8), response[63]);
+        Assert.Equal((byte)(crc >> 8), response[62]);
+        Assert.Equal((byte)crc, response[63]);
         Assert.True(LockOnResponse.HasValidCrc(response));
+
+        // The little endian order used before is still recognised.
+        var littleEndian = (byte[])response.Clone();
+        (littleEndian[62], littleEndian[63]) = (littleEndian[63], littleEndian[62]);
+        Assert.True(LockOnResponse.HasValidCrc(littleEndian));
 
         response[5] ^= 1;
         Assert.False(LockOnResponse.HasValidCrc(response));

@@ -58,6 +58,11 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
     /// </summary>
     public TimeSpan FastModeTimeout { get; init; } = TimeSpan.FromSeconds(8);
 
+    /// <summary>
+    /// Sends Ctrl-C before <c>fastMode()</c>, clearing anything other probes left on the console's input line.
+    /// </summary>
+    public bool ClearInputLine { get; init; }
+
     public bool AmiitoolEnabled { get; private set; }
 
     public bool AmiitoolKeysLoaded { get; private set; }
@@ -89,7 +94,7 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
         try
         {
             _responses.Clear();
-            await SendChunkedAsync(Encoding.ASCII.GetBytes("fastMode()\n"), null, cancellationToken);
+            await SendChunkedAsync(Encoding.ASCII.GetBytes(ClearInputLine ? "\u0003fastMode()\n" : "fastMode()\n"), null, cancellationToken);
             await _responses.WaitForTextAsync(FastModeMarker, FastModeTimeout, cancellationToken);
         }
         catch (TimeoutException)

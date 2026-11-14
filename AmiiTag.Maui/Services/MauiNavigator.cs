@@ -73,7 +73,7 @@ public sealed class MauiNavigator : IAppNavigator
     public static NavigationPage CreateNavigationPage(Page page)
     {
         var navigationPage = new NavigationPage(page);
-        navigationPage.SetAppThemeColor(NavigationPage.BarBackgroundColorProperty, Color.FromArgb("#F2F2F7"), Color.FromArgb("#1C1C1E"));
+        navigationPage.SetAppThemeColor(NavigationPage.BarBackgroundColorProperty, Color.FromArgb("#F8F9FC"), Color.FromArgb("#000000"));
         navigationPage.SetAppThemeColor(NavigationPage.BarTextColorProperty, Colors.Black, Colors.White);
         return navigationPage;
     }
