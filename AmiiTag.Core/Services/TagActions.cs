@@ -956,8 +956,11 @@ public sealed class TagActions
 
         if (figure.Id.Id.EndsWith("03", StringComparison.Ordinal))
         {
-            // v3 figures: AmiiboZero's NTAG I²C Plus template on a random UID, without a lock-on response.
-            return AmiiboV3Dump.Create(figure.Id.Id, keys);
+            // v3 figures: AmiiboZero's NTAG I²C Plus template on a random UID, with the first lock-on in the library
+            // for this figure if there is one.
+            var v3 = AmiiboV3Dump.Create(figure.Id.Id, keys);
+            await _lockOns.EnsureLoadedAsync();
+            return _lockOns.FirstFor(figure.Id.Id) is { } lockOn ? v3.WithLockOn(lockOn.Response) : v3;
         }
 
         var dump = TagDump.FromAmiiboId(figure.Id.Id, keys);

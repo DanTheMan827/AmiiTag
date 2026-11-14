@@ -67,13 +67,36 @@
     {
         @EntryList(Library.Entries)
         <p class="empty-state small">
-            Each lock-on is a copy of one physical figure's answer. Use Load Lock-on on a v3 tag's page to put one in.
+            Each lock-on is a copy of one physical figure's answer. Use Load Lock-on on a v3 tag's page to put one in;
+            tags made from the library for a lock-on's figure get it automatically.
         </p>
     }
 </AppPage>
 
+@* Only v3 figures have a lock-on. *@
+<FigurePicker Open="_figureFor != null"
+              Title="@($"Figure for {_figureFor?.Name}")"
+              Filter="IsV3Figure"
+              OnPicked="SetFigure"
+              OnCancelled="() => _figureFor = null" />
+
 @code {
     private bool _loaded;
+
+    // The entry whose figure is being chosen.
+    private LockOnEntry? _figureFor;
+
+    private static bool IsV3Figure(AmiiboFigure figure) => figure.Id.Id.EndsWith("03", StringComparison.Ordinal);
+
+    private async Task SetFigure(AmiiboFigure figure)
+    {
+        var entry = _figureFor;
+        _figureFor = null;
+        if (entry != null)
+        {
+            await Library.SetFigureAsync(entry, figure.Id.Id);
+        }
+    }
 
     /// <summary>
     /// The tag (in <see cref="TagStore"/>) a lock-on is being chosen for; null for the library itself.
@@ -148,6 +171,17 @@
         }
 
         items.Add(new("Rename", () => Actions.RenameLockOnAsync(entry), IsDefault: !Picking));
+        items.Add(new(entry.AmiiboId == null ? "Set Figure" : "Change Figure", () =>
+        {
+            _figureFor = entry;
+            StateHasChanged();
+            return Task.CompletedTask;
+        }));
+        if (entry.AmiiboId != null)
+        {
+            items.Add(new("Remove Figure", () => Library.SetFigureAsync(entry, null)));
+        }
+
         items.Add(new("Export", () => Actions.ExportLockOnAsync(entry)));
         items.Add(new("Delete", () => Actions.DeleteLockOnAsync(entry), IsDestructive: true));
         return items;

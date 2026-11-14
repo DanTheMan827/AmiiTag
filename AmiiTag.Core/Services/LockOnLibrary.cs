@@ -22,7 +22,8 @@ public sealed class LockOnEntry
     public string Name { get; set; } = "";
 
     /// <summary>
-    /// The 16 hex digit amiibo ID of the figure it came from, when known.
+    /// The 16 hex digit amiibo ID of the v3 figure it belongs to: the one it was read from, or one the user chose. Its
+    /// picture is the entry's icon, and tags generated for that figure get this lock-on.
     /// </summary>
     public string? AmiiboId { get; set; }
 
@@ -186,6 +187,22 @@ public sealed class LockOnLibrary
 
         Changed?.Invoke(this, EventArgs.Empty);
         return (entry, true);
+    }
+
+    /// <summary>
+    /// The first lock-on (as listed: newest first) for a figure, if any.
+    /// </summary>
+    public LockOnEntry? FirstFor(string amiiboId) =>
+        Entries.FirstOrDefault(e => string.Equals(e.AmiiboId, amiiboId, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// Sets (or with null, clears) the figure an entry belongs to.
+    /// </summary>
+    public async Task SetFigureAsync(LockOnEntry entry, string? amiiboId)
+    {
+        entry.AmiiboId = amiiboId?.ToLowerInvariant();
+        await SaveAsync(entry);
+        Changed?.Invoke(this, EventArgs.Empty);
     }
 
     public async Task RenameAsync(LockOnEntry entry, string name)

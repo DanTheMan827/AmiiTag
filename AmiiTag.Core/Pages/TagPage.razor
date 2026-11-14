@@ -100,15 +100,27 @@
                         }
                         @if (_dump is AmiiboV3Dump v3Info)
                         {
-                            var saved = v3Info.LockOn is { } lockOnData ? LockOns.Find(lockOnData) : null;
                             <div class="info-row">
                                 <dt>Lock-on</dt>
-                                <dd>@(v3Info.LockOn is { } response ? DescribeLockOn(response) : "None")</dd>
+                                <dd>
+                                    @if (v3Info.LockOn is { } response)
+                                    {
+                                        var check = LockOnResponse.Check(response);
+                                        @(LockOns.Find(response)?.Name ?? "Included")
+                                        <span class="crc-badge @(check == LockOnCheck.Valid ? "valid" : "invalid")"
+                                              title="@LockOnResponse.Describe(check)">@(check switch
+                                              {
+                                                  LockOnCheck.Valid => "CRC valid",
+                                                  LockOnCheck.CrcMismatch => "CRC mismatch",
+                                                  _ => "Invalid",
+                                              })</span>
+                                    }
+                                    else
+                                    {
+                                        @:None
+                                    }
+                                </dd>
                             </div>
-                            @if (saved != null)
-                            {
-                                <div class="info-row"><dt>In library as</dt><dd>@saved.Name</dd></div>
-                            }
                         }
                     </dl>
                 </section>
@@ -255,15 +267,6 @@
     }
 
     private void OnLockOnsChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
-
-    /// <summary>
-    /// What can be told about a lock-on without its keys (each figure's is unique): CRC, or that it holds no data.
-    /// </summary>
-    private static string DescribeLockOn(byte[] response) => LockOnResponse.Check(response) switch
-    {
-        LockOnCheck.Valid => "Included (CRC valid)",
-        var check => $"Included ({LockOnResponse.Describe(check)})",
-    };
 
     /// <summary>
     /// v3 tags take a dropped lock-on (a .lockon, or a v3 amiibo that has one), as Load from File would.
