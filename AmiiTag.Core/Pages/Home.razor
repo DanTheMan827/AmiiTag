@@ -1,45 +1,101 @@
-﻿@page "/"
-@using AmiiTag.Core.Interfaces;
-@using System.Security.Cryptography;
-@using AmiiTag.Core.Bootstrap;
+@page "/"
+@inject IAppNavigator Navigator
+@inject TagActions Actions
+@inject AppState State
+@inject IDialogService Dialogs
+@inject DeviceCapabilities Capabilities
+@inject NfcService Nfc
+@inject HomeScreenState Screen
+@implements IDisposable
 
-<PageTitle>AmiiTag</PageTitle>
-<AppLogo Style="max-width: 500px;" />
-<BootstrapButton Style="BootstrapButton.ButtonKind.Danger">Test</BootstrapButton>
+<AppPage Title="AmiiTag" ShowHeader="false" ShowBack="false" Sheet="false" Class="home">
+    <button type="button" class="logo-button" @onclick="LogoTapped" aria-label="Database and key options">
+        <AppLogo Class="home-logo" />
+    </button>
 
-<h1>Hello, world!</h1>
-
-Welcome to your new app.
-
-
-@if (StatusMessage != null)
-{
-    <p><b>Status:</b> @StatusMessage</p>
-}
-
-<p>Base path @AppPaths.BaseAddress</p>
-<p>Running on @ApplicationEnvironment.Platform</p>
+    <div class="button-stack">
+        <BigButton OnClick="OpenLibrary">Amiibo Library</BigButton>
+        <BigButton OnClick="OpenGames">Game Info</BigButton>
+        <BigButton OnClick="Actions.LoadTagFromFileAsync">Load Tag</BigButton>
+        @if (Capabilities.CanUseTags)
+        {
+            <BigButton OnClick="Actions.ScanTagAsync">Scan Tag</BigButton>
+        }
+        @if (Capabilities.HasCamera)
+        {
+            <BigButton OnClick="Actions.ScanQrAsync">Scan QR Code</BigButton>
+        }
+        @if (Capabilities.HasBluetooth)
+        {
+            <BigButton OnClick="OpenDevices">Manage Puck</BigButton>
+        }
+        <BigButton OnClick="OpenSettings" Class="secondary">Settings</BigButton>
+    </div>
+</AppPage>
 
 @code {
-    private string? StatusMessage = null;
-
-    private async Task TestInterop() {
-        if (await AmiiboDatabase.CheckUpdate() == true)
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
         {
-            await AmiiboDatabase.UpdateData(UpdateProgress);
+            Capabilities.Changed += OnCapabilitiesChanged;
+            Screen.Changed += OnScreenChanged;
+            Screen.SetVisible(true);
+            await Capabilities.RefreshAsync();
+            await State.EnsureStartedAsync();
+            UpdateMonitoring();
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    private void OnCapabilitiesChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private void OnScreenChanged(object? sender, EventArgs e) => InvokeAsync(UpdateMonitoring);
+
+    /// <summary>
+    /// While the main menu is in front and a reader works here, an amiibo placed on the reader is opened straight away.
+    /// </summary>
+    private void UpdateMonitoring()
     {
-        await TestInterop();
-        await base.OnInitializedAsync();
+        if (Screen.IsVisible && Capabilities.HasNfc)
+        {
+            Nfc.StartMonitoring(image => InvokeAsync(() => Actions.ShowScannedTagAsync(image, automatic: true)));
+        }
+        else
+        {
+            _ = Nfc.StopMonitoringAsync();
+        }
     }
 
-    private async Task UpdateProgress(ProgressInfo info)
+    public void Dispose()
     {
-        StatusMessage = $"({info.Current} / {info.Total}: {info.Message})";
+        Capabilities.Changed -= OnCapabilitiesChanged;
+        Screen.Changed -= OnScreenChanged;
+        Screen.SetVisible(false);
+        _ = Nfc.StopMonitoringAsync();
+    }
 
-        StateHasChanged();
+    private Task OpenLibrary() => Navigator.NavigateAsync(AppRoutes.Library());
+
+    private Task OpenGames() => Navigator.NavigateAsync(AppRoutes.Games());
+
+    private Task OpenDevices() => Navigator.NavigateAsync(AppRoutes.Devices());
+
+    private Task OpenSettings() => Navigator.NavigateAsync(AppRoutes.Settings());
+
+    /// <summary>
+    /// Tapping the logo offers the same shortcuts as the Swift app.
+    /// </summary>
+    private async Task LogoTapped()
+    {
+        var choice = await Dialogs.ChooseAsync("AmiiTag", ["Update Database", "Settings"]);
+        switch (choice)
+        {
+            case 0:
+                await State.UpdateDatabaseAsync();
+                break;
+            case 1:
+                await OpenSettings();
+                break;
+        }
     }
 }

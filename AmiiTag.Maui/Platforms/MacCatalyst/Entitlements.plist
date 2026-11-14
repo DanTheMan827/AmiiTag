@@ -9,6 +9,15 @@
         <!-- When App Sandbox is enabled, this value is required to open outgoing network connections. -->
         <key>com.apple.security.network.client</key>
         <true/>
+        <!-- Bluetooth LE (pucks, AmiiboLink, AmiLoop) from inside the sandbox. -->
+        <key>com.apple.security.device.bluetooth</key>
+        <true/>
+        <!-- Opening and saving tag files the user picks. -->
+        <key>com.apple.security.files.user-selected.read-write</key>
+        <true/>
+        <!-- QR code scanning. -->
+        <key>com.apple.security.device.camera</key>
+        <true/>
     </dict>
 </plist>
 

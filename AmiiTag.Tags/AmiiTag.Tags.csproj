@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AmiiTag.Tags</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      Pure managed crypto (AES-CTR, HMAC-SHA256, ECDSA secp128r1).
+      System.Security.Cryptography's AES is not available in the browser, so BouncyCastle is used everywhere.
+      This is the same package libamiibo already depends on, so the two don't conflict.
+    -->
+    <PackageReference Include="Portable.BouncyCastle" Version="1.9.0" />
+  </ItemGroup>
+
+</Project>

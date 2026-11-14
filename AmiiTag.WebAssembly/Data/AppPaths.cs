@@ -14,6 +14,6 @@ namespace AmiiTag.WebAssembly.Data
 
         public string Settings => "";
 
-        public string BaseAddress { get; init; }
+        public string BaseAddress { get; init; } = "/";
     }
 }

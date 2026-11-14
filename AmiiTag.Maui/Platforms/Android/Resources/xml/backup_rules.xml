@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and older (android:fullBackupContent): the amiibo API data is re-downloaded, so it isn't backed up. -->
+<full-backup-content>
+    <exclude domain="file" path="Database/" />
+</full-backup-content>

@@ -1,11 +1,11 @@
 {
-  "name": "AmiiTag.WebAssembly",
-  "short_name": "AmiiTag.WebAssembly",
+  "name": "AmiiTag",
+  "short_name": "AmiiTag",
   "id": "./",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#03173d",
+  "background_color": "#000000",
+  "theme_color": "#000000",
   "prefer_related_applications": false,
   "icons": [
     {

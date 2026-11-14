@@ -1,0 +1,94 @@
+@page "/library"
+@implements IDisposable
+@inject IDatabaseContainer DatabaseContainer
+@inject IAppNavigator Navigator
+@inject AppState State
+
+<AppPage Title="Amiibo Library" Wide="true">
+    @if (_series.Count == 0)
+    {
+        <p class="empty-state">@(DatabaseContainer.IsLoaded ? "No amiibo found." : "Loading the amiibo database...")</p>
+    }
+    else
+    {
+        <div class="search">
+            <input type="search" placeholder="Search" @bind="_search" @bind:event="oninput" aria-label="Search amiibo" />
+        </div>
+
+        @if (string.IsNullOrWhiteSpace(_search))
+        {
+            <ul class="list grid">
+                @foreach (var series in _series)
+                {
+                    <li>
+                        <button type="button" class="list-row" @onclick="() => OpenSeries(series.Id, series.Name)">
+                            <span class="list-row-title">@series.Name</span>
+                            <span class="chevron" aria-hidden="true">&#x203A;</span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+        else
+        {
+            <ul class="list grid">
+                @foreach (var figure in SearchResults)
+                {
+                    <li>
+                        <button type="button" class="list-row with-image" @onclick="() => OpenFigure(figure)">
+                            <FigureImage Figure="figure" Class="list-row-image" />
+                            <span class="list-row-title">
+                                @figure.Name
+                                <span class="list-row-subtitle">@figure.Series</span>
+                            </span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+    }
+</AppPage>
+
+@code {
+    private List<(string Id, string Name)> _series = [];
+    private string _search = string.Empty;
+
+    private IEnumerable<AmiiboFigure> SearchResults => DatabaseContainer.Database.Figures.Values
+        .Where(f => f.IsVisible && (f.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) || f.Character.Contains(_search, StringComparison.OrdinalIgnoreCase)))
+        .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+        .Take(100);
+
+    protected override async Task OnInitializedAsync()
+    {
+        DatabaseContainer.DataChanged += OnDataChanged;
+        Load();
+        if (!DatabaseContainer.IsLoaded)
+        {
+            await State.EnsureStartedAsync();
+            Load();
+        }
+    }
+
+    private void Load()
+    {
+        var database = DatabaseContainer.Database;
+        var used = database.Figures.Values.Where(f => f.IsVisible).Select(f => f.Id.Series).ToHashSet();
+        _series = (database.AmiiboSeries ?? new Dictionary<string, string>())
+            .Where(s => used.Contains(s.Key))
+            .Select(s => (Id: s.Key, Name: s.Value))
+            .OrderBy(s => s.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private void OnDataChanged(object? sender, EventArgs e) => InvokeAsync(() =>
+    {
+        Load();
+        StateHasChanged();
+    });
+
+    private Task OpenSeries(string id, string name) => Navigator.NavigateAsync(AppRoutes.Series(id, name));
+
+    private Task OpenFigure(AmiiboFigure figure) => Navigator.NavigateAsync(AppRoutes.Figure(figure.Id.Id, figure.Name));
+
+    public void Dispose() => DatabaseContainer.DataChanged -= OnDataChanged;
+}

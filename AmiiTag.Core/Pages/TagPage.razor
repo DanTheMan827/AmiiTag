@@ -1,0 +1,388 @@
+@page "/tag/{TagKey}"
+@page "/figure/{FigureId}"
+@implements IDisposable
+@inject TagStore Tags
+@inject TagActions Actions
+@inject AmiiboLookup Lookup
+@inject KeyStore Keys
+@inject IDatabaseContainer DatabaseContainer
+@inject IAppNavigator Navigator
+@inject AppState State
+@inject DeviceCapabilities Capabilities
+
+<AppPage Title="@_title" Wide="true" ForceBack="OpenedAutomatically" OnBack="BackToMenuAsync">
+    @if (_dump == null && _figure == null)
+    {
+        <p class="empty-state">@(_message ?? "This tag is no longer available.")</p>
+    }
+    else
+    {
+        <div class="tag-info">
+            @if (_figure != null)
+            {
+                <FigureImage Figure="_figure" Class="tag-image" />
+            }
+            else
+            {
+                <div class="tag-image image-placeholder" aria-hidden="true"></div>
+            }
+
+            <dl class="details">
+                @if (_validation != null)
+                {
+                    <dt>Status:</dt>
+                    <dd class="validity @_validation.Status.ToString().ToLowerInvariant()">@_validation.Summary</dd>
+                }
+                @if (!string.IsNullOrEmpty(_nickname))
+                {
+                    <dt>Nickname:</dt>
+                    <dd>@_nickname</dd>
+                }
+                @if (IsAmiibo)
+                {
+                    <dt>Series:</dt>
+                    <dd>@_series</dd>
+                    <dt>Type:</dt>
+                    <dd>@_type</dd>
+                }
+                @if (_figure != null)
+                {
+                    <dt>Character:</dt>
+                    <dd>@_figure.Character</dd>
+                    <dt>Game:</dt>
+                    <dd>@_figure.GameSeries</dd>
+                }
+                @if (_amiiboId != null && IsAmiibo)
+                {
+                    <dt>Amiibo ID:</dt>
+                    <dd class="mono">@_amiiboId</dd>
+                }
+                @if (_dump != null)
+                {
+                    <dt>Tag:</dt>
+                    <dd>@AmiiboImage.Describe(_dump.Format)</dd>
+                    @if (_dump is AmiiboV3Dump v3Info)
+                    {
+                        <dt>Lock-on:</dt>
+                        <dd>@(v3Info.HasLockOn ? (v3Info.LockOnCrcValid ? "Included" : "Included (CRC not verified)") : "None")</dd>
+                    }
+                    <dt>Tag UID:</dt>
+                    <dd class="mono">@_dump.UidHex</dd>
+                    @if (IsAmiibo)
+                    {
+                        <dt>Writes:</dt>
+                        <dd>@_dump.WriteCounter</dd>
+                    }
+                }
+            </dl>
+
+            @if (_validation is { Status: not AmiiboValidity.Valid } && _validation.Problems.Count > 0)
+            {
+                <ul class="validation-problems">
+                    @foreach (var problem in _validation.Problems.Concat(_validation.Notes))
+                    {
+                        <li>@problem</li>
+                    }
+                </ul>
+            }
+
+            @if (_releases.Count > 0)
+            {
+                <div class="release-dates">
+                    <h2 class="section-title">Released</h2>
+                    <dl class="details compact">
+                        @foreach (var (region, date) in _releases)
+                        {
+                            <dt>@region:</dt>
+                            <dd>@date.ToString("MMM d, yyyy", System.Globalization.CultureInfo.CurrentCulture)</dd>
+                        }
+                    </dl>
+                </div>
+            }
+
+            @if (_dump == null)
+            {
+                <p class="notice">@_message</p>
+                @if (!Keys.HasKeys)
+                {
+                    <BigButton OnClick="OpenSettings">Load Key File</BigButton>
+                }
+            }
+            else
+            {
+                <div class="button-stack">
+                    <BigButton OnClick="Save">Save Tag</BigButton>
+                    @if (!CanWrite)
+                    {
+                        @* Blank, non-amiibo or damaged data is never written. *@
+                    }
+                    else if (_dump is AmiiboV3Dump)
+                    {
+                        @if (Capabilities.HasNfc)
+                        {
+                            <BigButton OnClick="Write">Write App Data</BigButton>
+                        }
+                    }
+                    else if (Capabilities.CanUseTags)
+                    {
+                        <BigButton OnClick="Write">Write Tag</BigButton>
+                    }
+                    <BigButton OnClick="ShowQr">Show QR Code</BigButton>
+                    @if (Keys.HasKeys && CanWrite)
+                    {
+                        <BigButton OnClick="NewUid" Class="secondary">New UID</BigButton>
+                    }
+                    @if (_dump is AmiiboV3Dump v3)
+                    {
+                        <BigButton OnClick="LoadLockOn" Class="secondary">@(v3.HasLockOn ? "Replace Lock-on" : "Load Lock-on")</BigButton>
+                        @if (v3.HasLockOn)
+                        {
+                            <BigButton OnClick="RemoveLockOn" Class="secondary">Remove Lock-on</BigButton>
+                        }
+                    }
+                </div>
+            }
+        </div>
+
+        @if (_figure != null)
+        {
+            <GameUsageList Figure="_figure" />
+        }
+    }
+</AppPage>
+
+@code {
+    private IAmiiboImage? _dump;
+    private AmiiboFigure? _figure;
+    private string _title = "Tag";
+    private string? _nickname;
+    private string _series = "Unknown";
+    private string _type = "Unknown";
+    private string? _amiiboId;
+    private List<(string Region, DateTime Date)> _releases = [];
+    private string? _message;
+    private string? _key;
+    private AmiiboValidation? _validation;
+
+    /// <summary>
+    /// Amiibo rows (series, type, ID...) are only shown for images laid out like an amiibo, or a figure from the library.
+    /// </summary>
+    private bool IsAmiibo => _validation?.IsAmiibo ?? _figure != null;
+
+    /// <summary>
+    /// Valid, or not verifiable because the keys aren't loaded. Damaged data is never written.
+    /// </summary>
+    private bool CanWrite => _validation is { Status: AmiiboValidity.Valid or AmiiboValidity.Unverified };
+
+    /// <summary>
+    /// A tag stored in <see cref="TagStore"/>.
+    /// </summary>
+    [Parameter] public string? TagKey { get; set; }
+
+    /// <summary>
+    /// Web: opened by the main menu's background scan (?auto=1). The browser skips the main menu's history entry after
+    /// a navigation nobody tapped for, so this page shows its own Back to the main menu.
+    /// </summary>
+    [SupplyParameterFromQuery(Name = "auto")]
+    public bool OpenedAutomatically { get; set; }
+
+    /// <summary>
+    /// Back for an automatically opened tag: back to the main menu, replacing this history entry so the browser's own
+    /// Back doesn't return to the tag.
+    /// </summary>
+    private async Task BackToMenuAsync()
+    {
+        if (OpenedAutomatically)
+        {
+            await Navigator.PopToAsync(AppRoutes.Home());
+        }
+        else
+        {
+            await Navigator.GoBackAsync();
+        }
+    }
+
+    /// <summary>
+    /// A figure ID from the library; a tag is generated for it.
+    /// </summary>
+    [Parameter] public string? FigureId { get; set; }
+
+    protected override void OnInitialized() => Keys.Changed += OnKeysChanged;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Keys.EnsureLoadedAsync();
+        if (!DatabaseContainer.IsLoaded)
+        {
+            await State.EnsureStartedAsync();
+        }
+
+        if (!string.IsNullOrEmpty(TagKey))
+        {
+            _key = TagKey;
+            _dump = Tags.Get(TagKey);
+            if (_dump != null)
+            {
+                _figure = Lookup.GetFigure(_dump);
+            }
+        }
+        else if (!string.IsNullOrEmpty(FigureId))
+        {
+            await LoadFigureAsync();
+        }
+
+        Describe();
+    }
+
+    private async Task LoadFigureAsync()
+    {
+        _figure = Lookup.GetFigure(FigureId!);
+        if (_figure == null)
+        {
+            _message = "This amiibo isn't in the database.";
+            return;
+        }
+
+        try
+        {
+            _dump = await Actions.CreateFromFigureAsync(_figure);
+            _message = _dump == null ? "Load your key_retail.bin in Settings to create this tag." : null;
+            if (_dump != null)
+            {
+                _key = Tags.Add(_dump);
+            }
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+        }
+    }
+
+    private void Describe()
+    {
+        _validation = _dump != null ? Lookup.Validate(_dump) : null;
+        _amiiboId = _dump != null ? $"0x{_dump.AmiiboIdHex}" : _figure != null ? $"0x{_figure.Id.Id}" : null;
+        _releases = [];
+        if (_figure?.Release is { } release)
+        {
+            AddRelease("North America", release.NorthAmerica);
+            AddRelease("Europe", release.Europe);
+            AddRelease("Japan", release.Japan);
+            AddRelease("Australia", release.Australia);
+            _releases.Sort((a, b) => a.Date.CompareTo(b.Date));
+        }
+
+        if (_dump != null)
+        {
+            _title = Lookup.GetDisplayName(_dump);
+            _nickname = _dump.GetNickname(Keys.DecryptionKeys);
+            _series = Lookup.GetSeriesName(_dump);
+            _type = Lookup.GetTypeName(_dump);
+        }
+        else if (_figure != null)
+        {
+            _title = _figure.Name;
+            _series = _figure.Series;
+            _type = _figure.FigureType;
+        }
+
+        if (_nickname == _title)
+        {
+            // The title already shows the nickname; also show the figure name for context.
+            _nickname = _figure != null ? $"{_nickname} ({_figure.Name})" : _nickname;
+        }
+    }
+
+    private void AddRelease(string region, DateTime? date)
+    {
+        if (date is DateTime value)
+        {
+            _releases.Add((region, value));
+        }
+    }
+
+    private async void OnKeysChanged(object? sender, EventArgs e)
+    {
+        if (_dump == null && !string.IsNullOrEmpty(FigureId))
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadFigureAsync();
+                Describe();
+                StateHasChanged();
+            });
+        }
+    }
+
+    private Task Save() => _dump == null ? Task.CompletedTask : Actions.SaveTagAsync(_dump);
+
+    private Task Write() => _dump == null ? Task.CompletedTask : Actions.WriteTagAsync(_dump);
+
+    private Task ShowQr()
+    {
+        if (_dump == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        _key ??= Tags.Add(_dump);
+        return Navigator.NavigateAsync(AppRoutes.Qr(_key, _title));
+    }
+
+    private async Task LoadLockOn()
+    {
+        if (_dump is not AmiiboV3Dump v3)
+        {
+            return;
+        }
+
+        var updated = await Actions.LoadLockOnAsync(v3);
+        if (updated != null)
+        {
+            Update(updated);
+        }
+    }
+
+    private void RemoveLockOn()
+    {
+        if (_dump is AmiiboV3Dump v3)
+        {
+            Update(v3.WithoutLockOn());
+        }
+    }
+
+    private void Update(IAmiiboImage updated)
+    {
+        _dump = updated;
+        if (_key != null)
+        {
+            Tags.Replace(_key, updated);
+        }
+
+        Describe();
+    }
+
+    private async Task NewUid()
+    {
+        if (_dump == null)
+        {
+            return;
+        }
+
+        var updated = await Actions.RandomizeUidAsync(_dump);
+        if (updated != null)
+        {
+            _dump = updated;
+            if (_key != null)
+            {
+                Tags.Replace(_key, updated);
+            }
+
+            Describe();
+        }
+    }
+
+    private Task OpenSettings() => Navigator.NavigateAsync(AppRoutes.Settings());
+
+    public void Dispose() => Keys.Changed -= OnKeysChanged;
+}

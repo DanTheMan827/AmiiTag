@@ -1,0 +1,445 @@
+@page "/device/{DeviceId}"
+@implements IDisposable
+@inject BleDeviceManager Manager
+@inject TagActions Actions
+@inject AmiiboLookup Lookup
+@inject IDatabaseContainer DatabaseContainer
+@inject IDialogService Dialogs
+@inject IAppNavigator Navigator
+@inject IFileService Files
+@inject KeyStore Keys
+@inject ScreenEvents Screens
+
+<AppPage Title="@(_device?.Name ?? "Device")" Wide="true">
+    <HeaderActions>
+        @if (_device != null)
+        {
+            <button type="button" class="link-button" @onclick="ShowSettings">Settings</button>
+        }
+    </HeaderActions>
+    <ChildContent>
+        @if (_device == null || !_device.IsConnected)
+        {
+            <p class="empty-state">This device isn't connected.</p>
+            <div class="button-stack">
+                <BigButton OnClick="OpenDevices">Devices</BigButton>
+            </div>
+        }
+        else
+        {
+            <p class="device-summary">
+                @TagDeviceDetector.Describe(_device.Kind)
+                @if (_device.Firmware != null)
+                {
+                    <span> · @_device.Firmware</span>
+                }
+            </p>
+
+            @if (_device is ISlotTagDevice)
+            {
+                @if (_slots == null)
+                {
+                    <p class="empty-state small">Reading slots...</p>
+                }
+                else
+                {
+                    <ul class="list grid">
+                        @foreach (var slot in _slots)
+                        {
+                            var figure = Lookup.GetSlotFigure(slot.Dump);
+                            <li>
+                                <button type="button" class="list-row with-image @(AmiiboLookup.IsAmiiboSummary(slot.Dump) ? "" : "dimmed")" @onclick="() => SlotTapped(slot)">
+                                    <FigureImage Figure="figure" Class="list-row-image" />
+                                    <span class="list-row-title">
+                                        @Lookup.GetSlotDisplayName(slot.Dump)
+                                        <span class="list-row-subtitle">Slot @(slot.Slot + 1)@(slot.Slot == _activeSlot ? " · Active" : "")</span>
+                                    </span>
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                }
+
+                <div class="button-stack compact">
+                    <BigButton OnClick="RefreshSlots" Class="secondary">Refresh</BigButton>
+                </div>
+            }
+            else
+            {
+                <div class="button-stack">
+                    <BigButton OnClick="WriteFileToDevice">Write Tag File</BigButton>
+                    <BigButton OnClick="() => PickCharacter(null)">Write Character</BigButton>
+                    <BigButton OnClick="WriteBlank" Class="secondary">Write Blank Tag</BigButton>
+                </div>
+            }
+
+            @if (_device is ICommandTagDevice commands)
+            {
+                <h2 class="section-title">Commands</h2>
+                <div class="button-stack compact">
+                    @foreach (var command in commands.Commands)
+                    {
+                        <BigButton OnClick="() => RunCommand(commands, command)" Class="@(command.IsDestructive ? "destructive" : "secondary")">@command.Title</BigButton>
+                    }
+                </div>
+            }
+        }
+    </ChildContent>
+</AppPage>
+
+<FigurePicker Open="_pickerOpen"
+              Title="@(_pickerSlot is int s ? $"Write to Slot {s + 1}" : "Write Character")"
+              Filter="IsNtag215Figure"
+              OnPicked="WriteCharacter"
+              OnCancelled="() => _pickerOpen = false" />
+
+@code {
+    private ITagDevice? _device;
+    private IReadOnlyList<SlotInfo>? _slots;
+    private int _activeSlot = -1;
+    private bool _pickerOpen;
+    private int? _pickerSlot;
+    private bool _leaving;
+
+    [Parameter] public string? DeviceId { get; set; }
+
+    // Opening a slot or Settings from here keeps the connection: those screens come back to this one.
+    private bool _openingChild;
+
+    protected override void OnInitialized()
+    {
+        Manager.Changed += OnManagerChanged;
+        DatabaseContainer.DataChanged += OnManagerChanged;
+        Screens.Closed += OnScreenClosed;
+    }
+
+    /// <summary>
+    /// Leaving the device screen (back to the device list, closing it, going home) disconnects the device.
+    /// </summary>
+    private void OnScreenClosed(object? sender, AppRoute route)
+    {
+        if (route.Component == typeof(DevicePage) &&
+            route.Parameters.TryGetValue(nameof(DeviceId), out var id) && Equals(id, DeviceId))
+        {
+            _ = InvokeAsync(DisconnectOnLeaveAsync);
+        }
+    }
+
+    private async Task DisconnectOnLeaveAsync()
+    {
+        if (_leaving)
+        {
+            return;
+        }
+
+        _leaving = true;
+        var device = DeviceId == null ? null : Manager.GetConnected(DeviceId);
+        if (device != null)
+        {
+            await Manager.DisconnectAsync(device);
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _device = DeviceId == null ? null : Manager.GetConnected(DeviceId);
+        if (_device is ISlotTagDevice)
+        {
+            await RefreshSlots();
+        }
+    }
+
+    private void OnManagerChanged(object? sender, EventArgs e) => InvokeAsync(async () =>
+    {
+        var disconnected = DeviceId != null && _device != null && Manager.GetConnected(DeviceId) is null;
+        if (DeviceId != null && Manager.GetConnected(DeviceId) is null)
+        {
+            _device = null;
+            _pickerOpen = false;
+        }
+
+        StateHasChanged();
+
+        // The device went away: go back to the device scanner, closing anything opened from this screen.
+        if (disconnected && !_leaving)
+        {
+            _leaving = true;
+            await Navigator.PopToAsync(AppRoutes.Devices());
+        }
+    });
+
+    private async Task RefreshSlots()
+    {
+        if (_device is not ISlotTagDevice slots)
+        {
+            return;
+        }
+
+        var result = await Actions.WithProgressAsync($"Reading {_device.Name}", async (progress, ct) =>
+        {
+            var summary = await slots.GetSlotSummaryAsync(ct);
+            var list = await slots.GetSlotsAsync(progress, ct);
+            return (summary, list);
+        });
+
+        if (result.Item2 != null)
+        {
+            _activeSlot = result.Item1.Current;
+            _slots = result.Item2;
+        }
+    }
+
+    private async Task SlotTapped(SlotInfo slot)
+    {
+        if (_device is not ISlotTagDevice device)
+        {
+            return;
+        }
+
+        var options = new List<(string Title, Func<Task> Run)>
+        {
+            ("Make active", async () =>
+            {
+                await Actions.WithProgressAsync("Changing slot", async (_, ct) => { await device.SelectSlotAsync(slot.Slot, ct); return true; });
+                _activeSlot = slot.Slot;
+            }),
+            ("Open", async () =>
+            {
+                var dump = await Actions.WithProgressAsync($"Reading slot {slot.Slot + 1}", (progress, ct) => device.ReadSlotAsync(slot.Slot, progress, ct));
+                if (dump != null)
+                {
+                    _openingChild = true;
+                    await Actions.OpenTagAsync(dump, modal: false);
+                }
+            }),
+            ("Write tag file here", () => WriteFile(slot.Slot)),
+            ("Write character here", () => PickCharacter(slot.Slot)),
+            ("Clear slot", () => ClearSlot(device, slot)),
+        };
+
+        if (device is IAmiitoolTagDevice { AmiitoolEnabled: true, AmiitoolKeysLoaded: true } amiitool)
+        {
+            options.Add(("Randomize UID", async () =>
+            {
+                await Actions.WithProgressAsync("Randomizing UID", (_, ct) => amiitool.RandomizeUidAsync(slot.Slot, ct));
+                await RefreshSlots();
+            }));
+        }
+
+        var choice = await Dialogs.ChooseAsync($"Slot {slot.Slot + 1}: {Lookup.GetSlotDisplayName(slot.Dump)}", options.Select(o => o.Title).ToList());
+        if (choice >= 0)
+        {
+            await options[choice].Run();
+        }
+    }
+
+    private async Task ClearSlot(ISlotTagDevice device, SlotInfo slot)
+    {
+        if (!await Dialogs.ConfirmAsync("Clear slot?", $"Slot {slot.Slot + 1} will be replaced with a blank tag.", "Clear", "Cancel"))
+        {
+            return;
+        }
+
+        await Actions.WithProgressAsync("Clearing slot", (_, ct) => device.ClearSlotAsync(slot.Slot, ct));
+        await RefreshSlots();
+    }
+
+    private Task WriteFileToDevice() => WriteFile(null);
+
+    private async Task WriteFile(int? slot)
+    {
+        if (_device == null)
+        {
+            return;
+        }
+
+        var file = await Files.PickFileAsync("Write Tag", TagActions.TagFileExtensions);
+        if (file == null)
+        {
+            return;
+        }
+
+        if (!TagDump.TryCreate(file.Data, out var dump) || dump == null)
+        {
+            await Dialogs.AlertAsync("Invalid file", $"{file.Name} isn't an NTAG215 dump.");
+            return;
+        }
+
+        await WriteDump(dump, slot);
+    }
+
+    private Task WriteBlank() => WriteDump(TagDump.Blank(), null);
+
+    // Pucks and emulators hold NTAG215 images, so v3 (NTAG I²C) figures aren't offered.
+    private static bool IsNtag215Figure(AmiiboFigure figure) => figure.Id.Id.EndsWith("02", StringComparison.Ordinal);
+
+    private Task PickCharacter(int? slot)
+    {
+        _pickerSlot = slot;
+        _pickerOpen = true;
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Generates a tag for the chosen character (like opening it from the library) and writes it to the device.
+    /// </summary>
+    private async Task WriteCharacter(AmiiboFigure figure)
+    {
+        _pickerOpen = false;
+        var slot = _pickerSlot;
+
+        IAmiiboImage? image;
+        try
+        {
+            image = await Actions.CreateFromFigureAsync(figure);
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.AlertAsync("Couldn't create the tag", ex.Message);
+            return;
+        }
+
+        if (image == null)
+        {
+            if (await Dialogs.ConfirmAsync("Keys needed", "Generating a tag needs both amiibo keys. Load them in Settings?", "Settings", "Cancel"))
+            {
+                _openingChild = true;
+                await Navigator.NavigateAsync(AppRoutes.Settings());
+            }
+
+            return;
+        }
+
+        if (image is not TagDump dump)
+        {
+            await Dialogs.AlertAsync("Can't write this figure", "v3 amiibo can't be written to a puck.");
+            return;
+        }
+
+        await WriteDump(dump, slot);
+    }
+
+    private async Task WriteDump(TagDump dump, int? slot)
+    {
+        var device = _device;
+        if (device == null)
+        {
+            return;
+        }
+
+        var ok = await Actions.WithProgressAsync($"Writing {device.Name}", async (progress, ct) =>
+        {
+            await device.WriteTagAsync(dump, slot, progress, ct);
+            return true;
+        });
+
+        if (ok && device is ISlotTagDevice)
+        {
+            await RefreshSlots();
+        }
+    }
+
+    private async Task RunCommand(ICommandTagDevice device, TagDeviceCommand command)
+    {
+        if (command.IsDestructive && !await Dialogs.ConfirmAsync($"{command.Title}?", "This can't be undone.", "Continue", "Cancel"))
+        {
+            return;
+        }
+
+        var result = await Actions.WithProgressAsync(command.Title, async (_, ct) => await device.RunCommandAsync(command, ct) ?? string.Empty);
+        if (!string.IsNullOrEmpty(result))
+        {
+            await Dialogs.AlertAsync(command.Title, result);
+        }
+    }
+
+    private async Task ShowSettings()
+    {
+        var device = _device;
+        if (device == null)
+        {
+            return;
+        }
+
+        var options = new List<(string Title, Func<Task> Run)>();
+        if (device is IRenamableTagDevice renamable)
+        {
+            options.Add(("Change Name", () => Rename(renamable)));
+        }
+
+        if (device is IAmiitoolTagDevice { AmiitoolEnabled: true, AmiitoolKeysLoaded: false } amiitool)
+        {
+            options.Add(("Upload amiitool keys", () => UploadKeys(amiitool)));
+        }
+
+        if (device is IUartTagDevice uart)
+        {
+            options.Add(("Enable UART", async () =>
+            {
+                await Actions.WithProgressAsync("Enabling UART", async (_, ct) => { await uart.EnableUartAsync(ct); return true; });
+                await Navigator.GoBackAsync();
+            }));
+        }
+
+        options.Add(("Disconnect", async () =>
+        {
+            await Manager.DisconnectAsync(device);
+            await Navigator.GoBackAsync();
+        }));
+
+        var choice = await Dialogs.ChooseAsync(device.Name, options.Select(o => o.Title).ToList());
+        if (choice >= 0)
+        {
+            await options[choice].Run();
+        }
+    }
+
+    private async Task Rename(IRenamableTagDevice device)
+    {
+        var name = await Dialogs.PromptAsync(device.Name, "Enter a new name. The device will disconnect.", device.Name, device.MaxNameBytes);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        var ok = await Actions.WithProgressAsync("Changing Name", async (_, ct) => { await device.RenameAsync(name.Trim(), ct); return true; });
+        if (ok)
+        {
+            await Navigator.GoBackAsync();
+        }
+    }
+
+    private async Task UploadKeys(IAmiitoolTagDevice device)
+    {
+        await Keys.EnsureLoadedAsync();
+        if (Keys.RawKeys is not { } keys)
+        {
+            await Dialogs.AlertAsync("Key file missing", "Load key_retail.bin in Settings first.");
+            return;
+        }
+
+        var ok = await Actions.WithProgressAsync("Uploading keys", (_, ct) => device.UploadKeysAsync(keys, ct));
+        await Dialogs.AlertAsync(ok ? "Keys uploaded" : "The puck rejected the keys");
+    }
+
+    private Task OpenDevices() => Navigator.NavigateAsync(AppRoutes.Devices());
+
+    public void Dispose()
+    {
+        Manager.Changed -= OnManagerChanged;
+        DatabaseContainer.DataChanged -= OnManagerChanged;
+        Screens.Closed -= OnScreenClosed;
+
+        // The web disposes the screen when leaving it, which is the same as closing it here, unless it was left for
+        // a screen opened from it (a slot's tag).
+        if (!_openingChild && !_leaving)
+        {
+            _leaving = true;
+            var device = DeviceId == null ? null : Manager.GetConnected(DeviceId);
+            if (device != null)
+            {
+                _ = Manager.DisconnectAsync(device);
+            }
+        }
+    }
+}

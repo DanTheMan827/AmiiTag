@@ -1,4 +1,4 @@
-﻿using AmiiTag.AmiiboData;
+using AmiiTag.AmiiboData;
 
 namespace AmiiTag.Core.Interfaces
 {
@@ -8,6 +8,21 @@ namespace AmiiTag.Core.Interfaces
         /// The database.
         /// </summary>
         public AmiiboDatabase Database { get; }
+
+        /// <summary>
+        /// True once data has been loaded into <see cref="Database"/>.
+        /// </summary>
+        public bool IsLoaded { get; }
+
+        /// <summary>
+        /// True if <see cref="LoadData"/> downloads data (the web), so the app should show progress for it.
+        /// </summary>
+        public bool LoadsRemotely { get; }
+
+        /// <summary>
+        /// Raised after data is (re)loaded.
+        /// </summary>
+        public event EventHandler? DataChanged;
 
         /// <summary>
         /// Updates the underlying data source and loads the new data.

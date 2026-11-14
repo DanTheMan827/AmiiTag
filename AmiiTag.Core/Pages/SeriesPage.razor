@@ -1,0 +1,47 @@
+@page "/library/{SeriesId}"
+@inject IDatabaseContainer DatabaseContainer
+@inject IAppNavigator Navigator
+
+<AppPage Title="@_title" Wide="true">
+    @if (_figures.Count == 0)
+    {
+        <p class="empty-state">No amiibo in this series.</p>
+    }
+    else
+    {
+        <ul class="list grid">
+            @foreach (var figure in _figures)
+            {
+                <li>
+                    <button type="button" class="list-row with-image" @onclick="() => OpenFigure(figure)">
+                        <FigureImage Figure="figure" Class="list-row-image" />
+                        <span class="list-row-title">@figure.Name</span>
+                    </button>
+                </li>
+            }
+        </ul>
+    }
+</AppPage>
+
+@code {
+    private List<AmiiboFigure> _figures = [];
+    private string _title = "Amiibo";
+
+    /// <summary>
+    /// The two hex digit amiibo series ID.
+    /// </summary>
+    [Parameter] public string? SeriesId { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        var database = DatabaseContainer.Database;
+        var id = SeriesId?.ToLowerInvariant() ?? string.Empty;
+        _title = database.AmiiboSeries != null && database.AmiiboSeries.TryGetValue(id, out var name) ? name : "Amiibo";
+        _figures = database.Figures.Values
+            .Where(f => f.IsVisible && f.Id.Series == id)
+            .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private Task OpenFigure(AmiiboFigure figure) => Navigator.NavigateAsync(AppRoutes.Figure(figure.Id.Id, figure.Name));
+}

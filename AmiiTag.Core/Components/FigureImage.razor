@@ -1,0 +1,43 @@
+@inject IFigureImageProvider Images
+
+@if (_url != null && !_failed)
+{
+    @* A missing image (e.g. not on the server yet) falls back to the placeholder. *@
+    <img src="@_url" alt="@Figure?.Name" class="@Class" loading="lazy" @onerror="() => _failed = true" />
+}
+else
+{
+    <div class="@Class image-placeholder" aria-hidden="true"></div>
+}
+
+@code {
+    private string? _url;
+    private bool _failed;
+    private AmiiboFigure? _loadedFor;
+
+    [Parameter] public AmiiboFigure? Figure { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(_loadedFor, Figure))
+        {
+            return;
+        }
+
+        _loadedFor = Figure;
+        _url = null;
+        _failed = false;
+        if (Figure != null)
+        {
+            try
+            {
+                _url = await Images.GetImageUrlAsync(Figure);
+            }
+            catch
+            {
+                _url = null;
+            }
+        }
+    }
+}

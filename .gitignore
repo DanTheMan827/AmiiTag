@@ -396,3 +396,8 @@ FodyWeavers.xsd
 
 # JetBrains Rider
 *.sln.iml
+
+# Nintendo key files: never commit them (only the SHA-256 in AmiiboKeys.cs belongs in the repo).
+key_retail.bin
+unfixed-info.bin
+locked-secret.bin

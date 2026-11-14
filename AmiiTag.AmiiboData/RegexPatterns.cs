@@ -6,9 +6,9 @@ namespace AmiiTag.AmiiboData
     {
         /// <summary>
         /// Regular expression for validating Amiibo IDs.
-        /// Matches a 16-character hexadecimal string ending with "02", optionally prefixed with "0x".
+        /// Matches a 16-character hexadecimal string ending with "02" (NTAG215) or "03" (v3), optionally prefixed with "0x".
         /// </summary>
-        public static readonly Regex AmiiboRegex = new Regex(@"^(?:0x)?([a-f0-9]{14}02)$", RegexOptions.Compiled);
+        public static readonly Regex AmiiboRegex = new Regex(@"^(?:0x)?([a-f0-9]{14}0[23])$", RegexOptions.Compiled);
 
         /// <summary>
         /// Regular expression for validating Amiibo Series IDs.

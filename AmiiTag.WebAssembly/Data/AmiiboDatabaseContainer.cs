@@ -1,112 +1,75 @@
-﻿using AmiiTag.AmiiboData;
+using AmiiTag.AmiiboData;
 using AmiiTag.Core;
 using AmiiTag.Core.Interfaces;
-using DanTheMan827.Helpers;
 
 namespace AmiiTag.WebAssembly.Data
 {
+    /// <summary>
+    /// Loads the amiibo databases straight from the website on startup. The browser's HTTP cache keeps
+    /// repeat visits fast, and sha1sum.json hashes are used as cache busters by <see cref="AmiiboDatabase"/>.
+    /// </summary>
     public class AmiiboDatabaseContainer : IDatabaseContainer
     {
-        private static string[] UpdateUrls { get; set; } = new string[]
-        {
+        private static readonly string[] UpdateUrls =
+        [
             "https://dantheman827.github.io/AmiiboData",
-            "https://dantheman827.github.io/UnofficialAmiiboDB"
-        };
-
-        private Dictionary<string, Dictionary<string, string>> Hashes { get; set; } = new();
-
-
-        public AmiiboDatabase Database { get; private set; }
+            "https://dantheman827.github.io/UnofficialAmiiboDB",
+        ];
 
         public AmiiboDatabaseContainer(AmiiboDatabase database)
         {
-            this.Database = database;
+            Database = database;
         }
 
-        public async Task<bool> CheckUpdate(CancellationToken cancellationToken = default)
+        public AmiiboDatabase Database { get; }
+
+        public bool IsLoaded { get; private set; }
+
+        public bool LoadsRemotely => true;
+
+        public event EventHandler? DataChanged;
+
+        /// <summary>
+        /// Data is always fetched fresh, so there's never a separate update to offer.
+        /// </summary>
+        public Task<bool> CheckUpdate(CancellationToken cancellationToken = default) => Task.FromResult(false);
+
+        public Task ClearData(CancellationToken cancellationToken = default)
         {
-            foreach (var url in UpdateUrls)
-            {
-                if (await CheckUpdate(url, cancellationToken) == true)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            Database.ClearData();
+            IsLoaded = false;
+            DataChanged?.Invoke(this, EventArgs.Empty);
+            return Task.CompletedTask;
         }
 
-        public async Task ClearData(CancellationToken cancellationToken = default) => Database.ClearData();
-
-        public async Task LoadData(CancellationToken cancellationToken = default) => await UpdateData(null, cancellationToken);
+        public Task LoadData(CancellationToken cancellationToken = default) => UpdateData(null, cancellationToken);
 
         public async Task UpdateData(Func<ProgressInfo, Task>? progress = null, CancellationToken cancellationToken = default)
         {
-            if (await CheckUpdate() == false)
+            Database.ClearData();
+            for (var i = 0; i < UpdateUrls.Length; i++)
             {
-                return;
-            }
-
-            await ClearData(cancellationToken);
-
-            foreach (var url in UpdateUrls.Select((url, index) => new KeyValuePair<int, string>(index, url)))
-            {
-                progress?.Invoke(new ProgressInfo(url.Key, UpdateUrls.Length, url.Value));
+                if (progress != null)
+                {
+                    await progress(new ProgressInfo(i + 1, UpdateUrls.Length, UpdateUrls[i]));
+                }
 
                 try
                 {
-                    var hashes = await Web.DownloadJsonAsync<Dictionary<string, string>>(url.Value, cancellationToken);
-
-                    if (hashes != null)
-                    {
-                        if (Hashes.ContainsKey(url.Value))
-                        {
-                            Hashes.Remove(url.Value);
-                        }
-
-                        Hashes.Add(url.Value, hashes);
-                    }
+                    await Database.ImportData(UpdateUrls[i], cancellationToken: cancellationToken);
                 }
-                catch (Exception ex)
-                { }
-
-                try
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
-                    await Database.ImportData(url.Value);
+                    // A database JSON file that can't be fetched is a hard failure. Images are loaded lazily by the
+                    // browser and fall back to a placeholder when missing.
+                    IsLoaded = Database.Figures.Count > 0;
+                    DataChanged?.Invoke(this, EventArgs.Empty);
+                    throw new InvalidOperationException($"Couldn't load the amiibo database from {UpdateUrls[i]}: {ex.Message}", ex);
                 }
-                catch (Exception ex)
-                { }
             }
 
-            progress?.Invoke(new ProgressInfo(UpdateUrls.Length, UpdateUrls.Length, "Done"));
-        }
-
-        private async Task<Dictionary<string, string>?> LoadHashes(string url, CancellationToken cancellationToken) => await Web.DownloadJsonAsync<Dictionary<string, string>>(url, cancellationToken);
-
-        private async Task<bool> CheckUpdate(string url, CancellationToken cancellationToken = default)
-        {
-            if (!Hashes.ContainsKey(url))
-            {
-                return true;
-            }
-
-            try
-            {
-                var hashes = await Web.DownloadJsonAsync<Dictionary<string, string>>(url, cancellationToken);
-
-                return !CompareDictionaries(hashes, Hashes[url]);
-            }
-            catch (Exception ex)
-            { }
-
-            return true;
-        }
-
-        private static bool CompareDictionaries<TKey, TValue>(Dictionary<TKey, TValue> dict1, Dictionary<TKey, TValue> dict2)
-        {
-            // Use LINQ SequenceEqual to compare the key-value pairs
-            return dict1.OrderBy(kvp => kvp.Key)
-                        .SequenceEqual(dict2.OrderBy(kvp => kvp.Key));
+            IsLoaded = Database.Figures.Count > 0;
+            DataChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 }

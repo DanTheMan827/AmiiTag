@@ -1,0 +1,100 @@
+@* Page chrome. MAUI uses the native navigation bar (so no header here). The web draws this header, and only shows
+   Back when installed as an app on iPhone/iPad, the one place without a browser or system back control. *@
+@inject AppEnvironment Environment
+@inject IAppNavigator Navigator
+@inject IJSRuntime JS
+
+@if (IsWeb)
+{
+    <PageTitle>@(string.IsNullOrEmpty(Title) ? "AmiiTag" : $"{Title} - AmiiTag")</PageTitle>
+}
+
+<div class="app-page @(Sheet ? "sheet" : "") @(Wide ? "wide" : "") @Class">
+    @if (DrawsHeader && ShowHeader)
+    {
+        <header class="page-header">
+            <div class="page-header-side">
+                @if (BackVisible)
+                {
+                    <button type="button" class="link-button" @onclick="GoBack" aria-label="Back">&#x2039; Back</button>
+                }
+            </div>
+            <h1 class="page-title">@Title</h1>
+            <div class="page-header-side end">
+                @HeaderActions
+            </div>
+        </header>
+    }
+    else if (!DrawsHeader && HeaderActions != null)
+    {
+        <div class="page-actions">@HeaderActions</div>
+    }
+
+    <main class="page-content">
+        @ChildContent
+    </main>
+</div>
+
+@code {
+    // Whether the web app runs as an installed app on iOS. Evaluated once per session.
+    private static bool? s_iosStandalone;
+
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? HeaderActions { get; set; }
+    [Parameter] public bool ShowHeader { get; set; } = true;
+    [Parameter] public bool ShowBack { get; set; } = true;
+
+    /// <summary>
+    /// Web: show Back even where the browser has its own, for screens the browser's Back can't return from properly.
+    /// </summary>
+    [Parameter] public bool ForceBack { get; set; }
+
+    /// <summary>
+    /// Replaces the default Back behaviour (one step back in history).
+    /// </summary>
+    [Parameter] public EventCallback OnBack { get; set; }
+
+    /// <summary>
+    /// Uses the dark "sheet" background (library, tag info...) rather than the black home background.
+    /// </summary>
+    [Parameter] public bool Sheet { get; set; } = true;
+
+    /// <summary>
+    /// Lets the content use more width on large screens (grids, two column layouts).
+    /// </summary>
+    [Parameter] public bool Wide { get; set; }
+
+    [Parameter] public string? Class { get; set; }
+
+    private bool IsWeb => Environment.Platform == AppEnvironment.PlatformType.WebAssembly;
+
+    /// <summary>
+    /// Only the web lacks a native navigation bar.
+    /// </summary>
+    private bool DrawsHeader => IsWeb;
+
+    private bool BackVisible => IsWeb && (ForceBack || (ShowBack && s_iosStandalone == true));
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && IsWeb && s_iosStandalone == null)
+        {
+            try
+            {
+                s_iosStandalone = await JS.InvokeAsync<bool>("amiitag.isIosStandalone");
+            }
+            catch (JSException)
+            {
+                s_iosStandalone = false;
+            }
+
+            if (s_iosStandalone == true)
+            {
+                StateHasChanged();
+            }
+        }
+    }
+
+    private Task GoBack() => OnBack.HasDelegate ? OnBack.InvokeAsync() : Navigator.GoBackAsync();
+}
