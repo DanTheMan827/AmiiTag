@@ -7,7 +7,7 @@ namespace AmiiTag.Maui.Services;
 
 /// <summary>
 /// Turns <see cref="AppRoute"/>s into native pages: pushes onto the current NavigationPage, or presents a new
-/// NavigationPage as a sheet for modal routes (like the Swift app's page sheets).
+/// NavigationPage as a sheet for modal routes on Android and Mac.
 /// </summary>
 public sealed class MauiNavigator : IAppNavigator
 {
@@ -73,8 +73,15 @@ public sealed class MauiNavigator : IAppNavigator
     public static NavigationPage CreateNavigationPage(Page page)
     {
         var navigationPage = new NavigationPage(page);
-        navigationPage.SetAppThemeColor(NavigationPage.BarBackgroundColorProperty, Color.FromArgb("#F8F9FC"), Color.FromArgb("#000000"));
-        navigationPage.SetAppThemeColor(NavigationPage.BarTextColorProperty, Colors.Black, Colors.White);
+
+        // iOS keeps the system's own navigation bar (translucent, following light/dark, standard back button); the
+        // other platforms get colours matching the pages.
+        if (DeviceInfo.Platform != DevicePlatform.iOS)
+        {
+            navigationPage.SetAppThemeColor(NavigationPage.BarBackgroundColorProperty, Color.FromArgb("#F8F9FC"), Color.FromArgb("#000000"));
+            navigationPage.SetAppThemeColor(NavigationPage.BarTextColorProperty, Colors.Black, Colors.White);
+        }
+
         return navigationPage;
     }
 
@@ -83,11 +90,11 @@ public sealed class MauiNavigator : IAppNavigator
         var page = new BlazorPage(route);
         var root = RootPage ?? throw new InvalidOperationException("The app has no window yet.");
 
-        // iOS: every screen is a native card (page sheet) that slides up and stacks on the previous one; swiping down
-        // closes it. Android/Mac: only modal routes are sheets. Windows: everything is pushed, so the navigation bar's
-        // back arrow always leads back to the main screen.
-        var asSheet = DeviceInfo.Platform == DevicePlatform.iOS ||
-                      (route.Presentation == RoutePresentation.Modal && DeviceInfo.Platform != DevicePlatform.WinUI);
+        // iOS and Windows: every screen is pushed onto the one navigation stack, so iOS gets its standard navigation
+        // (back button, swipe from the edge to go back) and Windows' back arrow always leads back to the main screen.
+        // Android/Mac: modal routes are sheets.
+        var asSheet = route.Presentation == RoutePresentation.Modal &&
+                      DeviceInfo.Platform != DevicePlatform.WinUI && DeviceInfo.Platform != DevicePlatform.iOS;
         if (asSheet)
         {
             var sheet = CreateNavigationPage(page);
@@ -185,15 +192,10 @@ public sealed class MauiNavigator : IAppNavigator
     });
 
     /// <summary>
-    /// Sheets can be swiped away on iOS; elsewhere they need an explicit Close button.
+    /// Sheets need an explicit Close button.
     /// </summary>
     private static void AddCloseButton(Page page, NavigationPage sheet)
     {
-        if (DeviceInfo.Platform == DevicePlatform.iOS)
-        {
-            return;
-        }
-
         page.ToolbarItems.Add(new ToolbarItem
         {
             Text = "Close",

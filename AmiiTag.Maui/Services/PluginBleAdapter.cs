@@ -173,16 +173,56 @@ public sealed class PluginBleAdapter : IBleAdapter
     internal static BleDeviceInfo ToInfo(BleDeviceContract device)
     {
         var services = new List<Guid>();
+        string? advertisedName = null;
         foreach (var record in device.AdvertisementRecords ?? Enumerable.Empty<AdvertisementRecord>())
         {
-            // 0x06 / 0x07: incomplete / complete list of 128 bit service UUIDs.
-            if ((int)record.Type is 0x06 or 0x07 && record.Data != null)
+            if (record.Data == null)
             {
-                services.AddRange(BleUuids.ParseUuid128List(record.Data));
+                continue;
+            }
+
+            switch ((int)record.Type)
+            {
+                // 0x06 / 0x07: incomplete / complete list of 128 bit service UUIDs. On the air they're little endian, as
+                // Android and Windows pass them on; Plugin.BLE on iOS and Mac rebuilds these records from CoreBluetooth's
+                // CBUUIDs, whose bytes are big endian. Both readings are kept, so the UART service of a puck is
+                // recognised on every platform (a reversed UUID matching another service by chance isn't a concern).
+                case 0x06 or 0x07:
+                    foreach (var uuid in BleUuids.ParseUuid128List(record.Data))
+                    {
+                        services.Add(uuid);
+                        services.Add(ReverseUuidBytes(uuid));
+                    }
+
+                    break;
+
+                // 0x08 / 0x09: shortened / complete local name, as the device advertises it now.
+                case 0x09:
+                    advertisedName = DecodeName(record.Data);
+                    break;
+                case 0x08:
+                    advertisedName ??= DecodeName(record.Data);
+                    break;
             }
         }
 
-        return new BleDeviceInfo(device.Id.ToString(), device.Name, services, device.Rssi) { Native = device };
+        // iOS reports the name it cached for the device (its GAP name from an earlier connection), which is stale once
+        // the device has been renamed and can be missing entirely; what the device advertises is what it's called.
+        var name = string.IsNullOrWhiteSpace(advertisedName) ? device.Name : advertisedName;
+        return new BleDeviceInfo(device.Id.ToString(), name, services, device.Rssi) { Native = device };
+    }
+
+    private static string? DecodeName(byte[] data)
+    {
+        var text = System.Text.Encoding.UTF8.GetString(data).TrimEnd('\0').Trim();
+        return text.Length == 0 ? null : text;
+    }
+
+    private static Guid ReverseUuidBytes(Guid uuid)
+    {
+        var bytes = Convert.FromHexString(uuid.ToString("N"));
+        Array.Reverse(bytes);
+        return Guid.ParseExact(Convert.ToHexString(bytes), "N");
     }
 }
 
