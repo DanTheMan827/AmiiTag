@@ -98,6 +98,9 @@ public sealed class NfcConnectOptions
 /// </summary>
 public interface INfcReselectable
 {
+    /// <summary>Whether the active transport supports reselecting without requesting an RF-field reset.</summary>
+    bool CanReselect => true;
+
     /// <summary>
     /// Wakes and selects the tag again, without cycling the field (that would reset a v3 figure's microcontroller).
     /// Throws if no tag, or a different one, answers.

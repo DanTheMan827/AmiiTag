@@ -30,6 +30,12 @@ public interface IPcscTransceiveStrategy
     void End(PcscCard card);
 }
 
+/// <summary>Raw tag activation supported by a reader, without a PC/SC card reset or RF-off command.</summary>
+public interface IPcscReselectStrategy
+{
+    void Reselect(PcscCard card, byte[] expectedUid);
+}
+
 /// <summary>
 /// Picks a strategy for a reader. Direct command strategies are always preferred: ones whose name filter matches the
 /// reader first, then the generic ones. Each direct strategy has to prove it really reaches the tag (a raw READ of
@@ -73,6 +79,41 @@ public sealed class PcscStrategySelector
         }
     }
 
+    private static bool ReachesTagWithRecovery(IPcscTransceiveStrategy strategy, PcscCard card)
+    {
+        // A v3 figure can be selected by PC/SC while its I²C side still owns memory. Repeated card resets
+        // restart that startup window. Keep the established reader mode/field while waiting and waking it.
+        byte[]? expectedUid = null;
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            if (ReachesTag(strategy, card)) return true;
+            if (card.LastTransportError != null) return false;
+            if (attempt == 4) break;
+            card.Log?.Add($"(tag not ready; waiting {100 * (attempt + 1)} ms without card reset)");
+            Thread.Sleep(100 * (attempt + 1));
+            if (strategy is IPcscReselectStrategy reselectable)
+            {
+                try
+                {
+                    expectedUid ??= card.GetUid();
+                    if (card.LastTransportError != null) return false;
+                    reselectable.Reselect(card, expectedUid);
+                }
+                catch (NfcConnectionLostException) { throw; }
+                catch (NfcException ex)
+                {
+                    card.Log?.Add($"(tag reselect failed: {ex.Message})");
+                    return false;
+                }
+                catch (PCSC.Exceptions.PCSCException)
+                {
+                    return false;
+                }
+            }
+        }
+        return false;
+    }
+
     public void Register(Func<string, bool> readerNameMatches, Func<IPcscTransceiveStrategy> create) =>
         _specific.Add((readerNameMatches, create));
 
@@ -108,7 +149,7 @@ public sealed class PcscStrategySelector
                     card.LastTransportError = null;
                     log.Add($"-- {strategy.Name} (attempt {attempt + 1})");
                     var begun = strategy.TryBegin(card);
-                    if (begun && (!strategy.IsDirect || ReachesTag(strategy, card)))
+                    if (begun && (!strategy.IsDirect || ReachesTagWithRecovery(strategy, card)))
                     {
                         lock (_lastWorking)
                         {
@@ -134,13 +175,6 @@ public sealed class PcscStrategySelector
                         try { strategy.End(card); } catch { }
                     }
                     card.ResetCard();
-                    if (begun && attempt < 2)
-                    {
-                        // The reader accepted setup, but the I²C side may temporarily own the tag memory.
-                        // Give this protocol another chance before declaring it unsupported.
-                        Thread.Sleep(100 * (attempt + 1));
-                        continue;
-                    }
                     break;
                 }
             }
@@ -166,7 +200,7 @@ public sealed class PcscStrategySelector
 /// has no CRC. So the CRC is switched off in the CIU (TxMode/RxMode) for the session and added and checked here, as
 /// nfcpy's PN53x driver does for Type 2 tags. It's switched back on when the session ends.
 /// </remarks>
-public sealed class Pn53xDirectTransmitStrategy : IPcscTransceiveStrategy
+public sealed class Pn53xDirectTransmitStrategy : IPcscTransceiveStrategy, IPcscReselectStrategy
 {
     private const ushort CiuTxMode = 0x6302;
     private const ushort CiuRxMode = 0x6303;
@@ -175,6 +209,7 @@ public sealed class Pn53xDirectTransmitStrategy : IPcscTransceiveStrategy
 
     private bool _crcChanged;
     private byte? _timeoutCode;
+    private bool _selectionRetriesChanged;
 
     public string Name => "PN53x direct transmit";
 
@@ -192,6 +227,8 @@ public sealed class Pn53xDirectTransmitStrategy : IPcscTransceiveStrategy
                 return false;
             }
 
+            // A PC/SC reconnect/reset may have restored PN532 defaults since the previous attempt.
+            _timeoutCode = null;
             _crcChanged = SetCrc(card, CrcOff);
             return _crcChanged;
         }
@@ -218,6 +255,11 @@ public sealed class Pn53xDirectTransmitStrategy : IPcscTransceiveStrategy
             try
             {
                 SetResponseTimeout(card, code);
+                // Reader helpers (e.g. FF CA UID) and reader-managed activation may restore hardware CRC.
+                // Our Type 2 frames already include CRC_A, so reassert raw framing before EVERY exchange.
+                if (!SetCrc(card, CrcOff))
+                    throw new NfcConnectionLostException("Could not configure raw PN532 framing.", new InvalidOperationException());
+                _crcChanged = true;
             }
             catch (PCSC.Exceptions.PCSCException ex)
             {
@@ -241,6 +283,31 @@ public sealed class Pn53xDirectTransmitStrategy : IPcscTransceiveStrategy
         _timeoutCode = null;
         Pn532(card, [0x32, 0x02, 0x00, 0x0B, code]);
         _timeoutCode = code;
+    }
+
+    public void Reselect(PcscCard card, byte[] expectedUid)
+    {
+        if (!SetCrc(card, CrcOn)) throw new NfcException("Could not prepare the PN532 for tag activation.");
+        try
+        {
+            // Bound InListPassiveTarget: its default passive-activation retry count is infinite (UM0701-02).
+            Pn532(card, [0x32, 0x05, 0xFF, 0x01, 0x00]);
+            _selectionRetriesChanged = true;
+            var response = Pn532(card, [0x4A, 0x01, 0x00]); // One ISO14443-A target, 106 kbit/s.
+            if (response.Length < 6 || response[0] != 1 || response[5] is not (4 or 7 or 10) || response.Length < 6 + response[5])
+                throw new NfcException("The PN532 could not activate the tag.");
+            var uid = response.AsSpan(6, response[5]);
+            if (expectedUid.Length != 0 && !uid.SequenceEqual(expectedUid))
+                throw new NfcConnectionLostException("A different tag answered the PN532 activation.", new InvalidOperationException());
+            card.Log?.Add("(tag reselected without PC/SC reset)");
+        }
+        finally
+        {
+            // Activation restores RF protocol registers, so reapply raw Type 2 framing before the next command.
+            _timeoutCode = null;
+            if (!SetCrc(card, CrcOff)) throw new NfcException("Could not restore raw PN532 framing after activation.");
+            _crcChanged = true;
+        }
     }
 
     private static byte[] Exchange(PcscCard card, byte[] command)
@@ -278,11 +345,22 @@ public sealed class Pn53xDirectTransmitStrategy : IPcscTransceiveStrategy
 
     public void End(PcscCard card)
     {
-        // Put the CRC back on so the reader's own card handling keeps working.
-        if (_crcChanged)
+        // Put the CRC and the documented default activation retries back for the reader's own card handling.
+        try
         {
-            SetCrc(card, CrcOn);
-            _crcChanged = false;
+            if (_selectionRetriesChanged)
+            {
+                Pn532(card, [0x32, 0x05, 0xFF, 0x01, 0xFF]);
+                _selectionRetriesChanged = false;
+            }
+        }
+        finally
+        {
+            if (_crcChanged)
+            {
+                SetCrc(card, CrcOn);
+                _crcChanged = false;
+            }
         }
     }
 

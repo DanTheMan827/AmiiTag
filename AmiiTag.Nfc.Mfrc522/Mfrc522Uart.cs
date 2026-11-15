@@ -114,6 +114,17 @@ public sealed class Mfrc522Uart : IAsyncDisposable
     /// </summary>
     private async Task<byte[]> TransactAsync(byte[] request, int answerLength)
     {
+        if (Port is ISerialPortTransactionStream transactions)
+        {
+            var reply = await transactions.TransactAsync(request, answerLength, Timeout);
+            if (reply.Length != answerLength)
+            {
+                await DrainAsync(TimeSpan.FromMilliseconds(30));
+                throw new NfcException($"The serial transaction returned {reply.Length} bytes; expected {answerLength}.");
+            }
+            return reply;
+        }
+
         await Port.WriteAsync(request);
 
         var output = new byte[answerLength];

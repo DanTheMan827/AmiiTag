@@ -350,7 +350,7 @@ public sealed class PcscCard : IDisposable
     }
 }
 
-internal sealed class PcscTagConnection : INfcTagConnection
+internal sealed class PcscTagConnection : INfcTagConnection, INfcReselectable
 {
     private readonly ISCardContext _context;
     private readonly PcscCard _card;
@@ -371,6 +371,32 @@ internal sealed class PcscTagConnection : INfcTagConnection
     public int MaxFastReadPages => _strategy.MaxFastReadPages;
 
     public bool IsDirectCommandMode => _strategy.IsDirect;
+
+    public bool CanReselect => _strategy is IPcscReselectStrategy;
+
+    public async Task ReselectAsync(CancellationToken cancellationToken = default)
+    {
+        if (_strategy is not IPcscReselectStrategy reselectable)
+            throw new NfcCommandNotSupportedException(0x52);
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            await Task.Run(() =>
+            {
+                if (_card.LastTransportError is { } error && !_card.TryReconnectPreservingField())
+                    throw new NfcConnectionLostException("Could not recover the reader without resetting the card.", error);
+                reselectable.Reselect(_card, Uid);
+            }, cancellationToken);
+        }
+        catch (PCSCException ex)
+        {
+            throw new NfcConnectionLostException("Lost the reader while reactivating the tag.", ex);
+        }
+        finally
+        {
+            _lock.Release();
+        }
+    }
 
     public Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default) =>
         ExchangeAsync(command, null, cancellationToken);

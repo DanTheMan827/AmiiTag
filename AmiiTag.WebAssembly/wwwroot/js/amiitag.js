@@ -469,8 +469,9 @@
 
             const reader = port.readable.getReader();
             port._amiitagReader = reader;
+            port._amiitagTransaction = null;
 
-            (async function () {
+            port._amiitagReadLoop = (async function () {
                 try {
                     for (;;) {
                         const result = await reader.read();
@@ -479,17 +480,25 @@
                         }
 
                         if (result.value && result.value.length) {
-                            await dotnetRef.invokeMethodAsync("OnData", result.value);
+                            const transaction = port._amiitagTransaction;
+                            if (transaction) {
+                                transaction.receive(result.value);
+                            } else {
+                                await dotnetRef.invokeMethodAsync("OnData", result.value);
+                            }
                         }
                     }
                 } catch {
                     // Port closed or unplugged.
                 } finally {
+                    if (port._amiitagTransaction) {
+                        port._amiitagTransaction.closed();
+                    }
                     try {
                         reader.releaseLock();
                     } catch { }
 
-                    dotnetRef.invokeMethodAsync("OnClosed").catch(function () { });
+                    await dotnetRef.invokeMethodAsync("OnClosed").catch(function () { });
                 }
             })();
         },
@@ -503,6 +512,73 @@
             }
         },
 
+        // One JS interop call for a complete UART request/reply. Incoming chunks are collected here
+        // rather than awaiting JS -> .NET -> JS scheduling on every USB read.
+        transact: async function (id, request, responseLength, timeoutMs) {
+            const port = requirePort(id);
+            if (!Number.isInteger(responseLength) || responseLength <= 0 || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+                throw new Error("Invalid serial transaction length or timeout.");
+            }
+            if (port._amiitagTransaction) {
+                throw new Error("A serial transaction is already in progress.");
+            }
+
+            const bytes = new Uint8Array(responseLength);
+            let received = 0;
+            let timer;
+            let draining = false;
+            let drainError = "timeout";
+            let finished = false;
+            let complete;
+            const answer = new Promise(function (resolve) { complete = resolve; });
+            const finish = function (error) {
+                if (finished) return;
+                finished = true;
+                clearTimeout(timer);
+                complete({ data: error ? null : bytes, error: error || null, received: received });
+            };
+            const drain = function (error) {
+                if (error) drainError = error;
+                // Match Mfrc522Uart's native recovery: don't start the next batch until late replies
+                // have stopped for 30 ms. Keep ownership while draining; no late bytes reach OnData.
+                draining = true;
+                clearTimeout(timer);
+                timer = setTimeout(function () { finish(drainError); }, 30);
+            };
+            const transaction = {
+                receive: function (chunk) {
+                    if (draining) {
+                        drain();
+                        return;
+                    }
+                    const take = Math.min(chunk.length, responseLength - received);
+                    bytes.set(chunk.subarray(0, take), received);
+                    received += take;
+                    if (chunk.length > take) {
+                        // Extra bytes mean the UART stream was already out of step. Drain them instead
+                        // of accepting a plausible-looking reply and poisoning the following request.
+                        drain("unexpected extra reply bytes");
+                    } else if (received === responseLength) {
+                        finish(null);
+                    }
+                },
+                closed: function () { finish("closed"); }
+            };
+            port._amiitagTransaction = transaction;
+            try {
+                // Install the receiver before writing: some adapters answer before writer.write resolves.
+                await amiitag.serial.write(id, request);
+                if (!finished && !draining) timer = setTimeout(function () { drain(); }, timeoutMs);
+                return await answer;
+            } catch (e) {
+                if (!finished) drain("write failed: " + (e && e.message ? e.message : e));
+                return await answer;
+            } finally {
+                clearTimeout(timer);
+                if (port._amiitagTransaction === transaction) port._amiitagTransaction = null;
+            }
+        },
+
         close: async function (id) {
             const port = serialPorts.get(id);
             if (!port) {
@@ -512,6 +588,8 @@
             try {
                 if (port._amiitagReader) {
                     await port._amiitagReader.cancel();
+                    await port._amiitagReadLoop;
+                    port._amiitagReader = null;
                 }
             } catch { }
 

@@ -25,12 +25,19 @@ public static class AmiiboV3NfcOperations
     public static readonly TimeSpan DefaultLockOnTimeout = TimeSpan.FromSeconds(2);
 
     /// <summary>
-    /// Reads an original (NTAG215) or v3 (NTAG I²C Plus 2K) amiibo, picking by GET_VERSION. Readers that aren't in
-    /// direct command mode can't send GET_VERSION, so the amiibo ID's last byte (02 or 03, at the same address on
-    /// both tags) decides instead.
+    /// Reads an original (NTAG215) or v3 (NTAG I²C Plus 2K) amiibo. Recognise v3 from the readable ID suffix first:
+    /// some physical figures/readers answer READ but not GET_VERSION. Other tags retain version-based detection;
+    /// readers without direct commands fall back to the ID byte at the same address on both formats.
     /// </summary>
     public static async Task<IAmiiboImage> ReadAnyAsync(INfcTagConnection connection, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
     {
+        // Real ACR122 captures show READ working while GET_VERSION times out and can leave the figure idle.
+        // The v3 ID suffix is readable at the same address on both formats; the APK never needs GET_VERSION.
+        if (await LooksLikeV3Async(connection, cancellationToken))
+        {
+            return await ReadV3Async(connection, progress, cancellationToken: cancellationToken);
+        }
+
         var client = new Ntag215Client(connection);
         var version = await WithRecoveryAsync(connection, () => client.GetVersionAsync(cancellationToken), null, cancellationToken);
         if (version != null ? version.IsNtagI2cPlus2k : await LooksLikeV3Async(connection, cancellationToken))
@@ -115,6 +122,7 @@ public static class AmiiboV3NfcOperations
         // Match the APK: request/poll/capture SRAM before the EEPROM dump and before changing sectors.
         // Keep the existing mode checks and reader fallbacks for emulators and read-only transports.
         connection.SetStatus("Reading lock-on...");
+        var lockOnStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         if (requestNeeded && (authenticated || !sramProtected))
         {
             if (await TryWriteLockOnRequestAsync(connection, client, ReauthenticateAsync, cancellationToken))
@@ -136,6 +144,8 @@ public static class AmiiboV3NfcOperations
         {
             lockOn.CopyTo(raw, AmiiboV3Dump.LockOnOffset);
         }
+        System.Diagnostics.Debug.WriteLine($"v3 read: lock-on phase {System.Diagnostics.Stopwatch.GetElapsedTime(lockOnStarted).TotalMilliseconds:F1} ms; " +
+            $"request needed: {requestNeeded}; result: {(lockOn == null ? "not captured" : LockOnResponse.Describe(LockOnResponse.Check(lockOn)))}.");
 
         connection.SetStatus("Reading tag...");
         (await ReadPagesRecoveringAsync(connection, client, 0x00, AmiiboV3Dump.PtI2cPage,
@@ -199,30 +209,28 @@ public static class AmiiboV3NfcOperations
     /// </summary>
     private static async Task<T> WithRecoveryAsync<T>(INfcTagConnection connection, Func<Task<T>> operation, Func<Task>? restore, CancellationToken cancellationToken, bool stopOnNak = false)
     {
+        var needsRestore = false;
         for (var attempt = 1; ; attempt++)
         {
             try
             {
+                if (needsRestore)
+                {
+                    await ((INfcReselectable)connection).ReselectAsync(cancellationToken);
+                    if (restore != null) await restore();
+                    needsRestore = false;
+                }
                 return await operation();
             }
             catch (Exception ex) when (ex is NfcException or TagException && ex is not NfcCommandNotSupportedException &&
                                        !(stopOnNak && ex is NfcNakException) &&
-                                       attempt < RecoveryAttempts && connection is INfcReselectable)
+                                       attempt < RecoveryAttempts && connection is INfcReselectable { CanReselect: true })
             {
                 System.Diagnostics.Debug.WriteLine($"v3 read: {ex.Message} (attempt {attempt}); reselecting.");
+                needsRestore = true;
                 await Task.Delay(100 * attempt, cancellationToken);
-                try
-                {
-                    await ((INfcReselectable)connection).ReselectAsync(cancellationToken);
-                    if (restore != null)
-                    {
-                        await restore();
-                    }
-                }
-                catch (NfcException) when (attempt + 1 < RecoveryAttempts)
-                {
-                    // Not back yet; the next attempt waits longer.
-                }
+                // A failed reselect/restore must retry restoration, never run a read in an unknown sector
+                // or against a different tag just because the failed activation left one selected.
             }
         }
     }
@@ -309,7 +317,7 @@ public static class AmiiboV3NfcOperations
     /// </summary>
     private static async Task TryReselectAsync(INfcTagConnection connection, CancellationToken cancellationToken)
     {
-        if (connection is INfcReselectable reselectable)
+        if (connection is INfcReselectable { CanReselect: true } reselectable)
         {
             try
             {
@@ -636,8 +644,9 @@ public static class AmiiboV3NfcOperations
                 data.CopyTo(sram, half * 32);
             }
         }
-        catch (NfcException)
+        catch (NfcException ex)
         {
+            System.Diagnostics.Debug.WriteLine($"v3 read: SRAM capture failed ({ex.Message}).");
             return null;
         }
 

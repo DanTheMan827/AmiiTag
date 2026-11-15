@@ -76,7 +76,12 @@ public class PcscRecoveryTests
     {
         var reader = DispatchProxy.Create<ICardReader, ScriptedReader>();
         var script = (ScriptedReader)reader;
-        script.Send = c => c[6] == 0x32 ? new byte[] { 0xD5, 0x33, 0x90, 0 } : new byte[] { 0xD5, 0x43, 1, 0x90, 0 };
+        script.Send = c => c[6] switch
+        {
+            0x32 => [0xD5, 0x33, 0x90, 0],
+            0x08 => [0xD5, 0x09, 0x90, 0],
+            _ => [0xD5, 0x43, 1, 0x90, 0]
+        };
         using var card = new PcscCard(reader);
         var strategy = new Pn53xDirectTransmitStrategy();
         Assert.Throws<NfcException>(() => strategy.Transceive(card, [1, 0, 0, 0], TimeSpan.FromMilliseconds(10)));
@@ -130,6 +135,82 @@ public class PcscRecoveryTests
         using var card = new PcscCard(reader);
         new TransparentSessionStrategy().Transceive(card, [1, 0, 0, 0], TimeSpan.FromMilliseconds(10));
         Assert.Equal(new byte[] { 0x5F, 0x46, 4, 0x10, 0x27, 0, 0 }, script.Commands.Single()[5..12]);
+    }
+
+    [Fact]
+    public void AStartupReadTimeoutReactivatesTheSameTagWithoutCardReset()
+    {
+        var reader = DispatchProxy.Create<ICardReader, ScriptedReader>();
+        var script = (ScriptedReader)reader;
+        byte[] uid = [4, 1, 2, 3, 4, 5, 6];
+        var readAttempts = 0;
+        script.Send = c =>
+        {
+            if (c is [0xFF, 0, 0x48, 0, 0]) return "ACR122U"u8.ToArray();
+            if (c is [0xFF, 0xCA, 0, 0, 0]) return [.. uid, 0x90, 0];
+            return c[6] switch
+            {
+                0x08 => [0xD5, 0x09, 0x90, 0],
+                0x32 => [0xD5, 0x33, 0x90, 0],
+                0x4A => [0xD5, 0x4B, 1, 1, 0x44, 0, 0, 7, .. uid, 0x90, 0],
+                0x42 when ++readAttempts == 1 => [0xD5, 0x43, 1, 0x90, 0],
+                0x42 => [0xD5, 0x43, 0, .. Iso14443Crc.Append(new byte[16]), 0x90, 0],
+                _ => throw new InvalidOperationException(Hex.ToSpacedHex(c))
+            };
+        };
+        using var card = new PcscCard(reader);
+        Assert.IsType<Pn53xDirectTransmitStrategy>(new PcscStrategySelector().Select("ACS ACR122 0", card));
+        Assert.Equal(2, readAttempts);
+        Assert.Empty(script.Reconnects);
+        Assert.Single(script.Commands, c => c.Length > 6 && c[6] == 0x4A);
+        Assert.DoesNotContain(script.Commands, c => c.Length > 7 && c[6] == 0x32 && c[7] == 0x01);
+    }
+
+    [Fact]
+    public void Pn532ActivationRejectsADifferentUid()
+    {
+        var reader = DispatchProxy.Create<ICardReader, ScriptedReader>();
+        var script = (ScriptedReader)reader;
+        script.Send = c => c[6] switch
+        {
+            0x08 => [0xD5, 0x09, 0x90, 0],
+            0x32 => [0xD5, 0x33, 0x90, 0],
+            0x4A => [0xD5, 0x4B, 1, 1, 0x44, 0, 0, 7, 4, 9, 9, 9, 9, 9, 9, 0x90, 0],
+            _ => throw new InvalidOperationException()
+        };
+        using var card = new PcscCard(reader);
+        Assert.Throws<NfcConnectionLostException>(() => new Pn53xDirectTransmitStrategy().Reselect(card, [4, 1, 2, 3, 4, 5, 6]));
+    }
+
+    [Fact]
+    public void ReaderHelperRestoringHardwareCrcDoesNotBreakTheNextRawCommand()
+    {
+        var reader = DispatchProxy.Create<ICardReader, ScriptedReader>();
+        var script = (ScriptedReader)reader;
+        var hardwareCrc = true;
+        script.Send = c =>
+        {
+            if (c is [0xFF, 0, 0x48, 0, 0]) return "ACR122U"u8.ToArray();
+            if (c is [0xFF, 0xCA, 0, 0, 0])
+            {
+                hardwareCrc = true; // Emulate reader-managed framing changes during its own helper.
+                return [4, 1, 2, 3, 4, 5, 6, 0x90, 0];
+            }
+            if (c[6] == 0x08)
+            {
+                hardwareCrc = c[^1] != 0;
+                return [0xD5, 0x09, 0x90, 0];
+            }
+            if (c[6] == 0x32) return [0xD5, 0x33, 0x90, 0];
+            if (hardwareCrc) return [0xD5, 0x43, 1, 0x90, 0];
+            return [0xD5, 0x43, 0, .. Iso14443Crc.Append(new byte[16]), 0x90, 0];
+        };
+        using var card = new PcscCard(reader);
+        var strategy = new Pn53xDirectTransmitStrategy();
+        Assert.True(strategy.TryBegin(card));
+        Assert.Equal(16, strategy.Transceive(card, [0x30, 0]).Length);
+        Assert.Equal(7, card.GetUid().Length);
+        Assert.Equal(16, strategy.Transceive(card, [0x30, 0x15]).Length);
     }
 
     private sealed class DisconnectingStrategy(bool transparent) : IPcscTransceiveStrategy

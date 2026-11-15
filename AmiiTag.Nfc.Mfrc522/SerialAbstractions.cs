@@ -32,3 +32,13 @@ public interface ISerialPortStream : IAsyncDisposable
     /// </summary>
     Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// Optional request/reply operation executed beside the serial reader (e.g. in JavaScript), so a register batch
+/// does not need a managed callback for each USB chunk. It finishes or drains late replies before returning.
+/// Cancellation is intentionally observed by the caller between batches, not during an outstanding UART request.
+/// </summary>
+public interface ISerialPortTransactionStream : ISerialPortStream
+{
+    Task<byte[]> TransactAsync(byte[] request, int responseLength, TimeSpan timeout);
+}
