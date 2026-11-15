@@ -1,0 +1,54 @@
+# The Android app as APKs (Debug and Release). Signed with the keystore in the repository secrets when there is one:
+#
+#   ANDROID_KEYSTORE_BASE64    the keystore file, base64 (e.g. base64 -w0 release.keystore)
+#   ANDROID_KEYSTORE_PASSWORD  its password
+#   ANDROID_KEY_ALIAS          the key's alias
+#   ANDROID_KEY_PASSWORD       the key's password (optional when it's the keystore's)
+#
+# Otherwise with a debug keystore generated for the run, so those APKs don't install over each other's runs.
+name: Android
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        configuration: [Release, Debug]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '21'
+
+      - name: Build
+        shell: pwsh
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: >-
+          ./scripts/build-android.ps1 -Configuration ${{ matrix.configuration }} -BuildNumber ${{ github.run_number }}
+          -InstallWorkloads -InstallAndroidDependencies
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AmiiTag-android-${{ matrix.configuration }}
+          path: artifacts/android/AmiiTag-android-${{ matrix.configuration }}.apk

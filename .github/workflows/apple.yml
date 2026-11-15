@@ -1,0 +1,41 @@
+# The Mac app (a zipped, ad-hoc signed .app; Release is universal) and the iOS app (an unsigned .ipa), Debug and
+# Release. Neither uses a developer certificate: the Mac app needs right click > Open the first time, and the .ipa must
+# be signed (with a profile that includes NFC Tag Reading) before it installs.
+name: Apple
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: xcode-27
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [mac, ios]
+        configuration: [Release, Debug]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        shell: pwsh
+        run: ./scripts/build-${{ matrix.platform }}.ps1 -Configuration ${{ matrix.configuration }} -BuildNumber ${{ github.run_number }} -InstallWorkloads
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AmiiTag-${{ matrix.platform }}-${{ matrix.configuration }}
+          path: |
+            artifacts/mac/AmiiTag-mac-${{ matrix.configuration }}.zip
+            artifacts/ios/AmiiTag-ios-${{ matrix.configuration }}-unsigned.ipa
+          if-no-files-found: error

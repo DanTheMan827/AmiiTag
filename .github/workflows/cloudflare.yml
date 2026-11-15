@@ -1,0 +1,68 @@
+# The WebAssembly app on Cloudflare Pages, served from the site root. Every pushed branch is deployed: the project's
+# production branch (the repository's default branch when the workflow creates the project) goes to production, any
+# other branch to a preview at https://<branch>.<project>.pages.dev.
+#
+# Setup (until then this workflow builds and skips the deploy):
+#   secrets    CLOUDFLARE_API_TOKEN   an API token with the "Cloudflare Pages: Edit" permission
+#              CLOUDFLARE_ACCOUNT_ID  the account ID (the dashboard's sidebar, or the URL)
+#   variable   CLOUDFLARE_PROJECT_NAME  optional, the Pages project (default: amiitag); created on the first deploy
+name: Cloudflare Pages
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: cloudflare-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      PROJECT_NAME: ${{ vars.CLOUDFLARE_PROJECT_NAME || 'amiitag' }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        shell: pwsh
+        run: ./scripts/build-web.ps1 -Configuration Release -BasePath / -Target Cloudflare
+
+      - name: No Cloudflare token yet
+        if: env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == ''
+        run: echo "::notice::CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID aren't set, so the site was built but not deployed."
+
+      - name: Create the Pages project if needed
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        run: |
+          if ! npx --yes wrangler@3 pages project list | grep -qw "$PROJECT_NAME"; then
+            npx --yes wrangler@3 pages project create "$PROJECT_NAME" --production-branch "${{ github.event.repository.default_branch }}"
+          fi
+
+      - name: Deploy
+        id: deploy
+        if: env.CLOUDFLARE_API_TOKEN != '' && env.CLOUDFLARE_ACCOUNT_ID != ''
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          command: pages deploy artifacts/web/Release --project-name=${{ env.PROJECT_NAME }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
+
+      - name: Summary
+        if: steps.deploy.outcome == 'success'
+        run: |
+          echo "Deployed **${{ github.ref_name }}** to ${{ steps.deploy.outputs.deployment-url }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Branch alias: ${{ steps.deploy.outputs.pages-deployment-alias-url }}" >> "$GITHUB_STEP_SUMMARY"

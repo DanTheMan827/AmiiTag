@@ -1,0 +1,36 @@
+# The Windows app: unpackaged, self-contained, zipped, for x64 and ARM64, Debug and Release.
+name: Windows
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [win-x64, win-arm64]
+        configuration: [Release, Debug]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Configuration ${{ matrix.configuration }} -Runtime ${{ matrix.runtime }} -InstallWorkloads
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AmiiTag-windows-${{ matrix.runtime }}-${{ matrix.configuration }}
+          path: artifacts/windows/AmiiTag-windows-${{ matrix.runtime }}-${{ matrix.configuration }}.zip
