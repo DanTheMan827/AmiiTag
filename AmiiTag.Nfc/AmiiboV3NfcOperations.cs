@@ -64,7 +64,8 @@ public static class AmiiboV3NfcOperations
     /// <remarks>
     /// Sector 1, the session registers and SRAM need direct command mode (SECTOR_SELECT, FAST_READ). Without it,
     /// sector 0 is still read with plain READs; that covers all of the amiibo data, but sector 1 stays blank and the
-    /// lock-on can usually not be read.
+    /// lock-on can usually not be read. A complete direct read finishes in sector 1, as the Android dumper does;
+    /// callers reusing this connection must explicitly select sector 0 before starting another operation.
     /// </remarks>
     public static async Task<AmiiboV3Dump> ReadV3Async(
         INfcTagConnection connection,
@@ -76,221 +77,100 @@ public static class AmiiboV3NfcOperations
         var raw = new byte[AmiiboV3Dump.ImageLength];
         var sector0 = new Progress<double>(p => progress?.Report(p * 0.45));
         var sector1 = new Progress<double>(p => progress?.Report(0.45 + p * 0.45));
-
         connection.SetStatus("Reading tag...");
 
-        // 00-E7: UID, lock, CC, user EEPROM, dynamic lock and AUTH0..PT_I2C. A READ fallback ends at E4-E7, before EA.
-        (await ReadPagesRecoveringAsync(connection, client, 0x00, AmiiboV3Dump.PtI2cPage, 0, sector0, cancellationToken)).CopyTo(raw, 0);
-
-        // E8-E9 configuration and EC-ED session registers.
-        var config = await ReadWindowAsync(connection, AmiiboV3Dump.PtI2cPage + 1, AmiiboV3Dump.LastConfigPage, readStart: 0xE6, cancellationToken);
-        config?.CopyTo(raw, (AmiiboV3Dump.PtI2cPage + 1) * 4);
-        var session = await ReadSessionAsync(connection, cancellationToken);
-        session?.CopyTo(raw, AmiiboV3Dump.SessionPage0 * 4);
-
-        // Sector 1. Real figures set PT_I2C.2K_PROT (page E7 bit 3): sector 1 is password protected and its reads are
-        // NAKed without PWD_AUTH (emulators like AmiiboZero don't enforce it). The amiibo password (derived from the UID,
-        // as on NTAG215 amiibo) is tried once. The figure's ACCESS.AUTHLIM allows only so many wrong passwords before
-        // locking for good, so a refused password is never sent again, and once anything is refused because of the
-        // password, reading stops: the figure is returned with what was read (sector 0 holds the amiibo data).
+        // Bootstrap only the UID and protection settings. Unlike the APK, don't guess a password for an
+        // unprotected emulator, or retry a refused password (AUTHLIM can permanently lock a real figure).
+        (await ReadPagesRecoveringAsync(connection, client, 0, 1, 0, null, cancellationToken)).CopyTo(raw, 0);
+        (await ReadPagesRecoveringAsync(connection, client, 0xE0, AmiiboV3Dump.PtI2cPage,
+            0, null, cancellationToken)).CopyTo(raw, 0xE0 * 4);
         var sector1Protected = (raw[AmiiboV3Dump.PtI2cPage * 4] & PtI2c2kProt) != 0;
+        var sramProtected = raw[AmiiboV3Dump.Auth0Page * 4 + 3] <= AmiiboV3Dump.SramLastPage;
         var password = NtagUid.AmiiboPassword(NtagUid.FromSevenByteUid(raw.AsSpan(0, AmiiboV3Dump.UidLength)));
         var authenticated = false;
-        var stopReading = false;
 
-        // After a reselect the authentication is gone; only a password the figure already accepted is sent again.
+        async Task AuthenticateAsync()
+        {
+            // No recovery wrapper here: an unanswered/refused password must not be blindly retried.
+            await client.PasswordAuthAsync(password, cancellationToken);
+            authenticated = true;
+            await Task.Delay(AuthenticationSettleDelay, cancellationToken);
+        }
+
         async Task ReauthenticateAsync()
         {
             if (authenticated)
             {
-                await client.PasswordAuthAsync(password, cancellationToken);
+                await AuthenticateAsync();
             }
         }
 
-        async Task EnterSector1Async()
+        var session = await ReadSessionAsync(connection, cancellationToken);
+        var requestNeeded = session != null && WaitingForLockOnRequest(session);
+        if (connection.IsDirectCommandMode && (sector1Protected || (requestNeeded && sramProtected)))
         {
-            await ReauthenticateAsync();
-            await SectorSelectAsync(connection, 1, cancellationToken);
+            await AuthenticateAsync();
         }
 
-        if (sector1Protected && connection.IsDirectCommandMode)
-        {
-            try
-            {
-                await client.PasswordAuthAsync(password, cancellationToken);
-                authenticated = true;
-            }
-            catch (NfcNakException ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"v3 read: the figure refused the amiibo password for sector 1 ({ex.Message}); stopping here, nothing more is read.");
-                stopReading = true;
-            }
-            catch (NfcException ex) when (ex is not NfcCommandNotSupportedException)
-            {
-                // No answer at all (not a refusal): the password may not have been checked, but it isn't sent again.
-                System.Diagnostics.Debug.WriteLine($"v3 read: no answer to the sector 1 password ({ex.Message}); stopping here, nothing more is read.");
-                stopReading = true;
-            }
-        }
-
-        var sectorSelected = false;
-        if (!stopReading)
-        {
-            try
-            {
-                await WithRecoveryAsync(connection, async () =>
-                {
-                    await SectorSelectAsync(connection, 1, cancellationToken);
-                    return true;
-                }, ReauthenticateAsync, cancellationToken, stopOnNak: sector1Protected);
-                sectorSelected = true;
-            }
-            catch (NfcCommandNotSupportedException) when (!connection.IsDirectCommandMode)
-            {
-                // Not in direct command mode: sector 1 can't be reached.
-            }
-            catch (NfcNakException ex) when (sector1Protected)
-            {
-                System.Diagnostics.Debug.WriteLine($"v3 read: refused while entering protected sector 1 ({ex.Message}); stopping here, nothing more is read.");
-                stopReading = true;
-            }
-            catch (NfcException ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"v3 read: sector 1 unavailable ({ex.Message}); leaving it blank.");
-                await TryReselectAsync(connection, cancellationToken);
-            }
-        }
-
-        if (sectorSelected)
-        {
-            try
-            {
-                (await ReadPagesRecoveringAsync(connection, client, 0x00, 0xFF, 1, sector1, cancellationToken, EnterSector1Async, stopOnNak: sector1Protected))
-                    .CopyTo(raw, AmiiboV3Dump.SectorLength);
-            }
-            catch (NfcNakException ex) when (sector1Protected)
-            {
-                System.Diagnostics.Debug.WriteLine($"v3 read: sector 1 refused a read despite the password ({ex.Message}); stopping here, nothing more is read.");
-                Array.Clear(raw, AmiiboV3Dump.SectorLength, AmiiboV3Dump.SectorLength);
-                stopReading = true;
-            }
-            catch (Exception ex) when (ex is NfcException or TagException && ex is not NfcCommandNotSupportedException)
-            {
-                System.Diagnostics.Debug.WriteLine($"v3 read: sector 1 couldn't be read ({ex.Message}); leaving it blank.");
-                Array.Clear(raw, AmiiboV3Dump.SectorLength, AmiiboV3Dump.SectorLength);
-                await TryReselectAsync(connection, cancellationToken);
-            }
-            finally
-            {
-                if (!stopReading)
-                {
-                    try
-                    {
-                        await SectorSelectAsync(connection, 0, cancellationToken);
-                    }
-                    catch (NfcException)
-                    {
-                        await TryReselectAsync(connection, cancellationToken);
-                    }
-                }
-            }
-        }
-
-        if (stopReading)
-        {
-            progress?.Report(1);
-            var partial = new AmiiboV3Dump(raw);
-            if (!partial.HasAmiiboId)
-            {
-                throw new NfcException("This NTAG I²C tag isn't a v3 amiibo.");
-            }
-
-            return partial;
-        }
-
-        // Lock-on last: if SRAM turns out not to be readable the tag NAKs and drops out of the session.
+        // Match the APK: request/poll/capture SRAM before the EEPROM dump and before changing sectors.
+        // Keep the existing mode checks and reader fallbacks for emulators and read-only transports.
         connection.SetStatus("Reading lock-on...");
-
-        // Real figures wait in pass-through mode with the direction set NFC -> I²C (NC_REG 41, NS_REG 21): the reader
-        // writes a request to SRAM, the figure's microcontroller reads it over I²C and writes its response back, then
-        // sets SRAM_RF_READY. This follows what a Switch does (traced through the Flipper NFC Bridge): PWD_AUTH, read
-        // the session registers, FAST_WRITE the request (type 01) to F0-FF, poll NS_REG until SRAM_RF_READY, PWD_AUTH
-        // again, FAST_READ F0-FF. SRAM is volatile; nothing on the figure is changed.
-        var auth0 = raw[AmiiboV3Dump.Auth0Page * 4 + 3];
-        var sramProtected = auth0 <= AmiiboV3Dump.SramLastPage;
-
-        // Authentication can have been lost to a reselect since.
-        async Task BeforeSramAccessAsync()
+        if (requestNeeded && (authenticated || !sramProtected))
         {
-            try
-            {
-                await ReauthenticateAsync();
-            }
-            catch (NfcException ex) when (ex is not NfcCommandNotSupportedException)
-            {
-                System.Diagnostics.Debug.WriteLine($"v3 read: PWD_AUTH before the lock-on failed ({ex.Message}).");
-            }
-        }
-
-        // The session registers, read fresh.
-        if (authenticated)
-        {
-            await BeforeSramAccessAsync();
-        }
-
-        session = await ReadSessionAsync(connection, cancellationToken) ?? session;
-        if (session != null && WaitingForLockOnRequest(session))
-        {
-            // Writing SRAM needs the password when AUTH0 covers it (amiibo: AUTH0 04h; reading doesn't). If sector 1
-            // didn't need it, it hasn't been sent yet: it's sent once now, as a Switch does. A refusal isn't retried
-            // (AUTHLIM).
-            if (sramProtected && !authenticated && !sector1Protected && connection.IsDirectCommandMode)
-            {
-                try
-                {
-                    await client.PasswordAuthAsync(password, cancellationToken);
-                    authenticated = true;
-                }
-                catch (NfcException ex) when (ex is not NfcCommandNotSupportedException)
-                {
-                    System.Diagnostics.Debug.WriteLine($"v3 read: the figure refused the amiibo password for SRAM ({ex.Message}).");
-                    await TryReselectAsync(connection, cancellationToken);
-                }
-            }
-
-            if ((authenticated || !sramProtected) &&
-                await TryWriteLockOnRequestAsync(connection, client, BeforeSramAccessAsync, cancellationToken))
+            if (await TryWriteLockOnRequestAsync(connection, client, ReauthenticateAsync, cancellationToken))
             {
                 session = await ReadSessionAsync(connection, cancellationToken) ?? session;
             }
         }
 
-        var (lockOn, latestSession) = await ReadLockOnCoreAsync(
-            connection, session, lockOnTimeout ?? DefaultLockOnTimeout, authenticated ? BeforeSramAccessAsync : null, cancellationToken);
-
-        // Erased SRAM or our own request read back is not a response; keeping it would look like a lock-on.
-        if (lockOn != null && !LockOnResponse.IsUsable(LockOnResponse.Check(lockOn)))
+        byte[]? lockOn = null;
+        byte[]? latestSession = session;
+        // If session registers cannot be read, probing SRAM can NAK and halt the tag. Keep read-only
+        // transports usable instead of guessing that SRAM is ready before the EEPROM dump.
+        if (session != null)
         {
-            System.Diagnostics.Debug.WriteLine($"v3 read: SRAM held no lock-on response ({LockOnResponse.Describe(LockOnResponse.Check(lockOn))}).");
-            lockOn = null;
+            (lockOn, latestSession) = await ReadLockOnCoreAsync(
+                connection, session, lockOnTimeout ?? DefaultLockOnTimeout, cancellationToken);
+        }
+        if (lockOn != null && LockOnResponse.IsUsable(LockOnResponse.Check(lockOn)))
+        {
+            lockOn.CopyTo(raw, AmiiboV3Dump.LockOnOffset);
         }
 
-        lockOn?.CopyTo(raw, AmiiboV3Dump.LockOnOffset);
-        if (lockOn == null)
+        connection.SetStatus("Reading tag...");
+        (await ReadPagesRecoveringAsync(connection, client, 0x00, AmiiboV3Dump.PtI2cPage,
+            0, sector0, cancellationToken, ReauthenticateAsync)).CopyTo(raw, 0);
+        var config = await ReadWindowAsync(connection, AmiiboV3Dump.PtI2cPage + 1,
+            AmiiboV3Dump.LastConfigPage, readStart: 0xE6, cancellationToken);
+        config?.CopyTo(raw, (AmiiboV3Dump.PtI2cPage + 1) * 4);
+        // Preserve the readiness snapshot from the captured response; reading FF hands SRAM back to I²C.
+        (latestSession ?? session)?.CopyTo(raw, AmiiboV3Dump.SessionPage0 * 4);
+
+        async Task EnterSector1Async()
         {
-            var last = latestSession ?? session;
-            System.Diagnostics.Debug.WriteLine(last == null
-                ? "v3 read: no lock-on response (session registers unreadable)."
-                : $"v3 read: no lock-on response (NC_REG {last[0]:X2}, NS_REG {last[6]:X2}; authenticated: {authenticated}).");
-        }
-        else
-        {
-            System.Diagnostics.Debug.WriteLine($"v3 read: lock-on response read (CRC {(LockOnResponse.HasValidCrc(lockOn) ? "valid" : "invalid")}).");
+            await SectorSelectAsync(connection, 1, cancellationToken);
+            // The APK authenticates AFTER sector selection, then waits 100 ms before the first read.
+            await ReauthenticateAsync();
         }
 
-        // Keep the session registers as they were when the lock-on was read (pass-through on, SRAM ready).
-        latestSession?.CopyTo(raw, AmiiboV3Dump.SessionPage0 * 4);
-
+        try
+        {
+            // Don't wrap authentication in recovery: retry individual reads only, restoring their sector first.
+            await SectorSelectAsync(connection, 1, cancellationToken);
+            await ReauthenticateAsync();
+            (await ReadPagesRecoveringAsync(connection, client, 0x00, 0xFF, 1, sector1,
+                cancellationToken, EnterSector1Async, stopOnNak: sector1Protected))
+                .CopyTo(raw, AmiiboV3Dump.SectorLength);
+        }
+        catch (NfcCommandNotSupportedException) when (!connection.IsDirectCommandMode)
+        {
+            // Storage-card mode still returns the sector 0 amiibo data.
+        }
+        catch (Exception ex) when (ex is NfcException or TagException && ex is not NfcCommandNotSupportedException)
+        {
+            System.Diagnostics.Debug.WriteLine($"v3 read: sector 1 unavailable ({ex.Message}); leaving it blank.");
+        }
+        // As in the APK, finish in sector 1. Switching back only adds another passive ACK/disconnect.
         progress?.Report(1);
         var dump = new AmiiboV3Dump(raw);
         if (!dump.HasAmiiboId)
@@ -300,6 +180,12 @@ public static class AmiiboV3NfcOperations
 
         return dump;
     }
+
+    /// <summary>
+    /// Compatibility delay used by the Android dumper, shared by every transport. This is not an NTAG
+    /// protocol requirement: Switch-to-emulator traces also work with much shorter post-authentication gaps.
+    /// </summary>
+    public static readonly TimeSpan AuthenticationSettleDelay = TimeSpan.FromMilliseconds(100);
 
     /// <summary>
     /// Attempts per step when a v3 figure refuses commands (it NAKs, then stays silent until reselected, while its
@@ -478,28 +364,17 @@ public static class AmiiboV3NfcOperations
     /// FAST_READ the session registers just try F0-FF.
     /// </remarks>
     public static async Task<byte[]?> ReadLockOnAsync(INfcTagConnection connection, byte[]? session, TimeSpan timeout, CancellationToken cancellationToken = default) =>
-        (await ReadLockOnCoreAsync(connection, session, timeout, null, cancellationToken)).LockOn;
+        (await ReadLockOnCoreAsync(connection, session, timeout, cancellationToken)).LockOn;
 
     /// <summary>
     /// <see cref="ReadLockOnAsync"/>, also returning the last session registers read while waiting.
     /// </summary>
     private static async Task<(byte[]? LockOn, byte[]? Session)> ReadLockOnCoreAsync(
-        INfcTagConnection connection, byte[]? session, TimeSpan timeout, Func<Task>? beforeSramRead, CancellationToken cancellationToken)
+        INfcTagConnection connection, byte[]? session, TimeSpan timeout, CancellationToken cancellationToken)
     {
-        // A Switch sends PWD_AUTH again right before reading the response.
-        async Task<byte[]?> ReadSramAsync(int firstPage)
-        {
-            if (beforeSramRead != null)
-            {
-                await beforeSramRead();
-            }
-
-            return await TryReadSramAsync(connection, firstPage, cancellationToken);
-        }
-
         if (session == null)
         {
-            return (await ReadSramAsync(AmiiboV3Dump.SramFirstPage), null);
+            return (await TryReadSramAsync(connection, AmiiboV3Dump.SramFirstPage, cancellationToken), null);
         }
 
         var deadline = DateTime.UtcNow + timeout;
@@ -511,12 +386,12 @@ public static class AmiiboV3NfcOperations
 
             if ((nc & NcPassThroughOn) != 0 && (ns & NsSramI2cReady) != 0)
             {
-                return (await ReadSramAsync(AmiiboV3Dump.SramFirstPage), session);
+                return (await TryReadSramAsync(connection, AmiiboV3Dump.SramFirstPage, cancellationToken), session);
             }
 
             if ((nc & NcPassThroughOn) == 0 && (nc & NcSramMirrorOn) != 0 && sm <= 0xF0)
             {
-                return (await ReadSramAsync(sm), session);
+                return (await TryReadSramAsync(connection, sm, cancellationToken), session);
             }
 
             if (DateTime.UtcNow >= deadline)
@@ -645,23 +520,33 @@ public static class AmiiboV3NfcOperations
             throw new NfcException($"SECTOR_SELECT was refused ({Hex.ToSpacedHex(first)}).");
         }
 
+        var passiveAckTimeout = TimeSpan.FromMilliseconds(10);
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
         byte[] second;
         try
         {
-            second = await connection.TransceiveAsync([sector, 0x00, 0x00, 0x00], cancellationToken);
+            second = await connection.TransceiveAsync([sector, 0x00, 0x00, 0x00], passiveAckTimeout, cancellationToken);
         }
         catch (NfcCommandNotSupportedException)
         {
             throw;
         }
-        catch (NfcException)
+        catch (NfcException ex) when (ex is not NfcNakException and not NfcConnectionLostException and not NfcTagResponseException)
         {
-            return; // Passive ACK.
+            second = Array.Empty<byte>(); // Passive ACK.
         }
 
         if (second.Length == 1 && (second[0] & 0x0F) != 0x0A)
         {
             throw new NfcException($"Sector {sector} doesn't exist on this tag.");
+        }
+
+        // Some transports return an empty reply immediately. The APK normally spends this interval waiting
+        // for its 10 ms timeout; keep that settling time even when the backend reports silence early.
+        var remaining = passiveAckTimeout - System.Diagnostics.Stopwatch.GetElapsedTime(started);
+        if (remaining > TimeSpan.Zero)
+        {
+            await Task.Delay(remaining, cancellationToken);
         }
     }
 
@@ -708,6 +593,20 @@ public static class AmiiboV3NfcOperations
         var sram = new byte[LockOnResponse.Length];
         try
         {
+            if (connection.MaxFastReadPages >= 16)
+            {
+                try
+                {
+                    var whole = await connection.TransceiveAsync(
+                        [Ntag215Client.CmdFastRead, (byte)firstPage, (byte)(firstPage + 15)], cancellationToken);
+                    return whole.Length == LockOnResponse.Length ? whole : null;
+                }
+                catch (NfcCommandNotSupportedException)
+                {
+                    // Fall through to smaller reads / plain READ below.
+                }
+            }
+
             // Halves, because some bridges (the MFRC522's 64 byte FIFO) can't return 16 pages at once.
             for (var half = 0; half < 2; half++)
             {

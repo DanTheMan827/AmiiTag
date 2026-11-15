@@ -21,6 +21,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AmiiTag.Tags\AmiiTag.Tags.csproj" />
     <ProjectReference Include="..\AmiiTag.Nfc\AmiiTag.Nfc.csproj" />
+    <ProjectReference Include="..\AmiiTag.Nfc.PcSc\AmiiTag.Nfc.PcSc.csproj" />
     <ProjectReference Include="..\AmiiTag.Nfc.Mfrc522\AmiiTag.Nfc.Mfrc522.csproj" />
     <ProjectReference Include="..\AmiiTag.Bluetooth\AmiiTag.Bluetooth.csproj" />
     <ProjectReference Include="..\AmiiTag.Simulation\AmiiTag.Simulation.csproj" />

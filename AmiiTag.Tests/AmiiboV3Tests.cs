@@ -384,7 +384,7 @@ public class AmiiboV3Tests
         Assert.Equal(figure.Data, read.Data);
         Assert.Equal(figure.LockOn, read.LockOn);
         Assert.True(read.Authenticate(TestData.Keys));
-        Assert.Equal(0, tag.CurrentSector);
+        Assert.Equal(1, tag.CurrentSector); // The APK finishes without another sector switch.
     }
 
     [Fact]

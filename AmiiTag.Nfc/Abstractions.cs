@@ -155,6 +155,13 @@ public interface INfcTagConnection : IAsyncDisposable
     Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Sends a command with a temporary response timeout where supported. Transports without a configurable
+    /// timeout use their normal exchange; cancellation must not abandon a native operation still in flight.
+    /// </summary>
+    Task<byte[]> TransceiveAsync(byte[] command, TimeSpan responseTimeout, CancellationToken cancellationToken = default) =>
+        TransceiveAsync(command, cancellationToken);
+
+    /// <summary>
     /// Updates the text of a system prompt, if there is one.
     /// </summary>
     void SetStatus(string message);
@@ -201,4 +208,16 @@ public class NfcCommandNotSupportedException : NfcException
     }
 
     public byte Command { get; }
+}
+
+/// <summary>The transport session was lost; silence must not be treated as a passive ACK in this case.</summary>
+public class NfcConnectionLostException : NfcException
+{
+    public NfcConnectionLostException(string message, Exception innerException) : base(message, innerException) { }
+}
+
+/// <summary>A native tag/protocol error, not silence acknowledging a sector selection.</summary>
+public class NfcTagResponseException : NfcException
+{
+    public NfcTagResponseException(string message, Exception innerException) : base(message, innerException) { }
 }

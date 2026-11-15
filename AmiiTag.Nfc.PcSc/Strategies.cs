@@ -25,6 +25,8 @@ public interface IPcscTransceiveStrategy
 
     byte[] Transceive(PcscCard card, byte[] command);
 
+    byte[] Transceive(PcscCard card, byte[] command, TimeSpan responseTimeout) => Transceive(card, command);
+
     void End(PcscCard card);
 }
 
@@ -101,28 +103,46 @@ public sealed class PcscStrategySelector
         {
             foreach (var strategy in candidates)
             {
-                log.Add($"-- {strategy.Name}");
-                if (strategy.TryBegin(card) && (!strategy.IsDirect || ReachesTag(strategy, card)))
+                for (var attempt = 0; attempt < 3; attempt++)
                 {
-                    System.Diagnostics.Debug.WriteLine($"PC/SC: using \"{strategy.Name}\" for {readerName}.");
-                    lock (_lastWorking)
+                    card.LastTransportError = null;
+                    log.Add($"-- {strategy.Name} (attempt {attempt + 1})");
+                    var begun = strategy.TryBegin(card);
+                    if (begun && (!strategy.IsDirect || ReachesTag(strategy, card)))
                     {
-                        _lastWorking[readerName] = strategy.Name;
+                        lock (_lastWorking)
+                        {
+                            _lastWorking[readerName] = strategy.Name;
+                        }
+                        return strategy;
                     }
 
-                    return strategy;
-                }
+                    // A removed/reset PC/SC handle is not evidence that this protocol is unsupported.
+                    // Recover with Leave (no requested RF reset), then retry THIS strategy first.
+                    if (card.LastTransportError is { } transportError)
+                    {
+                        if (attempt < 2 && card.TryReconnectPreservingField())
+                        {
+                            continue;
+                        }
+                        throw new NfcConnectionLostException(
+                            $"Lost the connection to {readerName} while probing {strategy.Name}.\n{string.Join("\n", log.TakeLast(24))}", transportError);
+                    }
 
-                try
-                {
-                    strategy.End(card);
+                    if (begun)
+                    {
+                        try { strategy.End(card); } catch { }
+                    }
+                    card.ResetCard();
+                    if (begun && attempt < 2)
+                    {
+                        // The reader accepted setup, but the I²C side may temporarily own the tag memory.
+                        // Give this protocol another chance before declaring it unsupported.
+                        Thread.Sleep(100 * (attempt + 1));
+                        continue;
+                    }
+                    break;
                 }
-                catch
-                {
-                }
-
-                // A failed attempt can leave a session open or the tag halted (after a NAK); reselect it before the next.
-                card.ResetCard();
             }
         }
         finally
@@ -153,6 +173,9 @@ public sealed class Pn53xDirectTransmitStrategy : IPcscTransceiveStrategy
     private const byte CrcOff = 0x00; // 106 kbit/s, no CRC.
     private const byte CrcOn = 0x80;  // 106 kbit/s, CRC enabled (the reader's normal setting).
 
+    private bool _crcChanged;
+    private byte? _timeoutCode;
+
     public string Name => "PN53x direct transmit";
 
     public bool IsDirect => true;
@@ -169,7 +192,8 @@ public sealed class Pn53xDirectTransmitStrategy : IPcscTransceiveStrategy
                 return false;
             }
 
-            return SetCrc(card, CrcOff);
+            _crcChanged = SetCrc(card, CrcOff);
+            return _crcChanged;
         }
         catch
         {
@@ -177,7 +201,49 @@ public sealed class Pn53xDirectTransmitStrategy : IPcscTransceiveStrategy
         }
     }
 
-    public byte[] Transceive(PcscCard card, byte[] command)
+    public byte[] Transceive(PcscCard card, byte[] command) =>
+        Transceive(card, command, TimeSpan.FromMilliseconds(800));
+
+    public byte[] Transceive(PcscCard card, byte[] command, TimeSpan responseTimeout)
+    {
+        // UM0701-02 7.3.1: fRetryTimeout = 100 us * 2^(n-1). Round up: 10 ms -> 12.8 ms,
+        // 800 ms -> 819.2 ms. This changes response timing only, never the RF field or selected tag.
+        var code = (byte)1;
+        for (var micros = 100d; micros < responseTimeout.TotalMicroseconds && code < 16; micros *= 2)
+        {
+            code++;
+        }
+        try
+        {
+            try
+            {
+                SetResponseTimeout(card, code);
+            }
+            catch (PCSC.Exceptions.PCSCException ex)
+            {
+                // No tag packet was sent yet; this cannot be the sector command's passive ACK.
+                throw new NfcConnectionLostException("Lost the reader while configuring its response timeout.", ex);
+            }
+            return Exchange(card, command);
+        }
+        finally
+        {
+            if (code != 0x0E && card.LastTransportError == null)
+            {
+                SetResponseTimeout(card, 0x0E);
+            }
+        }
+    }
+
+    private void SetResponseTimeout(PcscCard card, byte code)
+    {
+        if (_timeoutCode == code) return;
+        _timeoutCode = null;
+        Pn532(card, [0x32, 0x02, 0x00, 0x0B, code]);
+        _timeoutCode = code;
+    }
+
+    private static byte[] Exchange(PcscCard card, byte[] command)
     {
         var frame = Iso14443Crc.Append(command);
         var response = Pn532(card, [0x42, .. frame]);
@@ -213,7 +279,11 @@ public sealed class Pn53xDirectTransmitStrategy : IPcscTransceiveStrategy
     public void End(PcscCard card)
     {
         // Put the CRC back on so the reader's own card handling keeps working.
-        SetCrc(card, CrcOn);
+        if (_crcChanged)
+        {
+            SetCrc(card, CrcOn);
+            _crcChanged = false;
+        }
     }
 
     /// <summary>
@@ -320,16 +390,21 @@ public sealed class TransparentSessionStrategy : IPcscTransceiveStrategy
     private int _ackVariant = -1;
     private bool _compatibilityDataNext;
 
-    public byte[] Transceive(PcscCard card, byte[] command)
+    public byte[] Transceive(PcscCard card, byte[] command) => TransceiveCore(card, command, null);
+
+    public byte[] Transceive(PcscCard card, byte[] command, TimeSpan responseTimeout) =>
+        TransceiveCore(card, command, responseTimeout);
+
+    private byte[] TransceiveCore(PcscCard card, byte[] command, TimeSpan? responseTimeout)
     {
         if (!ExpectsAck(command))
         {
-            return Exchange(card, command, null);
+            return Exchange(card, command, null, responseTimeout);
         }
 
         if (_ackVariant >= 0)
         {
-            return Exchange(card, command, AckFlagVariants[_ackVariant]);
+            return Exchange(card, command, AckFlagVariants[_ackVariant], responseTimeout);
         }
 
         // Rewriting a page (or reselecting a sector) is harmless, so trying again with other flags is safe.
@@ -338,7 +413,7 @@ public sealed class TransparentSessionStrategy : IPcscTransceiveStrategy
         {
             try
             {
-                var response = Exchange(card, command, AckFlagVariants[i]);
+                var response = Exchange(card, command, AckFlagVariants[i], responseTimeout);
                 _ackVariant = i;
                 return response;
             }
@@ -375,10 +450,15 @@ public sealed class TransparentSessionStrategy : IPcscTransceiveStrategy
     /// </summary>
     private static bool IsFastWrite(byte[] command) => command.Length == 3 + 64 && command[0] == 0xA6;
 
-    private byte[] Exchange(PcscCard card, byte[] command, byte[]? flags)
+    private byte[] Exchange(PcscCard card, byte[] command, byte[]? flags, TimeSpan? responseTimeout)
     {
         var dataObject = new List<byte>();
-        if (_withTimer)
+        if (responseTimeout.HasValue)
+        {
+            var micros = (uint)Math.Clamp(responseTimeout.Value.TotalMicroseconds, 1, uint.MaxValue);
+            dataObject.AddRange([0x5F, 0x46, 0x04, (byte)micros, (byte)(micros >> 8), (byte)(micros >> 16), (byte)(micros >> 24)]);
+        }
+        else if (_withTimer)
         {
             dataObject.AddRange(TimerObject);
         }

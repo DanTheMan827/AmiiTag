@@ -62,7 +62,7 @@ public sealed class IosNfcProvider : INfcProvider
 
         public override void DidInvalidate(NFCTagReaderSession session, NSError error)
         {
-            Connection?.MarkInvalidated();
+            Connection?.MarkInvalidated(error);
 
             if (error.Code == UserCanceled || error.Code == SessionTimeout)
             {
@@ -99,24 +99,27 @@ public sealed class IosNfcProvider : INfcProvider
                     return;
                 }
 
-                Connection = new IosTagConnection(session, mifare);
+                Connection = new IosTagConnection(session, tag, mifare);
                 Connected.TrySetResult(Connection);
             });
         }
     }
 }
 
-internal sealed class IosTagConnection : INfcTagConnection
+internal sealed class IosTagConnection : INfcTagConnection, INfcReselectable
 {
     private readonly NFCTagReaderSession _session;
     private readonly INFCMiFareTag _tag;
+    private readonly INFCTag _nativeTag;
+    private TaskCompletionSource<byte[]>? _pending;
     private readonly SemaphoreSlim _lock = new(1, 1);
-    private bool _closed;
+    private volatile bool _closed;
 
-    public IosTagConnection(NFCTagReaderSession session, INFCMiFareTag tag)
+    public IosTagConnection(NFCTagReaderSession session, INFCTag nativeTag, INFCMiFareTag tag)
     {
         _session = session;
         _tag = tag;
+        _nativeTag = nativeTag;
         Uid = tag.Identifier?.ToArray() ?? Array.Empty<byte>();
     }
 
@@ -125,39 +128,107 @@ internal sealed class IosTagConnection : INfcTagConnection
     // Matches the Swift app's FAST_READ batch size (0x20 pages).
     public int MaxFastReadPages => 32;
 
-    internal void MarkInvalidated() => _closed = true;
-
-    public async Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default)
+    internal void MarkInvalidated(NSError error)
     {
-        if (_closed)
-        {
-            throw new NfcException("The NFC session has ended.");
-        }
+        _closed = true;
+        _pending?.TrySetException(new NfcConnectionLostException("The NFC session has ended.", new NSErrorException(error)));
+    }
 
+    public Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default) =>
+        ExchangeAsync(command, false, cancellationToken);
+
+    public Task<byte[]> TransceiveAsync(byte[] command, TimeSpan responseTimeout, CancellationToken cancellationToken = default) =>
+        // Core NFC owns the RF timeout: don't fake a 10 ms deadline and send the next command while this one runs.
+        ExchangeAsync(command, command is [<= 1, 0, 0, 0], cancellationToken);
+
+    private async Task<byte[]> ExchangeAsync(byte[] command, bool passiveAck, CancellationToken cancellationToken)
+    {
         await _lock.WaitAsync(cancellationToken);
         try
         {
+            ThrowIfClosed();
+            cancellationToken.ThrowIfCancellationRequested();
             var completion = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using var registration = cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken));
-
+            _pending = completion;
+            ThrowIfClosed();
             _tag.SendMiFareCommand(NSData.FromArray(command), (data, error) =>
             {
-                if (error != null)
-                {
-                    completion.TrySetException(new NfcException(error.LocalizedDescription));
-                }
-                else
+                if (error == null)
                 {
                     completion.TrySetResult(data?.ToArray() ?? Array.Empty<byte>());
                 }
+                else if (passiveAck && !_closed && error.Domain == "NFCError" && (NFCReaderError)(long)error.Code is
+                         NFCReaderError.ReaderTransceiveErrorTagConnectionLost or NFCReaderError.ReaderTransceiveErrorRetryExceeded
+                         or NFCReaderError.ReaderTransceiveErrorTagResponseError)
+                {
+                    // Core NFC can report silence as response-error/no-response (102), lost contact (100),
+                    // or retries exceeded (101). Only this known passive-ACK packet accepts those errors.
+                    // Silence is the second SECTOR_SELECT packet's acknowledgement. Don't reconnect here:
+                    // reactivation can reset the sector; if the NEXT command loses contact, recovery restores it.
+                    completion.TrySetResult(Array.Empty<byte>());
+                }
+                else if ((NFCReaderError)(long)error.Code == NFCReaderError.ReaderTransceiveErrorPacketTooLong)
+                {
+                    completion.TrySetException(new NfcCommandNotSupportedException(command[0]));
+                }
+                else if ((NFCReaderError)(long)error.Code == NFCReaderError.ReaderTransceiveErrorTagResponseError)
+                {
+                    completion.TrySetException(new NfcTagResponseException(error.LocalizedDescription, new NSErrorException(error)));
+                }
+                else
+                {
+                    // Session invalidation, tag-not-connected and other native errors must not be swallowed as
+                    // a passive ACK by the shared sector-selection code. Keep the native NSError for diagnostics.
+                    completion.TrySetException(new NfcConnectionLostException(error.LocalizedDescription, new NSErrorException(error)));
+                }
             });
 
-            return await completion.Task;
+            // Cancellation is observed after the native callback, so the command gate stays held while RF I/O runs.
+            var response = await completion.Task;
+            cancellationToken.ThrowIfCancellationRequested();
+            return response;
         }
         finally
         {
+            _pending = null;
             _lock.Release();
         }
+    }
+
+    public async Task ReselectAsync(CancellationToken cancellationToken = default)
+    {
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            ThrowIfClosed();
+            var completion = new TaskCompletionSource<byte[]>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _pending = completion;
+            ThrowIfClosed();
+            // Reconnect the original tag within this session. Never restart polling or start a new RF session.
+            // The shared recovery callback reselects the required sector and reauthenticates afterward.
+            _session.ConnectTo(_nativeTag, error =>
+            {
+                if (error != null)
+                    completion.TrySetException(new NfcConnectionLostException(error.LocalizedDescription, new NSErrorException(error)));
+                else if (!(_tag.Identifier?.ToArray() ?? Array.Empty<byte>()).AsSpan().SequenceEqual(Uid))
+                    completion.TrySetException(new NfcConnectionLostException("A different tag is on the reader.", new InvalidOperationException()));
+                else
+                    completion.TrySetResult(Array.Empty<byte>());
+            });
+            await completion.Task;
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+        finally
+        {
+            _pending = null;
+            _lock.Release();
+        }
+    }
+
+    private void ThrowIfClosed()
+    {
+        if (_closed)
+            throw new NfcConnectionLostException("The NFC session has ended.", new InvalidOperationException());
     }
 
     public void SetStatus(string message)

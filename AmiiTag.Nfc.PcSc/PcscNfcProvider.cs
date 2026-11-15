@@ -204,6 +204,33 @@ public sealed class PcscCard : IDisposable
     /// </summary>
     public List<string>? Log { get; set; }
 
+    internal Exception? LastTransportError { get; set; }
+
+    /// <summary>
+    /// Rebinds a stale handle without requesting a card reset or cycling the RF field. Never falls back to Reset:
+    /// that would lose the selected sector and restart the figure's I²C controller.
+    /// </summary>
+    internal bool TryReconnectPreservingField()
+    {
+        for (var attempt = 0; attempt < 3; attempt++)
+        {
+            try
+            {
+                _reader.Reconnect(SCardShareMode.Shared, SCardProtocol.Any, SCardReaderDisposition.Leave);
+                LastTransportError = null;
+                Log?.Add("(reconnected without reset)");
+                return true;
+            }
+            catch (PCSCException ex)
+            {
+                LastTransportError = ex;
+                if (attempt < 2) Thread.Sleep(100);
+            }
+        }
+        Log?.Add($"(reconnect without reset failed: {LastTransportError?.Message})");
+        return false;
+    }
+
     /// <summary>
     /// Sends an APDU and returns the full response including SW1 SW2.
     /// </summary>
@@ -222,6 +249,7 @@ public sealed class PcscCard : IDisposable
         }
         catch (Exception ex)
         {
+            if (ex is PCSCException) LastTransportError = ex;
             Log?.Add($"> {AmiiTag.Tags.Hex.ToSpacedHex(apdu)}  ! {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"PC/SC > {AmiiTag.Tags.Hex.ToSpacedHex(apdu)}  ! {ex.Message}");
             throw;
@@ -344,16 +372,48 @@ internal sealed class PcscTagConnection : INfcTagConnection
 
     public bool IsDirectCommandMode => _strategy.IsDirect;
 
-    public async Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default)
+    public Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default) =>
+        ExchangeAsync(command, null, cancellationToken);
+
+    public Task<byte[]> TransceiveAsync(byte[] command, TimeSpan responseTimeout, CancellationToken cancellationToken = default) =>
+        ExchangeAsync(command, responseTimeout, cancellationToken);
+
+    private async Task<byte[]> ExchangeAsync(byte[] command, TimeSpan? responseTimeout, CancellationToken cancellationToken)
     {
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            return await Task.Run(() => _strategy.Transceive(_card, command), cancellationToken);
-        }
-        catch (PCSCException ex)
-        {
-            throw new NfcException("The tag was removed or the reader stopped responding.", ex);
+            return await Task.Run(() =>
+            {
+                _card.LastTransportError = null;
+                try
+                {
+                    return responseTimeout.HasValue
+                        ? _strategy.Transceive(_card, command, responseTimeout.Value)
+                        : _strategy.Transceive(_card, command);
+                }
+                catch (PCSCException ex)
+                {
+                    // Only the passive-ACK packet may complete without a response. Never replay a command
+                    // on a new handle: a write may already have reached the tag.
+                    if (responseTimeout.HasValue && command is [<= 1, 0, 0, 0] && _card.TryReconnectPreservingField())
+                    {
+                        try
+                        {
+                            if (Uid.Length != 0 && !_card.GetUid().AsSpan().SequenceEqual(Uid))
+                            {
+                                throw new NfcConnectionLostException("Could not confirm the same tag after sector selection.", ex);
+                            }
+                            return Array.Empty<byte>();
+                        }
+                        catch (PCSCException reconnectError)
+                        {
+                            throw new NfcConnectionLostException("Could not confirm the tag after reconnecting.", reconnectError);
+                        }
+                    }
+                    throw new NfcConnectionLostException("The tag connection was lost; the reader could not continue without resetting the tag.", ex);
+                }
+            }, cancellationToken);
         }
         finally
         {

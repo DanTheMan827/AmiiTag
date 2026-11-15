@@ -394,11 +394,22 @@ internal sealed class Mfrc522TagConnection : INfcTagConnection, INfcReselectable
     // The FIFO is 64 bytes: 15 pages (60 bytes) plus the 2 byte CRC fits.
     public int MaxFastReadPages => 15;
 
-    public async Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default)
+    public Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default) =>
+        ExchangeAsync(command, null, cancellationToken);
+
+    public Task<byte[]> TransceiveAsync(byte[] command, TimeSpan responseTimeout, CancellationToken cancellationToken = default) =>
+        ExchangeAsync(command, responseTimeout, cancellationToken);
+
+    private async Task<byte[]> ExchangeAsync(byte[] command, TimeSpan? responseTimeout, CancellationToken cancellationToken)
     {
         await _lock.WaitAsync(cancellationToken);
+        var previousTimeout = _reader.ExchangeTimeout;
         try
         {
+            if (responseTimeout.HasValue)
+            {
+                _reader.ExchangeTimeout = responseTimeout.Value;
+            }
             return await _reader.TransceiveAsync(command, cancellationToken);
         }
         catch (Exception ex) when (ex is TimeoutException or IOException)
@@ -407,6 +418,7 @@ internal sealed class Mfrc522TagConnection : INfcTagConnection, INfcReselectable
         }
         finally
         {
+            _reader.ExchangeTimeout = previousTimeout;
             _lock.Release();
         }
     }

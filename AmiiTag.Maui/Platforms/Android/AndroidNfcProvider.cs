@@ -55,7 +55,7 @@ public sealed class AndroidNfcProvider : INfcProvider
             await Task.Run(() =>
             {
                 nfcA.Connect();
-                nfcA.Timeout = 1000;
+                nfcA.Timeout = 800;
             }, cancellationToken);
 
             return new AndroidTagConnection(nfcA, tag.GetId() ?? Array.Empty<byte>(), () => DisableReaderMode(adapter, activity));
@@ -112,15 +112,26 @@ internal sealed class AndroidTagConnection : INfcTagConnection
     // NfcA.getMaxTransceiveLength is usually 253; 32 pages (128 bytes) is comfortably inside it.
     public int MaxFastReadPages => 32;
 
-    public async Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default)
+    public Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default) =>
+        ExchangeAsync(command, null, cancellationToken);
+
+    public Task<byte[]> TransceiveAsync(byte[] command, TimeSpan responseTimeout, CancellationToken cancellationToken = default) =>
+        ExchangeAsync(command, responseTimeout, cancellationToken);
+
+    private async Task<byte[]> ExchangeAsync(byte[] command, TimeSpan? responseTimeout, CancellationToken cancellationToken)
     {
         await _lock.WaitAsync(cancellationToken);
         try
         {
             return await Task.Run(() =>
             {
+                var previousTimeout = _nfcA.Timeout;
                 try
                 {
+                    if (responseTimeout.HasValue)
+                    {
+                        _nfcA.Timeout = Math.Max(1, (int)responseTimeout.Value.TotalMilliseconds);
+                    }
                     return _nfcA.Transceive(command) ?? Array.Empty<byte>();
                 }
                 catch (Java.IO.IOException ex)
@@ -130,6 +141,10 @@ internal sealed class AndroidTagConnection : INfcTagConnection
                 catch (Java.Lang.Exception ex)
                 {
                     throw new NfcException(ex.Message ?? "NFC error.", ex);
+                }
+                finally
+                {
+                    _nfcA.Timeout = previousTimeout;
                 }
             }, cancellationToken);
         }
