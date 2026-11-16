@@ -32,13 +32,15 @@
                 <span class="status">No keys. Generating, re-encrypting and writing tags need key_retail.bin, or unfixed-info.bin and locked-secret.bin.</span>
             }
         </p>
-        <div class="button-row">
-            <button type="button" class="pill-button" @onclick="LoadKeys">@(Keys.HasKeys ? "Replace Keys" : Keys.HasAnyKey ? "Load Other Key" : "Load Key Files")</button>
-            @if (Keys.HasAnyKey)
-            {
-                <button type="button" class="pill-button destructive" @onclick="RemoveKeys">Remove</button>
-            }
-        </div>
+        @if (!Keys.HasKeys) {
+            <div class="button-row">
+                <button type="button" class="pill-button" @onclick="LoadKeys">@(Keys.HasKeys ? "Replace Keys" : Keys.HasAnyKey ? "Load Other Key" : "Load Key Files")</button>
+                @if (Keys.HasAnyKey)
+                {
+                    <button type="button" class="pill-button destructive" @onclick="RemoveKeys">Remove</button>
+                }
+            </div>
+        }
         <label class="toggle-row">
             <input type="checkbox" checked="@(_settings?.RandomizeGeneratedUid ?? true)" @onchange="ToggleRandomUid" />
             <span>Use saved genuine UIDs for new tags (@Signatures.Count saved)</span>

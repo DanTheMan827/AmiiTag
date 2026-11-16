@@ -18,23 +18,24 @@
     <div class="button-stack">
         <BigButton OnClick="OpenLibrary">Amiibo Library</BigButton>
         <BigButton OnClick="OpenGames">Game Info</BigButton>
-        <BigButton OnClick="Actions.LoadTagFromFileAsync">Load Tag</BigButton>
-        <BigButton OnClick="OpenLockOns">Lock-on Library</BigButton>
         @if (Capabilities.CanUseTags)
         {
             <BigButton OnClick="Actions.ScanTagAsync">Scan Tag</BigButton>
+        }
+        <BigButton OnClick="Actions.LoadTagFromFileAsync">Load Tag</BigButton>
+        <BigButton OnClick="OpenLockOns">Lock-on Library</BigButton>
+
+        @if (Capabilities.HasCamera)
+        {
+            <BigButton OnClick="Actions.ScanQrAsync">Scan QR Code</BigButton>
         }
         @if (Capabilities.CanUseTags)
         {
             <BigButton OnClick="OpenN2Elite">Manage N2 Elite</BigButton>
         }
-        @if (Capabilities.HasCamera)
-        {
-            <BigButton OnClick="Actions.ScanQrAsync">Scan QR Code</BigButton>
-        }
         @if (Capabilities.HasBluetooth)
         {
-            <BigButton OnClick="OpenDevices">Manage Puck</BigButton>
+            <BigButton OnClick="OpenDevices">Connect Bluetooth Device</BigButton>
         }
         <BigButton OnClick="OpenSettings" Class="secondary">Settings</BigButton>
     </div>
