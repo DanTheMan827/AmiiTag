@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Components.WebView;
 using Microsoft.AspNetCore.Components.WebView.Maui;
 using Microsoft.Extensions.FileProviders;
+using AmiiTag.Maui.Services;
 
 namespace AmiiTag.Maui.Pages;
 
@@ -12,8 +13,11 @@ namespace AmiiTag.Maui.Pages;
 /// </summary>
 public sealed class AppBlazorWebView : BlazorWebView
 {
-    public AppBlazorWebView()
+    private readonly SyncedFigureImageFiles _figureImages;
+
+    public AppBlazorWebView(SyncedFigureImageFiles figureImages)
     {
+        _figureImages = figureImages;
         BlazorWebViewInitialized += OnInitialized;
     }
 
@@ -37,9 +41,9 @@ public sealed class AppBlazorWebView : BlazorWebView
         var root = Path.IsPathRooted(contentRootDir) ? contentRootDir : Path.Combine(AppContext.BaseDirectory, contentRootDir);
         if (Directory.Exists(root) && File.Exists(Path.Combine(root, "index.html")))
         {
-            return new PhysicalFileProvider(root);
+            return new CompositeFileProvider(_figureImages, new PhysicalFileProvider(root));
         }
 #endif
-        return base.CreateFileProvider(contentRootDir);
+        return new CompositeFileProvider(_figureImages, base.CreateFileProvider(contentRootDir));
     }
 }

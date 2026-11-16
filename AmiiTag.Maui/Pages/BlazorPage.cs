@@ -1,4 +1,5 @@
 using AmiiTag.Core.Interfaces;
+using AmiiTag.Maui.Services;
 using Microsoft.AspNetCore.Components.WebView.Maui;
 
 namespace AmiiTag.Maui.Pages;
@@ -9,7 +10,7 @@ namespace AmiiTag.Maui.Pages;
 /// </summary>
 public sealed class BlazorPage : ContentPage
 {
-    public BlazorPage(AppRoute route, bool isRoot = false)
+    public BlazorPage(AppRoute route, SyncedFigureImageFiles figureImages, bool isRoot = false)
     {
         Route = route;
         Title = route.Title;
@@ -24,7 +25,7 @@ public sealed class BlazorPage : ContentPage
             this.SetAppThemeColor(BackgroundColorProperty, Color.FromArgb("#F2F2F7"), Color.FromArgb("#000000"));
         }
 
-        var webView = new AppBlazorWebView
+        var webView = new AppBlazorWebView(figureImages)
         {
             HostPage = "wwwroot/index.html",
         };

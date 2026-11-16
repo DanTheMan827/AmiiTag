@@ -46,6 +46,7 @@ namespace AmiiTag.Maui
             builder.Services.AddSingleton<IDialogService, MauiDialogService>();
             builder.Services.AddSingleton<IFileService, MauiFileService>();
             builder.Services.AddSingleton<IAppStorage, MauiAppStorage>();
+            builder.Services.AddSingleton(sp => new SyncedFigureImageFiles(sp.GetRequiredService<AmiiboDatabaseContainer>().SourceFolders));
             builder.Services.AddSingleton<IFigureImageProvider, MauiFigureImageProvider>();
             builder.Services.AddSingleton<IQrScanner, CameraQrScanner>();
             builder.Services.AddSingleton<IBleAdapter, PluginBleAdapter>();

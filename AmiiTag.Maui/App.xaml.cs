@@ -6,15 +6,18 @@ namespace AmiiTag.Maui
 {
     public partial class App : Application
     {
-        public App()
+        private readonly SyncedFigureImageFiles _figureImages;
+
+        public App(SyncedFigureImageFiles figureImages)
         {
+            _figureImages = figureImages;
             InitializeComponent();
         }
 
         protected override Window CreateWindow(IActivationState? activationState)
         {
             // Every screen is a native page hosting a shared Blazor component; home is the root of the stack.
-            var home = new BlazorPage(AppRoutes.Home(), isRoot: true);
+            var home = new BlazorPage(AppRoutes.Home(), _figureImages, isRoot: true);
             NavigationPage.SetHasNavigationBar(home, false);
             var window = new Window(MauiNavigator.CreateNavigationPage(home)) { Title = "AmiiTag" };
 

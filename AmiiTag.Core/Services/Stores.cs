@@ -1,8 +1,8 @@
+using AmiiTag.Core.Interfaces;
+using AmiiTag.Tags;
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text.Json;
-using AmiiTag.Core.Interfaces;
-using AmiiTag.Tags;
 
 namespace AmiiTag.Core.Services;
 
@@ -45,7 +45,10 @@ public sealed class KeyStore
     /// <summary>
     /// Both keys, or null. Everything that encrypts uses this.
     /// </summary>
-    public AmiiboKeySet? Keys { get; private set; }
+    public AmiiboKeySet? Keys
+    {
+        get; private set;
+    }
 
     /// <summary>
     /// Keys that can at least decrypt (both keys, or unfixed-info.bin alone), for showing nicknames and app data.
@@ -226,7 +229,7 @@ public enum SignatureImport
 /// </summary>
 public sealed class SignatureStore
 {
-    private const string Prefix = "signatures/";
+    private const string Prefix = "Signatures/";
 
     private readonly IAppStorage _storage;
     private readonly ConcurrentDictionary<string, byte[]> _records = new();
@@ -333,8 +336,14 @@ public sealed class SignatureStore
 
 public sealed class AppSettings
 {
-    public string? NfcProviderId { get; set; }
-    public string? NfcReaderId { get; set; }
+    public string? NfcProviderId
+    {
+        get; set;
+    }
+    public string? NfcReaderId
+    {
+        get; set;
+    }
 
     /// <summary>
     /// Randomize the UID (using a stored genuine signature if available) when creating tags from the library.
@@ -350,7 +359,10 @@ public sealed class AppSettings
     /// Set once Bluetooth has been used (permission granted), after which tag screens scan in the background so nearby
     /// devices can be offered when writing, without a surprise permission prompt.
     /// </summary>
-    public bool BluetoothUsed { get; set; }
+    public bool BluetoothUsed
+    {
+        get; set;
+    }
 }
 
 public sealed class SettingsStore

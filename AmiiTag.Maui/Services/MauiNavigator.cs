@@ -11,6 +11,13 @@ namespace AmiiTag.Maui.Services;
 /// </summary>
 public sealed class MauiNavigator : IAppNavigator
 {
+    private readonly SyncedFigureImageFiles _figureImages;
+
+    public MauiNavigator(SyncedFigureImageFiles figureImages)
+    {
+        _figureImages = figureImages;
+    }
+
     internal static Page? RootPage => Application.Current?.Windows.FirstOrDefault()?.Page;
 
     /// <summary>
@@ -87,7 +94,7 @@ public sealed class MauiNavigator : IAppNavigator
 
     public Task NavigateAsync(AppRoute route) => MainThread.InvokeOnMainThreadAsync(async () =>
     {
-        var page = new BlazorPage(route);
+        var page = new BlazorPage(route, _figureImages);
         var root = RootPage ?? throw new InvalidOperationException("The app has no window yet.");
 
         // iOS and Windows: every screen is pushed onto the one navigation stack, so iOS gets its standard navigation

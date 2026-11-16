@@ -1,4 +1,3 @@
-using System.Collections.Concurrent;
 using AmiiTag.AmiiboData;
 using AmiiTag.Core.Interfaces;
 using AmiiTag.Maui.Data;
@@ -190,39 +189,23 @@ public sealed class MauiAppStorage : IAppStorage
 }
 
 /// <summary>
-/// Serves synced images as data URLs, since a BlazorWebView can't load arbitrary local files.
+/// Uses the synced images mounted in each BlazorWebView's static file provider.
 /// Falls back to the remote URL when the image hasn't been downloaded.
 /// </summary>
 public sealed class MauiFigureImageProvider : IFigureImageProvider
 {
     private readonly AmiiboDatabaseContainer _database;
-    private readonly ConcurrentDictionary<string, string> _cache = new();
+    private readonly SyncedFigureImageFiles _images;
 
-    public MauiFigureImageProvider(AmiiboDatabaseContainer database)
+    public MauiFigureImageProvider(AmiiboDatabaseContainer database, SyncedFigureImageFiles images)
     {
         _database = database;
+        _images = images;
     }
 
-    public async ValueTask<string?> GetImageUrlAsync(AmiiboFigure figure)
+    public ValueTask<string?> GetImageUrlAsync(AmiiboFigure figure)
     {
         var fileName = $"icon_{figure.Id.Head}-{figure.Id.Tail}.png";
-        if (_cache.TryGetValue(fileName, out var cached))
-        {
-            return cached;
-        }
-
-        foreach (var folder in _database.SourceFolders)
-        {
-            var path = Path.Combine(folder, "images", fileName);
-            if (File.Exists(path))
-            {
-                var bytes = await File.ReadAllBytesAsync(path);
-                var url = "data:image/png;base64," + Convert.ToBase64String(bytes);
-                _cache[fileName] = url;
-                return url;
-            }
-        }
-
-        return _database.GetRemoteImageUrl(fileName);
+        return ValueTask.FromResult(_images.GetImageUrl(fileName) ?? _database.GetRemoteImageUrl(fileName));
     }
 }
