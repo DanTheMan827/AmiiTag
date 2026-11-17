@@ -48,6 +48,10 @@
 </AppPage>
 
 @code {
+    protected override void OnInitialized()
+    {
+        Flipper.Changed += async (_,_) => await InvokeAsync(StateHasChanged);
+    }
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -98,7 +102,7 @@
     private Task OpenDevices() => Actions.OpenBluetoothDevicesAsync();
 
     private Task OpenN2Elite() => Navigator.NavigateAsync(AppRoutes.N2Elite());
-    private Task EmulateN2() => Flipper.EmulateAsync(new N2EliteSimulator(), "N2 Emulation");
+    private Task EmulateN2() => Flipper.EmulateAsync(new N2EliteSimulator(){IsLocked = true}, "N2 Emulation");
 
     private Task OpenSettings() => Navigator.NavigateAsync(AppRoutes.Settings());
 
