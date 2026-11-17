@@ -66,8 +66,7 @@
                     f.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
                     f.Character.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
                     f.Series.Contains(_search, StringComparison.OrdinalIgnoreCase))
-        .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase)
-        .Take(150);
+        .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase);
 
     protected override void OnParametersSet()
     {
