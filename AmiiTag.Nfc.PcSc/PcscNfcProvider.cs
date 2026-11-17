@@ -202,9 +202,15 @@ public sealed class PcscCard : IDisposable
     /// <summary>
     /// When set, every APDU and response is recorded (used while working out how to talk to a reader).
     /// </summary>
-    public List<string>? Log { get; set; }
+    public List<string>? Log
+    {
+        get; set;
+    }
 
-    internal Exception? LastTransportError { get; set; }
+    internal Exception? LastTransportError
+    {
+        get; set;
+    }
 
     /// <summary>
     /// Rebinds a stale handle without requesting a card reset or cycling the RF field. Never falls back to Reset:
@@ -224,7 +230,8 @@ public sealed class PcscCard : IDisposable
             catch (PCSCException ex)
             {
                 LastTransportError = ex;
-                if (attempt < 2) Thread.Sleep(100);
+                if (attempt < 2)
+                    Thread.Sleep(100);
             }
         }
         Log?.Add($"(reconnect without reset failed: {LastTransportError?.Message})");
@@ -249,7 +256,8 @@ public sealed class PcscCard : IDisposable
         }
         catch (Exception ex)
         {
-            if (ex is PCSCException) LastTransportError = ex;
+            if (ex is PCSCException)
+                LastTransportError = ex;
             Log?.Add($"> {AmiiTag.Tags.Hex.ToSpacedHex(apdu)}  ! {ex.Message}");
             System.Diagnostics.Debug.WriteLine($"PC/SC > {AmiiTag.Tags.Hex.ToSpacedHex(apdu)}  ! {ex.Message}");
             throw;
@@ -366,7 +374,10 @@ internal sealed class PcscTagConnection : INfcTagConnection, INfcReselectable
         Uid = uid;
     }
 
-    public byte[] Uid { get; }
+    public byte[] Uid
+    {
+        get;
+    }
 
     public int MaxFastReadPages => _strategy.MaxFastReadPages;
 
@@ -403,6 +414,9 @@ internal sealed class PcscTagConnection : INfcTagConnection, INfcReselectable
 
     public Task<byte[]> TransceiveAsync(byte[] command, TimeSpan responseTimeout, CancellationToken cancellationToken = default) =>
         ExchangeAsync(command, responseTimeout, cancellationToken);
+
+    public Task SendAsync(byte[] command, CancellationToken cancellationToken = default) =>
+        ExchangeAsync(command, null, cancellationToken);
 
     private async Task<byte[]> ExchangeAsync(byte[] command, TimeSpan? responseTimeout, CancellationToken cancellationToken)
     {

@@ -1,4 +1,5 @@
 @page "/"
+@using AmiiTag.Simulation
 @inject IAppNavigator Navigator
 @inject TagActions Actions
 @inject AppState State
@@ -6,6 +7,7 @@
 @inject DeviceCapabilities Capabilities
 @inject NfcService Nfc
 @inject HomeScreenState Screen
+@inject FlipperEmulationService Flipper
 @implements IDisposable
 
 @* Dropped files are recognised by their contents: keys, amiibo, lock-ons, UID/signature pairs. *@
@@ -36,6 +38,10 @@
         @if (Capabilities.HasBluetooth)
         {
             <BigButton OnClick="OpenDevices">Connect Bluetooth Device</BigButton>
+        }
+        @if (Flipper.IsAvailable)
+        {
+            <BigButton OnClick="EmulateN2">Emulate N2</BigButton>
         }
         <BigButton OnClick="OpenSettings" Class="secondary">Settings</BigButton>
     </div>
@@ -92,6 +98,7 @@
     private Task OpenDevices() => Actions.OpenBluetoothDevicesAsync();
 
     private Task OpenN2Elite() => Navigator.NavigateAsync(AppRoutes.N2Elite());
+    private Task EmulateN2() => Flipper.EmulateAsync(new N2EliteSimulator(), "N2 Emulation");
 
     private Task OpenSettings() => Navigator.NavigateAsync(AppRoutes.Settings());
 

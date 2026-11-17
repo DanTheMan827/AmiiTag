@@ -48,15 +48,24 @@ public sealed class FlipperEmulationService : IDisposable
     /// </summary>
     public bool IsAvailable => IsSupported && _provider!.IsDevicePresent;
 
-    public EmulationSession? Session { get; private set; }
+    public EmulationSession? Session
+    {
+        get; private set;
+    }
 
     /// <summary>
     /// The tag (in <see cref="TagStore"/>) last emulated, and the library figure it was made from, if any: a tag
     /// screen reopened for that figure shows this tag rather than generating a new one.
     /// </summary>
-    public string? LastTagKey { get; private set; }
+    public string? LastTagKey
+    {
+        get; private set;
+    }
 
-    public string? LastFigureId { get; private set; }
+    public string? LastFigureId
+    {
+        get; private set;
+    }
 
     /// <summary>
     /// Availability or the session changed. May be raised off the UI thread.
@@ -130,6 +139,44 @@ public sealed class FlipperEmulationService : IDisposable
 
             _original = image;
             _tagKey = tagKey ?? _tags.Add(image);
+            LastTagKey = _tagKey;
+            LastFigureId = figureId;
+            Session.Changed += OnSessionChanged;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+
+        Changed?.Invoke(this, EventArgs.Empty);
+        await _navigator.NavigateAsync(AppRoutes.Emulate());
+    }
+
+    public async Task EmulateAsync(TagSimulator simulator, string title, string? tagKey = null, string? figureId = null)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            await StopCoreAsync();
+            if (_provider == null || await _provider.OpenAsync() is not { } transport)
+            {
+                await _dialogs.AlertAsync("Flipper not found",
+                    "Plug in the Flipper Zero and open Apps > USB > NFC Bridge on it.");
+                return;
+            }
+
+            try
+            {
+                Session = await EmulationSession.StartAsync(transport, simulator, title);
+            }
+            catch (Exception ex)
+            {
+                await _dialogs.AlertAsync("Couldn't start emulating", ex.Message);
+                return;
+            }
+
+            _original = null;
+            _tagKey = tagKey;
             LastTagKey = _tagKey;
             LastFigureId = figureId;
             Session.Changed += OnSessionChanged;
@@ -230,32 +277,32 @@ public sealed class FlipperEmulationService : IDisposable
         switch (original, tag)
         {
             case (TagDump dump, Ntag215Simulator ntag):
-            {
-                var data = dump.ToArray(dump.HasSignature ? TagDump.FullLength : TagDump.DataLength);
-                ntag.Memory.AsSpan(0, Ntag215Simulator.PwdPage * 4).CopyTo(data);
-                return new TagDump(data);
-            }
-
-            case (AmiiboV3Dump v3, NtagI2cPlusSimulator i2c):
-            {
-                var raw = v3.Span.ToArray();
-                var sector0 = i2c.SectorMemory(0);
-                for (var page = 0; page < NtagI2cPlusSimulator.SectorPages; page++)
                 {
-                    // Session registers aren't EEPROM; PWD/PACK read back as zeros; SRAM holds the lock-on.
-                    var keep = page is NtagI2cPlusSimulator.PwdPage or NtagI2cPlusSimulator.PackPage
-                        or NtagI2cPlusSimulator.SessionPage0 or NtagI2cPlusSimulator.SessionPage1
-                        || page >= NtagI2cPlusSimulator.SramFirstPage
-                        || NtagI2cPlusSimulator.IsInvalidPage(0, page);
-                    if (!keep)
-                    {
-                        sector0.AsSpan(page * 4, 4).CopyTo(raw.AsSpan(page * 4));
-                    }
+                    var data = dump.ToArray(dump.HasSignature ? TagDump.FullLength : TagDump.DataLength);
+                    ntag.Memory.AsSpan(0, Ntag215Simulator.PwdPage * 4).CopyTo(data);
+                    return new TagDump(data);
                 }
 
-                i2c.SectorMemory(1).CopyTo(raw.AsSpan(0x400));
-                return new AmiiboV3Dump(raw);
-            }
+            case (AmiiboV3Dump v3, NtagI2cPlusSimulator i2c):
+                {
+                    var raw = v3.Span.ToArray();
+                    var sector0 = i2c.SectorMemory(0);
+                    for (var page = 0; page < NtagI2cPlusSimulator.SectorPages; page++)
+                    {
+                        // Session registers aren't EEPROM; PWD/PACK read back as zeros; SRAM holds the lock-on.
+                        var keep = page is NtagI2cPlusSimulator.PwdPage or NtagI2cPlusSimulator.PackPage
+                            or NtagI2cPlusSimulator.SessionPage0 or NtagI2cPlusSimulator.SessionPage1
+                            || page >= NtagI2cPlusSimulator.SramFirstPage
+                            || NtagI2cPlusSimulator.IsInvalidPage(0, page);
+                        if (!keep)
+                        {
+                            sector0.AsSpan(page * 4, 4).CopyTo(raw.AsSpan(page * 4));
+                        }
+                    }
+
+                    i2c.SectorMemory(1).CopyTo(raw.AsSpan(0x400));
+                    return new AmiiboV3Dump(raw);
+                }
 
             default:
                 return null;

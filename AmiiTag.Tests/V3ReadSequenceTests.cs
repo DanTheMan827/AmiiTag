@@ -1,7 +1,7 @@
-using System.Diagnostics;
 using AmiiTag.Nfc;
 using AmiiTag.Tags;
 using AmiiTag.Tests.Simulation;
+using System.Diagnostics;
 
 namespace AmiiTag.Tests;
 
@@ -74,16 +74,29 @@ public class V3ReadSequenceTests
     {
         private readonly byte[] _sramRequest = new byte[64];
         public List<(byte[] Bytes, long Timestamp)> Commands { get; } = [];
-        public TimeSpan? SelectionTimeout { get; private set; }
-        public Action? AfterAuth { get; init; }
-        public bool LoseTransport { get; init; }
-        public bool RejectSector { get; init; }
+        public TimeSpan? SelectionTimeout
+        {
+            get; private set;
+        }
+        public Action? AfterAuth
+        {
+            get; init;
+        }
+        public bool LoseTransport
+        {
+            get; init;
+        }
+        public bool RejectSector
+        {
+            get; init;
+        }
         public byte[] Uid => inner?.Uid ?? [];
         public int MaxFastReadPages => inner?.MaxFastReadPages ?? 32;
         public async Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default)
         {
             Commands.Add((command.ToArray(), Stopwatch.GetTimestamp()));
-            if (noFastWrite && command[0] == 0xA6) throw new NfcCommandNotSupportedException(0xA6);
+            if (noFastWrite && command[0] == 0xA6)
+                throw new NfcCommandNotSupportedException(0xA6);
             // The unchanged datasheet simulator models FAST_WRITE only. Adapt page writes in the test
             // transport so the reader's FIFO fallback can be exercised without changing that simulator.
             if (noFastWrite && command is [0xA2, >= 0xF0, _, _, _, _])
@@ -95,11 +108,14 @@ public class V3ReadSequenceTests
             }
             if (command is [<= 1, 0, 0, 0])
             {
-                if (LoseTransport) throw new NfcConnectionLostException("Lost handle", new IOException());
-                if (RejectSector) throw new NfcNakException(0, "Rejected");
+                if (LoseTransport)
+                    throw new NfcConnectionLostException("Lost handle", new IOException());
+                if (RejectSector)
+                    throw new NfcNakException(0, "Rejected");
             }
             var response = inner != null ? await inner.TransceiveAsync(command, cancellationToken) : new byte[] { 0x0A };
-            if (command[0] == 0x1B) AfterAuth?.Invoke();
+            if (command[0] == 0x1B)
+                AfterAuth?.Invoke();
             return response;
         }
         public Task<byte[]> TransceiveAsync(byte[] command, TimeSpan responseTimeout, CancellationToken cancellationToken = default)
@@ -107,8 +123,15 @@ public class V3ReadSequenceTests
             SelectionTimeout = responseTimeout;
             return TransceiveAsync(command, cancellationToken);
         }
-        public void SetStatus(string message) { }
+        public void SetStatus(string message)
+        {
+        }
         public Task CloseAsync(string? errorMessage = null) => Task.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public Task SendAsync(byte[] command, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

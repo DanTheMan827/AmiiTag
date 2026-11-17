@@ -337,6 +337,11 @@ public class AmiiboNfcOperationsTests
         public Task CloseAsync(string? errorMessage = null) => Task.CompletedTask;
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public Task SendAsync(byte[] command, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
     }
 }
 

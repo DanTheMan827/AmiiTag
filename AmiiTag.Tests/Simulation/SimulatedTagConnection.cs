@@ -20,7 +20,10 @@ public sealed class SimulatedTagConnection : INfcTagConnection
 
     public byte[] Uid => _tag.Uid7;
 
-    public int MaxFastReadPages { get; }
+    public int MaxFastReadPages
+    {
+        get;
+    }
 
     /// <summary>
     /// False simulates a reader that isn't in direct command mode (e.g. PC/SC storage card commands):
@@ -30,9 +33,15 @@ public sealed class SimulatedTagConnection : INfcTagConnection
 
     public List<string> StatusMessages { get; } = [];
 
-    public bool Closed { get; private set; }
+    public bool Closed
+    {
+        get; private set;
+    }
 
-    public string? CloseError { get; private set; }
+    public string? CloseError
+    {
+        get; private set;
+    }
 
     public Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default)
     {
@@ -61,4 +70,15 @@ public sealed class SimulatedTagConnection : INfcTagConnection
     }
 
     public ValueTask DisposeAsync() => new(CloseAsync());
+
+    public async Task SendAsync(byte[] command, CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (command.Length > 0 && (_unsupported.Contains(command[0]) || (!IsDirectCommandMode && command[0] != 0x30)))
+        {
+            throw new NfcCommandNotSupportedException(command[0]);
+        }
+
+        var response = _tag.Transceive(command);
+    }
 }

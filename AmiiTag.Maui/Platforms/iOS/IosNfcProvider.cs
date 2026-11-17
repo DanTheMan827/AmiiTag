@@ -50,11 +50,17 @@ public sealed class IosNfcProvider : INfcProvider
 
     private sealed class SessionDelegate : NFCTagReaderSessionDelegate
     {
-        public NFCTagReaderSession? Session { get; set; }
+        public NFCTagReaderSession? Session
+        {
+            get; set;
+        }
 
         public TaskCompletionSource<INfcTagConnection> Connected { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public IosTagConnection? Connection { get; private set; }
+        public IosTagConnection? Connection
+        {
+            get; private set;
+        }
 
         public override void DidBecomeActive(NFCTagReaderSession session)
         {
@@ -123,7 +129,10 @@ internal sealed class IosTagConnection : INfcTagConnection, INfcReselectable
         Uid = tag.Identifier?.ToArray() ?? Array.Empty<byte>();
     }
 
-    public byte[] Uid { get; }
+    public byte[] Uid
+    {
+        get;
+    }
 
     // Matches the Swift app's FAST_READ batch size (0x20 pages).
     public int MaxFastReadPages => 32;
@@ -140,6 +149,9 @@ internal sealed class IosTagConnection : INfcTagConnection, INfcReselectable
     public Task<byte[]> TransceiveAsync(byte[] command, TimeSpan responseTimeout, CancellationToken cancellationToken = default) =>
         // Core NFC owns the RF timeout: don't fake a 10 ms deadline and send the next command while this one runs.
         ExchangeAsync(command, command is [<= 1, 0, 0, 0], cancellationToken);
+
+    public Task SendAsync(byte[] command, CancellationToken cancellationToken = default) =>
+        ExchangeAsync(command, true, cancellationToken);
 
     private async Task<byte[]> ExchangeAsync(byte[] command, bool passiveAck, CancellationToken cancellationToken)
     {

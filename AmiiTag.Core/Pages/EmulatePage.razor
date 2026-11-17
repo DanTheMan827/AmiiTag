@@ -1,5 +1,6 @@
 @page "/emulate"
 @using AmiiTag.Nfc.Flipper
+@using AmiiTag.Simulation
 @implements IDisposable
 @inject FlipperEmulationService Flipper
 @inject IFileService Files
@@ -75,6 +76,13 @@
                         <BigButton OnClick="Stop" Class="secondary">Stop Emulating</BigButton>
                     }
                     <BigButton OnClick="ClearLog" Class="secondary">Clear Log</BigButton>
+                    @if (IsN2)
+                    {
+                        <span>
+                            <input type="checkbox" id="@_n2CheckboxId" checked="@N2ButtonPressed" @onchange="() => N2ButtonPressed = !N2ButtonPressed" />
+                            <label for="@_n2CheckboxId">N2 Button</label>
+                        </span>
+                    }
                 </div>
             </div>
 
@@ -118,6 +126,27 @@
     private string _text = string.Empty;
     private ElementReference _textArea;
     private bool _textFocused;
+    private bool IsN2 => Session?._responder.Tag is N2EliteSimulator;
+    private bool N2ButtonPressed
+    {
+        get {
+            if (Session?._responder.Tag is N2EliteSimulator simulator)
+            {
+                return simulator.ButtonPressed;
+            } else
+            {
+                return false;
+            }
+        }
+        set
+        {
+            if (Session?._responder.Tag is N2EliteSimulator simulator)
+            {
+                simulator.ButtonPressed = value;
+            }
+        }
+    }
+    private string _n2CheckboxId = $"_{Guid.NewGuid():N}";
 
     private EmulationSession? Session => Flipper.Session;
 

@@ -92,6 +92,8 @@ public sealed class N2EliteClient
 
     private readonly INfcTagConnection _connection;
 
+    public INfcTagConnection Connection => _connection;
+
     public N2EliteClient(INfcTagConnection connection)
     {
         _connection = connection;
@@ -292,6 +294,36 @@ public sealed class N2EliteClient
     }
 
     /// <summary>
+    /// Returns all banks after the specified index to their unwritten state.
+    /// </summary>
+    /// <returns></returns>
+    public async Task WipeBanksAfter(int startBank = -1, IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    {
+        if (startBank >= MaxBanks)
+        {
+            throw new ArgumentException($"Bank {startBank + 1} is out of range: the N2 Elite has {MaxBanks} banks.", nameof(startBank));
+        }
+
+        if (startBank < -1)
+        {
+            throw new ArgumentException("The start bank must be -1 (to wipe all banks) or a bank number.", nameof(startBank));
+        }
+
+        var info = await GetInfoAsync(cancellationToken);
+        for (var bank = startBank + 1; bank < (MaxBanks - 1); bank++)
+        {
+            await WipeBankAsync(bank, new Progress<double>(p => progress?.Report((bank + p) / (MaxBanks - 1))), cancellationToken);
+        }
+    }
+
+    public async Task WipeAllBanks(IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    {
+        await WipeBanksAfter(-1, progress, cancellationToken);
+        await SetBankCountAsync(1, cancellationToken);
+        await SelectBankAsync(0, cancellationToken);
+    }
+
+    /// <summary>
     /// N2_SET_BANK_CNT: how many banks the button cycles through (1-200). Banks past the count keep their data.
     /// </summary>
     public Task SetBankCountAsync(int count, CancellationToken cancellationToken = default)
@@ -301,7 +333,7 @@ public sealed class N2EliteClient
             throw new ArgumentOutOfRangeException(nameof(count), $"The bank count must be 1-{MaxBanks}.");
         }
 
-        return ExpectAckAsync([CmdSetBankCount, (byte)count], "change the bank count", cancellationToken);
+        return SendCommandAsync([CmdSetBankCount, (byte)count], cancellationToken);
     }
 
     /// <summary>
@@ -326,7 +358,7 @@ public sealed class N2EliteClient
     public async Task UnlockAsync(Func<CancellationToken, Task> waitForButton, CancellationToken cancellationToken = default)
     {
         EnsureDirect();
-        await _connection.TransceiveAsync([CmdPrepareUnlock], cancellationToken);
+        await _connection.SendAsync([CmdPrepareUnlock], cancellationToken);
         await waitForButton(cancellationToken);
         await ExpectAckAsync([CmdUnlock], "unlock the N2 Elite (hold the button until it's done)", cancellationToken);
     }
@@ -341,6 +373,12 @@ public sealed class N2EliteClient
                 ? $"The N2 Elite couldn't {what} (NAK 0x{answer[0]:X})."
                 : $"The N2 Elite couldn't {what} (unexpected answer {Hex.ToHex(answer)}).");
         }
+    }
+
+    private async Task SendCommandAsync(byte[] command, CancellationToken cancellationToken)
+    {
+        EnsureDirect();
+        await _connection.SendAsync(command, cancellationToken);
     }
 
     private void EnsureDirect()

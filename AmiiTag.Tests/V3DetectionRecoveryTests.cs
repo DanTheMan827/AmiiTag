@@ -30,13 +30,20 @@ public class V3DetectionRecoveryTests
     private sealed class RecoveryConnection(SimulatedTagConnection inner) : INfcTagConnection, INfcReselectable
     {
         private bool _needsRestore;
-        public int Reselects { get; private set; }
-        public int BulkAttempts { get; private set; }
+        public int Reselects
+        {
+            get; private set;
+        }
+        public int BulkAttempts
+        {
+            get; private set;
+        }
         public byte[] Uid => inner.Uid;
         public int MaxFastReadPages => inner.MaxFastReadPages;
         public Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default)
         {
-            if (_needsRestore) throw new InvalidOperationException("A read ran before tag restoration succeeded.");
+            if (_needsRestore)
+                throw new InvalidOperationException("A read ran before tag restoration succeeded.");
             if (command is [0x3A, 0, > 1] && ++BulkAttempts == 1)
             {
                 _needsRestore = true;
@@ -46,12 +53,20 @@ public class V3DetectionRecoveryTests
         }
         public Task ReselectAsync(CancellationToken cancellationToken = default)
         {
-            if (++Reselects < 3) throw new NfcException("Not reselected yet");
+            if (++Reselects < 3)
+                throw new NfcException("Not reselected yet");
             _needsRestore = false;
             return Task.CompletedTask;
         }
-        public void SetStatus(string message) { }
+        public void SetStatus(string message)
+        {
+        }
         public Task CloseAsync(string? errorMessage = null) => Task.CompletedTask;
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+        public Task SendAsync(byte[] command, CancellationToken cancellationToken = default)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

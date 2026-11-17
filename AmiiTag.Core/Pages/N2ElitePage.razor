@@ -232,6 +232,19 @@
         {
             options.Add(("Set bank count", SetBankCount));
             options.Add(("Back up all banks", () => N2.BackupAllAsync()));
+            options.Add(("Wipe all banks", new Func<Task>(async () =>
+            {
+
+                if (await Dialogs.ConfirmAsync(
+                                        "Wipe all banks?",
+                                        "All banks will be erased and the bank count will be set to 1.",
+                                        "Wipe", "Cancel"))
+                {
+                    await N2.WipeBanksAfterAsync(-1);
+                    await N2.SelectBankAsync(0);
+                }
+            })));
+            
             options.Add(("Lock N2 Elite", async () =>
             {
                 if (await Dialogs.ConfirmAsync(

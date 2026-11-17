@@ -67,7 +67,10 @@ public sealed class Mfrc522NfcProvider : INfcProvider, INfcReaderRequester, INfc
     /// <summary>
     /// VersionReg of the connected chip, once found.
     /// </summary>
-    public byte? ChipVersion { get; private set; }
+    public byte? ChipVersion
+    {
+        get; private set;
+    }
 
     public Task<IReadOnlyList<NfcReaderInfo>> GetReadersAsync(CancellationToken cancellationToken = default) =>
         _ports.GetPortsAsync(cancellationToken);
@@ -387,7 +390,10 @@ internal sealed class Mfrc522TagConnection : INfcTagConnection, INfcReselectable
         Card = card;
     }
 
-    public Mfrc522Card Card { get; }
+    public Mfrc522Card Card
+    {
+        get;
+    }
 
     public byte[] Uid => Card.Uid;
 
@@ -395,12 +401,15 @@ internal sealed class Mfrc522TagConnection : INfcTagConnection, INfcReselectable
     public int MaxFastReadPages => 15;
 
     public Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default) =>
-        ExchangeAsync(command, null, cancellationToken);
+        ExchangeAsync(command, null, false, cancellationToken);
 
     public Task<byte[]> TransceiveAsync(byte[] command, TimeSpan responseTimeout, CancellationToken cancellationToken = default) =>
-        ExchangeAsync(command, responseTimeout, cancellationToken);
+        ExchangeAsync(command, responseTimeout, false, cancellationToken);
 
-    private async Task<byte[]> ExchangeAsync(byte[] command, TimeSpan? responseTimeout, CancellationToken cancellationToken)
+    public Task SendAsync(byte[] command, CancellationToken cancellationToken = default) =>
+        ExchangeAsync(command, null, true, cancellationToken);
+
+    private async Task<byte[]> ExchangeAsync(byte[] command, TimeSpan? responseTimeout, bool passiveAck = false, CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);
         var previousTimeout = _reader.ExchangeTimeout;
@@ -410,7 +419,7 @@ internal sealed class Mfrc522TagConnection : INfcTagConnection, INfcReselectable
             {
                 _reader.ExchangeTimeout = responseTimeout.Value;
             }
-            return await _reader.TransceiveAsync(command, cancellationToken);
+            return await _reader.TransceiveAsync(command, passiveAck, cancellationToken);
         }
         catch (Exception ex) when (ex is TimeoutException or IOException)
         {

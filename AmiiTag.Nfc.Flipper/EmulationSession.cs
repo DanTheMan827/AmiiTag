@@ -1,6 +1,6 @@
+using AmiiTag.Simulation;
 using System.Runtime;
 using System.Text;
-using AmiiTag.Simulation;
 
 namespace AmiiTag.Nfc.Flipper;
 
@@ -130,7 +130,7 @@ public sealed class EmulationLog
 public sealed class EmulationSession : IAsyncDisposable
 {
     private readonly FlipperBridge _bridge;
-    private readonly TagSimulatorResponder _responder;
+    public readonly TagSimulatorResponder _responder;
     private readonly bool _useAnswerTable;
     private int _frames;
     private int _answered;
@@ -149,20 +149,32 @@ public sealed class EmulationSession : IAsyncDisposable
         TagName = tagName;
     }
 
-    public string TagName { get; }
+    public string TagName
+    {
+        get;
+    }
 
     public TagSimulator Tag => _responder.Tag;
 
-    public BridgeHello? Hello { get; private set; }
+    public BridgeHello? Hello
+    {
+        get; private set;
+    }
 
     public EmulationLog Log { get; } = new();
 
-    public bool IsRunning { get; private set; }
+    public bool IsRunning
+    {
+        get; private set;
+    }
 
     /// <summary>
     /// Whether a reader's field is on (as far as the field events and frames tell).
     /// </summary>
-    public bool FieldPresent { get; private set; }
+    public bool FieldPresent
+    {
+        get; private set;
+    }
 
     public int Frames => _frames;
 
@@ -183,9 +195,15 @@ public sealed class EmulationSession : IAsyncDisposable
     /// </summary>
     public TimeSpan WorstHostTime => TimeSpan.FromMicroseconds(_worstHostMicros);
 
-    public BridgeStatus? DeviceStatus { get; private set; }
+    public BridgeStatus? DeviceStatus
+    {
+        get; private set;
+    }
 
-    public Exception? Error { get; private set; }
+    public Exception? Error
+    {
+        get; private set;
+    }
 
     /// <summary>
     /// Something changed (raised from the read loop; throttle UI updates).

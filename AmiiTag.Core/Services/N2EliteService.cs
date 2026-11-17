@@ -1,7 +1,7 @@
-using System.IO.Compression;
 using AmiiTag.Core.Interfaces;
 using AmiiTag.Nfc;
 using AmiiTag.Tags;
+using System.IO.Compression;
 
 namespace AmiiTag.Core.Services;
 
@@ -27,7 +27,10 @@ public sealed class N2EliteService
     /// <summary>
     /// The N2 last read, and its banks.
     /// </summary>
-    public N2EliteInfo? Info { get; private set; }
+    public N2EliteInfo? Info
+    {
+        get; private set;
+    }
 
     public IReadOnlyList<N2EliteBank> Banks { get; private set; } = [];
 
@@ -35,18 +38,25 @@ public sealed class N2EliteService
 
     private const string HoldPrompt = "Hold the N2 Elite near the reader.";
 
-    /// <summary>
-    /// Reads the N2's settings and the start of every bank.
-    /// </summary>
-    public async Task<bool> RefreshAsync()
+    private static class InnerMethods
     {
-        var result = await _nfc.RunAsync(HoldPrompt, async (connection, progress, ct) =>
+        public static async Task<(N2EliteInfo info, IReadOnlyList<N2EliteBank> banks)> RefreshAsync(INfcTagConnection connection, IProgress<double> progress, CancellationToken ct)
         {
             var client = new N2EliteClient(connection);
             var info = await DetectOrThrowAsync(connection, ct);
             var banks = await client.ReadBankSummariesAsync(info.UsableBanks, progress, ct);
             return (info, banks);
-        }, "N2 Elite read");
+        }
+    }
+
+
+
+    /// <summary>
+    /// Reads the N2's settings and the start of every bank.
+    /// </summary>
+    public async Task<bool> RefreshAsync()
+    {
+        var result = await _nfc.RunAsync(HoldPrompt, InnerMethods.RefreshAsync, "N2 Elite read");
 
         if (result.info == null)
         {
@@ -113,6 +123,32 @@ public sealed class N2EliteService
         return ok;
     }
 
+    public async Task<bool> WipeBanksAfterAsync(int startBank = -1)
+    {
+        if (startBank >= N2EliteClient.MaxBanks)
+        {
+            throw new ArgumentException($"Bank {startBank + 1} is out of range: the N2 Elite has {N2EliteClient.MaxBanks} banks.", nameof(startBank));
+        }
+
+        var ok = await RunOnSameN2Async(startBank < 0 ? "Wiping all banks" : $"Wiping banks after {startBank + 1}", async (client, progress, ct) =>
+        {
+            await client.WipeBanksAfter(startBank, progress, ct);
+            return true;
+        }, "Banks wiped");
+
+        if (ok)
+        {
+            for (var bank = startBank; bank < Banks.Count; bank++)
+            {
+                var blank = new byte[TagDump.DataLength];
+                Array.Fill(blank, (byte)0xFF);
+                await UpdateBankAsync(bank + 1, new TagDump(blank));
+            }
+        }
+
+        return ok;
+    }
+
     public async Task<bool> SelectBankAsync(int bank)
     {
         var ok = await RunOnSameN2Async($"Activating bank {bank + 1}", async (client, _, ct) =>
@@ -123,7 +159,10 @@ public sealed class N2EliteService
 
         if (ok && Info != null)
         {
-            Info = Info with { ActiveBank = bank };
+            Info = Info with
+            {
+                ActiveBank = bank
+            };
             Changed?.Invoke(this, EventArgs.Empty);
         }
 
@@ -135,13 +174,32 @@ public sealed class N2EliteService
     /// </summary>
     public async Task<bool> SetBankCountAsync(int count)
     {
-        var ok = await RunOnSameN2Async("Changing the bank count", async (client, _, ct) =>
+        var ok = await RunOnSameN2Async("Changing the bank count", async (client, progress, ct) =>
         {
+            var info = await DetectOrThrowAsync(client.Connection, ct);
+
             await client.SetBankCountAsync(count, ct);
+
+            if (info.ActiveBank > count)
+            {
+                await client.SelectBankAsync(count - 1);
+            }
+
+            var result = await InnerMethods.RefreshAsync(client.Connection, progress, ct);
+
+            if (result.info == null)
+            {
+                return false;
+            }
+
+            Info = result.info;
+            Banks = result.banks;
+            Changed?.Invoke(this, EventArgs.Empty);
+
             return true;
         }, "Bank count changed");
 
-        return ok && await RefreshAsync();
+        return ok;
     }
 
     public async Task<bool> LockAsync()

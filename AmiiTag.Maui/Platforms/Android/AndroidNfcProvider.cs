@@ -1,7 +1,7 @@
+using AmiiTag.Nfc;
 using Android.Nfc;
 using Android.Nfc.Tech;
 using Android.OS;
-using AmiiTag.Nfc;
 
 namespace AmiiTag.Maui.NfcProviders;
 
@@ -107,18 +107,24 @@ internal sealed class AndroidTagConnection : INfcTagConnection
         Uid = uid;
     }
 
-    public byte[] Uid { get; }
+    public byte[] Uid
+    {
+        get;
+    }
 
     // NfcA.getMaxTransceiveLength is usually 253; 32 pages (128 bytes) is comfortably inside it.
     public int MaxFastReadPages => 32;
 
     public Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default) =>
-        ExchangeAsync(command, null, cancellationToken);
+        ExchangeAsync(command, null, false, cancellationToken);
 
     public Task<byte[]> TransceiveAsync(byte[] command, TimeSpan responseTimeout, CancellationToken cancellationToken = default) =>
-        ExchangeAsync(command, responseTimeout, cancellationToken);
+        ExchangeAsync(command, responseTimeout, false, cancellationToken);
 
-    private async Task<byte[]> ExchangeAsync(byte[] command, TimeSpan? responseTimeout, CancellationToken cancellationToken)
+    public Task SendAsync(byte[] command, CancellationToken cancellationToken = default) =>
+        ExchangeAsync(command, null, true, cancellationToken);
+
+    private async Task<byte[]> ExchangeAsync(byte[] command, TimeSpan? responseTimeout, bool allowNoResponse = false, CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);
         try
@@ -136,6 +142,12 @@ internal sealed class AndroidTagConnection : INfcTagConnection
                 }
                 catch (Java.IO.IOException ex)
                 {
+                    if (allowNoResponse && ex is not Android.Nfc.TagLostException)
+                    {
+                        // Expected silence and other I/O failures cannot be
+                        // reliably distinguished through this exception alone.
+                        return Array.Empty<byte>();
+                    }
                     throw new NfcException($"Lost contact with the tag ({ex.Message}). Hold it still and try again.", ex);
                 }
                 catch (Java.Lang.Exception ex)

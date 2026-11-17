@@ -134,7 +134,7 @@ public sealed class Mfrc522Reader
     /// <summary>
     /// Sends a command (CRC_A is appended) and returns the tag's answer without its CRC, a 4 bit ACK/NAK as one byte.
     /// </summary>
-    public async Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default)
+    public async Task<byte[]> TransceiveAsync(byte[] command, bool passiveAck = false, CancellationToken cancellationToken = default)
     {
         var frame = Iso14443Crc.Append(command);
         if (frame.Length > FifoSize)
@@ -143,17 +143,25 @@ public sealed class Mfrc522Reader
             throw new NfcCommandNotSupportedException(command[0]);
         }
 
-        var answer = await ExchangeAsync(frame, 0, cancellationToken);
+        var answer = await ExchangeAsync(frame, 0, cancellationToken) ?? null;
+
         if (answer is not { } response)
         {
             System.Diagnostics.Debug.WriteLine($"MFRC522 > {Hex.ToSpacedHex(command)}  < (no answer)");
-            throw new NfcException($"The tag didn't respond (to {DescribeCommand(command)}).");
+            if (!passiveAck)
+            {
+                throw new NfcException($"The tag didn't respond (to {DescribeCommand(command)}).");
+            }
+
+            return [];
+        }
+        else
+        {
+            System.Diagnostics.Debug.WriteLine(
+               $"MFRC522 > {Hex.ToSpacedHex(command)}  < {Hex.ToSpacedHex(response.Data)}{(response.IsNibble ? " (4 bits)" : string.Empty)}");
         }
 
-        System.Diagnostics.Debug.WriteLine(
-            $"MFRC522 > {Hex.ToSpacedHex(command)}  < {Hex.ToSpacedHex(response.Data)}{(response.IsNibble ? " (4 bits)" : string.Empty)}");
-
-        if (response.IsNibble)
+        if (answer != null && response.IsNibble)
         {
             return [(byte)(response.Data[0] & 0x0F)];
         }
@@ -164,6 +172,33 @@ public sealed class Mfrc522Reader
         }
 
         return response.Data.AsSpan(0, response.Data.Length - 2).ToArray();
+    }
+
+    /// <summary>
+    /// Sends a command with CRC_A. A reply is optional.
+    /// Waits until a reply arrives or the normal exchange deadline expires.
+    /// </summary>
+    public async Task SendAsync(
+        byte[] command,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        if (command.Length == 0)
+        {
+            throw new ArgumentException(
+                "Command cannot be empty.",
+                nameof(command));
+        }
+
+        var frame = Iso14443Crc.Append(command);
+
+        if (frame.Length > FifoSize)
+            throw new NfcCommandNotSupportedException(command[0]);
+
+        // Null means the tag stayed silent, which is acceptable here.
+        // UART failures, cancellation and detected RF errors still propagate.
+        _ = await ExchangeAsync(frame, 0, cancellationToken);
     }
 
     /// <summary>

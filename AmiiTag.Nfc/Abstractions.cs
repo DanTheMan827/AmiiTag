@@ -9,28 +9,43 @@ public interface INfcProvider
     /// <summary>
     /// A stable identifier, used to remember the user's choice.
     /// </summary>
-    string Id { get; }
+    string Id
+    {
+        get;
+    }
 
     /// <summary>
     /// A user facing name, such as "PC/SC reader (ACR122U, ACR1552U)".
     /// </summary>
-    string DisplayName { get; }
+    string DisplayName
+    {
+        get;
+    }
 
     /// <summary>
     /// True if this provider can be used on this device right now.
     /// </summary>
-    bool IsSupported { get; }
+    bool IsSupported
+    {
+        get;
+    }
 
     /// <summary>
     /// True when the OS shows its own "hold your tag near..." UI (iOS), so the app should not show one.
     /// </summary>
-    bool ShowsSystemPrompt { get; }
+    bool ShowsSystemPrompt
+    {
+        get;
+    }
 
     /// <summary>
     /// True when <see cref="GetReadersAsync"/> returns a meaningful list the user should pick from
     /// (PC/SC readers, COM ports). Phone NFC returns a single implicit reader.
     /// </summary>
-    bool SupportsReaderSelection { get; }
+    bool SupportsReaderSelection
+    {
+        get;
+    }
 
     /// <summary>
     /// Lists the readers (or ports) this provider can use.
@@ -64,11 +79,20 @@ public interface INfcReaderRequester
 /// </summary>
 public interface INfcBaudRateSetting
 {
-    int BaudRate { get; set; }
+    int BaudRate
+    {
+        get; set;
+    }
 
-    int DefaultBaudRate { get; }
+    int DefaultBaudRate
+    {
+        get;
+    }
 
-    IReadOnlyList<int> SupportedBaudRates { get; }
+    IReadOnlyList<int> SupportedBaudRates
+    {
+        get;
+    }
 }
 
 public sealed record NfcReaderInfo(string Id, string DisplayName);
@@ -78,7 +102,10 @@ public sealed class NfcConnectOptions
     /// <summary>
     /// The reader to use, from <see cref="INfcProvider.GetReadersAsync"/>. Null picks the first available reader.
     /// </summary>
-    public string? ReaderId { get; init; }
+    public string? ReaderId
+    {
+        get; init;
+    }
 
     /// <summary>
     /// The message shown while waiting (used by system prompts).
@@ -137,12 +164,18 @@ public interface INfcTagConnection : IAsyncDisposable
     /// <summary>
     /// The UID reported by the reader (normally 7 bytes), or empty if unknown.
     /// </summary>
-    byte[] Uid { get; }
+    byte[] Uid
+    {
+        get;
+    }
 
     /// <summary>
     /// The largest number of pages that can be requested in one FAST_READ.
     /// </summary>
-    int MaxFastReadPages { get; }
+    int MaxFastReadPages
+    {
+        get;
+    }
 
     /// <summary>
     /// True when the reader is in direct command mode: raw NFC-A commands go to the tag as they are, so every
@@ -156,6 +189,13 @@ public interface INfcTagConnection : IAsyncDisposable
     /// </summary>
     /// <exception cref="NfcCommandNotSupportedException">The reader can't send this command.</exception>
     Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sends a raw command without an expected response.
+    /// </summary>
+    /// <exception cref="NfcCommandNotSupportedException">The reader can't send this command.</exception>
+    /// <returns></returns>
+    Task SendAsync(byte[] command, CancellationToken cancellationToken = default);
 
     /// <summary>
     /// Sends a command with a temporary response timeout where supported. Transports without a configurable
@@ -196,7 +236,10 @@ public class NfcNakException : NfcException
         Nak = nak;
     }
 
-    public byte Nak { get; }
+    public byte Nak
+    {
+        get;
+    }
 }
 
 /// <summary>
@@ -210,7 +253,10 @@ public class NfcCommandNotSupportedException : NfcException
         Command = command;
     }
 
-    public byte Command { get; }
+    public byte Command
+    {
+        get;
+    }
 }
 
 /// <summary>The transport session was lost; silence must not be treated as a passive ACK in this case.</summary>

@@ -282,4 +282,104 @@ public class N2EliteTests
         await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.ReadBankAsync(200));
         Assert.Empty(tag.CommandLog);
     }
+
+    [Fact]
+    public async Task Banks_WipeAll()
+    {
+        var (tag, _, client) = Create();
+
+        await client.WipeAllBanks();
+    }
+
+    [Fact]
+    public async Task Banks_WipeAfter200()
+    {
+        var (tag, _, client) = Create();
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.WipeBankAsync(200));
+    }
+
+    [Fact]
+    public async Task Banks_WipeAfterNegativeTwo()
+    {
+        var (tag, _, client) = Create();
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.WipeBankAsync(-2));
+
+
+    }
+
+    [Fact]
+    public async Task Banks_VerifyFilled()
+    {
+        var (tag, _, client) = Create();
+        var tags = Enumerable.Range(0, 200).Select(_ => TagDump.Blank()).ToArray();
+
+        for (int i = 0; i < tags.Length; i++)
+        {
+            await client.WriteBankAsync(i, tags[i]);
+            var bankRead = await client.ReadBankAsync(i);
+            Assert.Equal(540, bankRead.Data.Length);
+            Assert.Equal(tags[i].Data.Take(540), bankRead.Data);
+        }
+    }
+
+    [Fact]
+    public async Task Banks_VerifyBankCountChangeKeepsData()
+    {
+        var (tag, _, client) = Create();
+        var tags = Enumerable.Range(0, 200).Select(_ => TagDump.Blank()).ToArray();
+
+        await client.SetBankCountAsync(200);
+
+        for (int i = 0; i < tags.Length; i++)
+        {
+            await client.WriteBankAsync(i, tags[i]);
+        }
+
+        await client.SetBankCountAsync(1);
+        await client.SetBankCountAsync(200);
+
+        for (int i = 0; i < tags.Length; i++)
+        {
+            var bankRead = await client.ReadBankAsync(i);
+            Assert.Equal(540, bankRead.Data.Length);
+            Assert.Equal(tags[i].Data.Take(540), bankRead.Data);
+        }
+    }
+
+    [Fact(Skip = "TODO: Implement this test.  Emulator doesn't understand the N2 write command.")]
+    public async Task Banks_VerifyWipeAfterKeepsProperData()
+    {
+        var (tag, _, client) = Create();
+        var tags = Enumerable.Range(0, 200).Select(_ => TagDump.Blank()).ToArray();
+
+        await client.SetBankCountAsync(200);
+
+        for (int i = 0; i < tags.Length; i++)
+        {
+            await client.WriteBankAsync(i, tags[i]);
+        }
+
+        for (int i = 0; i < tags.Length; i++)
+        {
+            var bankRead = await client.ReadBankAsync(i);
+            Assert.Equal(540, bankRead.Data.Length);
+            Assert.Equal(tags[i].Data.Take(540), bankRead.Data);
+        }
+
+        await client.WipeBanksAfter(4);
+
+        for (int i = 0; i < tags.Length; i++)
+        {
+            var bankRead = await client.ReadBankAsync(i);
+            Assert.Equal(540, bankRead.Data.Length);
+            if (i < 5)
+            {
+                Assert.Equal(tags[i].Data.Take(540), bankRead.Data);
+            }
+            else
+            {
+                Assert.All(bankRead.Data, b => Assert.Equal(0xFF, b));
+            }
+        }
+    }
 }
