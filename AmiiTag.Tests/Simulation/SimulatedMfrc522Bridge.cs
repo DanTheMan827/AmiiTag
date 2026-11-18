@@ -28,6 +28,18 @@ public sealed class SimulatedMfrc522Bridge : ISerialPortStream
     private int _pendingOffset;
     private int? _writeAddress;
     private int _anticollisionLevel;
+    private List<byte>? _transmitting;
+    private int _transmitLastBits;
+    private double _wireTime;
+    private double _nextRfByteTime;
+
+    // Optional virtual wire clock for exercising UART refill during RF transmission.
+    // Each host UART byte takes 10 bits (8N1); an RF data byte takes 9 bits with parity.
+    public bool SimulateTransmitTiming { get; set; }
+    public TimeSpan InterBatchDelay { get; set; }
+    public TimeSpan TransmitStartupDelay { get; set; }
+    public int PeakTransmitFifo { get; private set; }
+    public List<byte[]> SerialWriteBatches { get; } = [];
 
     public SimulatedMfrc522Bridge(TagSimulator? tag = null)
     {
@@ -107,6 +119,7 @@ public sealed class SimulatedMfrc522Bridge : ISerialPortStream
         _registers[Mfrc522Reg.CrcResultL] = 0xFF;
         _registers[Mfrc522Reg.ModWidth] = 0x26;
         _fifo.Clear();
+        _transmitting = null;
         ChipBaudRate = Mfrc522NfcProvider.PowerOnBaudRate;
     }
 
@@ -130,8 +143,14 @@ public sealed class SimulatedMfrc522Bridge : ISerialPortStream
             return Task.CompletedTask;
         }
 
+        if (SimulateTransmitTiming)
+        {
+            SerialWriteBatches.Add(data.ToArray());
+            AdvanceWireTime(InterBatchDelay.TotalSeconds);
+        }
         foreach (var value in data)
         {
+            if (SimulateTransmitTiming) AdvanceWireTime(10d / HostBaudRate);
             if (_writeAddress is int address)
             {
                 _writeAddress = null;
@@ -160,6 +179,7 @@ public sealed class SimulatedMfrc522Bridge : ISerialPortStream
 
     public async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken = default)
     {
+        if (SimulateTransmitTiming) AdvanceWireTime(InterBatchDelay.TotalSeconds);
         if (_pending == null)
         {
             _pending = await _toHost.Reader.ReadAsync(cancellationToken);
@@ -224,6 +244,7 @@ public sealed class SimulatedMfrc522Bridge : ISerialPortStream
                 else
                 {
                     _fifo.Add(value);
+                    if (_transmitting != null) PeakTransmitFifo = Math.Max(PeakTransmitFifo, _fifo.Count);
                 }
 
                 break;
@@ -313,6 +334,7 @@ public sealed class SimulatedMfrc522Bridge : ISerialPortStream
                 break;
 
             case Mfrc522Reg.CmdIdle:
+                _transmitting = null;
                 _registers[Mfrc522Reg.ComIrq] |= Mfrc522Reg.IrqIdle;
                 break;
         }
@@ -320,11 +342,47 @@ public sealed class SimulatedMfrc522Bridge : ISerialPortStream
 
     // ------------------------------------------------------------------ RF
 
+    private void AdvanceWireTime(double seconds)
+    {
+        var until = _wireTime + seconds;
+        while (_transmitting != null && _nextRfByteTime <= until)
+        {
+            _wireTime = _nextRfByteTime;
+            if (_fifo.Count > 0)
+            {
+                _transmitting.Add(_fifo[0]);
+                _fifo.RemoveAt(0);
+            }
+            if (_fifo.Count == 0)
+            {
+                var frame = _transmitting.ToArray();
+                _transmitting = null;
+                FinishTransmit(frame, _transmitLastBits);
+            }
+            else
+                _nextRfByteTime += 9d / 106000;
+        }
+        _wireTime = until;
+    }
+
     private void Transceive(int txLastBits)
     {
+        _registers[Mfrc522Reg.Error] = 0;
+        if (SimulateTransmitTiming)
+        {
+            _transmitting = [];
+            _transmitLastBits = txLastBits;
+            PeakTransmitFifo = Math.Max(PeakTransmitFifo, _fifo.Count);
+            _nextRfByteTime = _wireTime + TransmitStartupDelay.TotalSeconds + 9d / 106000;
+            return;
+        }
         var frame = _fifo.ToArray();
         _fifo.Clear();
-        _registers[Mfrc522Reg.Error] = 0;
+        FinishTransmit(frame, txLastBits);
+    }
+
+    private void FinishTransmit(byte[] frame, int txLastBits)
+    {
         _registers[Mfrc522Reg.ComIrq] |= Mfrc522Reg.IrqTx;
         AirFrames.Add(frame);
 

@@ -14,7 +14,11 @@ public static class AmiiboV3NfcOperations
     public const byte NcSramMirrorOn = 0x02;
 
     // NS_REG (session page ED, byte 2).
-    public const byte NsSramI2cReady = 0x08;
+    public const byte NsSramRfReady = 0x08;
+
+    // Retained for callers compiled against the old, incorrectly named constant.
+    [Obsolete("Use NsSramRfReady: bit 3 means data is ready for NFC, not I²C.")]
+    public const byte NsSramI2cReady = NsSramRfReady;
 
     // PT_I2C (page E7, byte 0): sector 1 is password protected.
     public const byte PtI2c2kProt = 0x08;
@@ -86,14 +90,30 @@ public static class AmiiboV3NfcOperations
         var sector1 = new Progress<double>(p => progress?.Report(0.45 + p * 0.45));
         connection.SetStatus("Reading tag...");
 
-        // Bootstrap only the UID and protection settings. Unlike the APK, don't guess a password for an
-        // unprotected emulator, or retry a refused password (AUTHLIM can permanently lock a real figure).
-        (await ReadPagesRecoveringAsync(connection, client, 0, 1, 0, null, cancellationToken)).CopyTo(raw, 0);
-        (await ReadPagesRecoveringAsync(connection, client, 0xE0, AmiiboV3Dump.PtI2cPage,
-            0, null, cancellationToken)).CopyTo(raw, 0xE0 * 4);
-        var sector1Protected = (raw[AmiiboV3Dump.PtI2cPage * 4] & PtI2c2kProt) != 0;
-        var sramProtected = raw[AmiiboV3Dump.Auth0Page * 4 + 3] <= AmiiboV3Dump.SramLastPage;
-        var password = NtagUid.AmiiboPassword(NtagUid.FromSevenByteUid(raw.AsSpan(0, AmiiboV3Dump.UidLength)));
+        // An active figure waiting for a request needs the dumper's handshake before EEPROM access.
+        // Use the activation UID, as Android does. Keep the protection-aware bootstrap for other
+        // tags/emulators and for transports that cannot supply the UID or direct commands.
+        var session = await ReadSessionAsync(connection, cancellationToken);
+        var readerUid = connection.Uid;
+        var handshakeFirst = connection.IsDirectCommandMode && readerUid.Length == AmiiboV3Dump.UidLength &&
+            session != null && WaitingForLockOnRequest(session);
+        var sector1Protected = false;
+        var sramProtected = false;
+        byte[] uid;
+        if (handshakeFirst)
+        {
+            uid = readerUid;
+        }
+        else
+        {
+            (await ReadPagesRecoveringAsync(connection, client, 0, 1, 0, null, cancellationToken)).CopyTo(raw, 0);
+            (await ReadPagesRecoveringAsync(connection, client, 0xE0, AmiiboV3Dump.PtI2cPage,
+                0, null, cancellationToken)).CopyTo(raw, 0xE0 * 4);
+            sector1Protected = (raw[AmiiboV3Dump.PtI2cPage * 4] & PtI2c2kProt) != 0;
+            sramProtected = raw[AmiiboV3Dump.Auth0Page * 4 + 3] <= AmiiboV3Dump.SramLastPage;
+            uid = raw.AsSpan(0, AmiiboV3Dump.UidLength).ToArray();
+        }
+        var password = NtagUid.AmiiboPassword(NtagUid.FromSevenByteUid(uid));
         var authenticated = false;
 
         async Task AuthenticateAsync()
@@ -112,9 +132,13 @@ public static class AmiiboV3NfcOperations
             }
         }
 
-        var session = await ReadSessionAsync(connection, cancellationToken);
         var requestNeeded = session != null && WaitingForLockOnRequest(session);
-        if (connection.IsDirectCommandMode && (sector1Protected || (requestNeeded && sramProtected)))
+        if (session != null && (session[0] & NcPassThroughOn) != 0 &&
+            (session[6] & NsSramRfReady) != 0)
+        {
+            System.Diagnostics.Debug.WriteLine("v3 read: SRAM reports ready; capturing without writing a lock-on request.");
+        }
+        if (connection.IsDirectCommandMode && (handshakeFirst || sector1Protected || (requestNeeded && sramProtected)))
         {
             await AuthenticateAsync();
         }
@@ -125,10 +149,7 @@ public static class AmiiboV3NfcOperations
         var lockOnStarted = System.Diagnostics.Stopwatch.GetTimestamp();
         if (requestNeeded && (authenticated || !sramProtected))
         {
-            if (await TryWriteLockOnRequestAsync(connection, client, ReauthenticateAsync, cancellationToken))
-            {
-                session = await ReadSessionAsync(connection, cancellationToken) ?? session;
-            }
+            await TryWriteLockOnRequestAsync(connection, client, ReauthenticateAsync, cancellationToken);
         }
 
         byte[]? lockOn = null;
@@ -150,6 +171,7 @@ public static class AmiiboV3NfcOperations
         connection.SetStatus("Reading tag...");
         (await ReadPagesRecoveringAsync(connection, client, 0x00, AmiiboV3Dump.PtI2cPage,
             0, sector0, cancellationToken, ReauthenticateAsync)).CopyTo(raw, 0);
+        sector1Protected = (raw[AmiiboV3Dump.PtI2cPage * 4] & PtI2c2kProt) != 0;
         var config = await ReadWindowAsync(connection, AmiiboV3Dump.PtI2cPage + 1,
             AmiiboV3Dump.LastConfigPage, readStart: 0xE6, cancellationToken);
         config?.CopyTo(raw, (AmiiboV3Dump.PtI2cPage + 1) * 4);
@@ -217,7 +239,8 @@ public static class AmiiboV3NfcOperations
                 if (needsRestore)
                 {
                     await ((INfcReselectable)connection).ReselectAsync(cancellationToken);
-                    if (restore != null) await restore();
+                    if (restore != null)
+                        await restore();
                     needsRestore = false;
                 }
                 return await operation();
@@ -250,7 +273,7 @@ public static class AmiiboV3NfcOperations
     /// True when the figure is in pass-through mode, waiting for the NFC side to fill SRAM, and nothing is ready to read.
     /// </summary>
     public static bool WaitingForLockOnRequest(byte[] session) =>
-        (session[0] & NcPassThroughOn) != 0 && (session[0] & NcPassThroughDirNfcToI2c) != 0 && (session[6] & NsSramI2cReady) == 0;
+        (session[0] & NcPassThroughOn) != 0 && (session[0] & NcPassThroughDirNfcToI2c) != 0 && (session[6] & NsSramRfReady) == 0;
 
     /// <summary>
     /// Writes <see cref="LockOnRequest"/> to SRAM: one FAST_WRITE of F0-FF as a Switch does, or (readers without direct
@@ -275,7 +298,7 @@ public static class AmiiboV3NfcOperations
             }
             catch (NfcCommandNotSupportedException)
             {
-                // The reader can't send it (MFRC522: longer than its FIFO). Nothing reached the tag; the session is intact.
+                // The transport can't send it (e.g. MFRC522 outside the streaming baud range). Nothing reached the tag.
                 System.Diagnostics.Debug.WriteLine("v3 read: this reader can't FAST_WRITE; writing the lock-on request page by page.");
                 return await WritePagesAsync();
             }
@@ -366,9 +389,9 @@ public static class AmiiboV3NfcOperations
     /// Waits for the figure to publish its lock-on response in SRAM and reads it (64 bytes), or returns null.
     /// </summary>
     /// <remarks>
-    /// In pass-through mode (NC_REG.PTHRU_ON_OFF) SRAM is at sector 0 pages F0-FF and NS_REG.SRAM_I2C_READY says when
+    /// In pass-through mode (NC_REG.PTHRU_ON_OFF) SRAM is at sector 0 pages F0-FF and NS_REG.SRAM_RF_READY says when
     /// the I²C side has filled it; in mirror mode (NC_REG.SRAM_MIRROR_ON_OFF) it's at SM_REG and can be read directly.
-    /// The session registers are re-read until one of those is true or the timeout passes. Readers that can't
+    /// The status page ED is polled until ready or the timeout passes. Readers that can't
     /// FAST_READ the session registers just try F0-FF.
     /// </remarks>
     public static async Task<byte[]?> ReadLockOnAsync(INfcTagConnection connection, byte[]? session, TimeSpan timeout, CancellationToken cancellationToken = default) =>
@@ -385,16 +408,33 @@ public static class AmiiboV3NfcOperations
             return (await TryReadSramAsync(connection, AmiiboV3Dump.SramFirstPage, cancellationToken), null);
         }
 
-        var deadline = DateTime.UtcNow + timeout;
+        var started = System.Diagnostics.Stopwatch.GetTimestamp();
         while (true)
         {
             var nc = session[0];
             var sm = session[2];
             var ns = session[6];
 
-            if ((nc & NcPassThroughOn) != 0 && (ns & NsSramI2cReady) != 0)
+            if ((nc & NcPassThroughOn) != 0 && (ns & NsSramRfReady) != 0)
             {
-                return (await TryReadSramAsync(connection, AmiiboV3Dump.SramFirstPage, cancellationToken), session);
+                // The APK captures SRAM immediately after ED reports ready. Do not insert a
+                // full EC-ED snapshot here; the supplied trace shows that returning NS_REG=21
+                // after ED returned 29, followed by reading back the request instead of a response.
+                var response = await TryReadSramAsync(connection, AmiiboV3Dump.SramFirstPage, cancellationToken);
+                if (response == null)
+                {
+                    return (null, session);
+                }
+                var check = LockOnResponse.Check(response);
+                if (LockOnResponse.IsUsable(check))
+                {
+                    return (response, session);
+                }
+
+                // A ready flag alone does not prove the figure supplied a response. Reading
+                // FF hands SRAM back to I²C; poll again within the same deadline, without
+                // resending the request or mistaking its echo/blank SRAM for completion.
+                System.Diagnostics.Debug.WriteLine($"v3 read: SRAM contained {LockOnResponse.Describe(check)}; waiting for a response.");
             }
 
             if ((nc & NcPassThroughOn) == 0 && (nc & NcSramMirrorOn) != 0 && sm <= 0xF0)
@@ -402,20 +442,24 @@ public static class AmiiboV3NfcOperations
                 return (await TryReadSramAsync(connection, sm, cancellationToken), session);
             }
 
-            if (DateTime.UtcNow >= deadline)
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(started) >= timeout)
             {
+                System.Diagnostics.Debug.WriteLine($"v3 read: SRAM response timed out; NC_REG={nc:X2}, NS_REG={ns:X2}.");
                 return (null, session);
             }
 
             // A Switch polls about every 13 ms; the figure answers within a couple of polls.
             await Task.Delay(10, cancellationToken);
-            var next = await ReadSessionAsync(connection, cancellationToken);
-            if (next == null)
+            // Read only the status page. Do not repeatedly read EC-ED during the handoff.
+            var status = await ReadWindowAsync(connection, AmiiboV3Dump.SessionPage1,
+                AmiiboV3Dump.SessionPage1, readStart: null, cancellationToken);
+            if (status == null)
             {
                 return (null, session);
             }
 
-            session = next;
+            session = (byte[])session.Clone();
+            status.CopyTo(session, 4);
         }
     }
 
@@ -562,8 +606,20 @@ public static class AmiiboV3NfcOperations
     /// Session registers EC-ED (8 bytes), or null if the reader can't FAST_READ them. A 4 page READ can't be used:
     /// every READ window that includes EC-ED also includes an invalid page.
     /// </summary>
-    private static Task<byte[]?> ReadSessionAsync(INfcTagConnection connection, CancellationToken cancellationToken) =>
-        ReadWindowAsync(connection, AmiiboV3Dump.SessionPage0, AmiiboV3Dump.SessionPage1, readStart: null, cancellationToken);
+    private static async Task<byte[]?> ReadSessionAsync(INfcTagConnection connection, CancellationToken cancellationToken)
+    {
+        // Read NC_REG and then a fresh NS_REG page before deciding whether to write.
+        // Captures show EC-ED can report NS_REG=21 while ED-only reports 29. Treating
+        // that combined snapshot as "request needed" can overwrite an emulator's
+        // already available response. When ready, capture it without any SRAM write.
+        var config = await ReadWindowAsync(connection, AmiiboV3Dump.SessionPage0,
+            AmiiboV3Dump.SessionPage0, readStart: null, cancellationToken);
+        if (config == null)
+            return null;
+        var status = await ReadWindowAsync(connection, AmiiboV3Dump.SessionPage1,
+            AmiiboV3Dump.SessionPage1, readStart: null, cancellationToken);
+        return status == null ? null : [.. config, .. status];
+    }
 
     /// <summary>
     /// Reads pages <paramref name="first"/>..<paramref name="last"/> with FAST_READ, or with a 4 page READ starting at

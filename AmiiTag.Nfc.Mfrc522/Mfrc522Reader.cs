@@ -27,6 +27,11 @@ public sealed class Mfrc522Reader
 {
     public const int FifoSize = 64;
 
+    // FAST_WRITE is 67 command bytes plus CRC_A. Preload 38 bytes so the remaining
+    // 31 FIFO writes and StartSend fit in ONE 32-write / 64-byte UART transaction.
+    private const int FastWriteFrameLength = 69;
+    private const int StreamPreloadLength = 38;
+
     private readonly Mfrc522Uart _uart;
 
     public Mfrc522Reader(Mfrc522Uart uart)
@@ -137,12 +142,6 @@ public sealed class Mfrc522Reader
     public async Task<byte[]> TransceiveAsync(byte[] command, bool passiveAck = false, CancellationToken cancellationToken = default)
     {
         var frame = Iso14443Crc.Append(command);
-        if (frame.Length > FifoSize)
-        {
-            // Nothing is sent (FAST_WRITE of 16 pages is 69 bytes with its CRC); callers fall back to smaller commands.
-            throw new NfcCommandNotSupportedException(command[0]);
-        }
-
         var answer = await ExchangeAsync(frame, 0, cancellationToken) ?? null;
 
         if (answer is not { } response)
@@ -193,9 +192,6 @@ public sealed class Mfrc522Reader
 
         var frame = Iso14443Crc.Append(command);
 
-        if (frame.Length > FifoSize)
-            throw new NfcCommandNotSupportedException(command[0]);
-
         // Null means the tag stayed silent, which is acceptable here.
         // UART failures, cancellation and detected RF errors still propagate.
         _ = await ExchangeAsync(frame, 0, cancellationToken);
@@ -211,6 +207,7 @@ public sealed class Mfrc522Reader
         [0x60] => "GET_VERSION",
         [0x3C, ..] => "READ_SIG",
         [0xA2, var page, ..] => $"WRITE {page:X2}",
+        [0xA6, var start, var end, ..] => $"FAST_WRITE {start:X2}-{end:X2}",
         [0x1B, ..] => "PWD_AUTH",
         [0xC2, 0xFF] => "SECTOR_SELECT",
         _ => Hex.ToSpacedHex(command),
@@ -245,17 +242,46 @@ public sealed class Mfrc522Reader
     /// </summary>
     public async Task<Mfrc522Frame?> ExchangeAsync(byte[] frame, byte txLastBits, CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(frame);
+        // Reject unsupported large frames before touching the chip, so the existing
+        // page-write fallback can run without a partially transmitted command.
+        var stream = frame.Length > FifoSize;
+        if (stream && (frame.Length != FastWriteFrameLength || frame[0] != 0xA6 ||
+            frame[1] != 0xF0 || frame[2] != 0xFF || txLastBits != 0 ||
+            _uart.BaudRate is < 115200 or > 921600))
+        {
+            throw new NfcCommandNotSupportedException(frame.Length == 0 ? (byte)0 : frame[0]);
+        }
+
         var writes = new List<(byte, byte)>
         {
             (Mfrc522Reg.Command, Mfrc522Reg.CmdIdle),
             (Mfrc522Reg.ComIrq, Mfrc522Reg.IrqAll),
             (Mfrc522Reg.FifoLevel, Mfrc522Reg.FifoFlush),
+            (Mfrc522Reg.BitFraming, txLastBits),
         };
-        writes.AddRange(frame.Select(b => (Mfrc522Reg.FifoData, b)));
-        writes.Add((Mfrc522Reg.BitFraming, txLastBits));
+        var preload = stream ? StreamPreloadLength : frame.Length;
+        writes.AddRange(frame.Take(preload).Select(b => (Mfrc522Reg.FifoData, b)));
         writes.Add((Mfrc522Reg.Command, Mfrc522Reg.CmdTransceive));
-        writes.Add((Mfrc522Reg.BitFraming, (byte)(Mfrc522Reg.StartSend | txLastBits)));
+        if (!stream)
+            writes.Add((Mfrc522Reg.BitFraming, (byte)(Mfrc522Reg.StartSend | txLastBits)));
         await _uart.WriteManyAsync(writes, cancellationToken);
+
+        if (stream)
+        {
+            // At 106 kbit/s RF, UART register writes consume 20 serial bits per FIFO byte.
+            // Across 115200..921600 baud, a 38-byte head buffers the slower rates and
+            // leaves room for the faster ones. No host read/await occurs between StartSend
+            // and the tail: WriteManyAsync emits these 32 writes in one 64-byte request,
+            // then collects all register echoes. No UART framing/protocol change is needed.
+            var burst = new List<(byte, byte)>
+            {
+                (Mfrc522Reg.BitFraming, Mfrc522Reg.StartSend),
+            };
+            burst.AddRange(frame.Skip(preload).Select(b => (Mfrc522Reg.FifoData, b)));
+            await _uart.WriteManyAsync(burst, cancellationToken);
+            System.Diagnostics.Debug.WriteLine($"MFRC522: streamed FAST_WRITE as one UART burst at {_uart.BaudRate} baud.");
+        }
 
         var deadline = DateTime.UtcNow + ExchangeTimeout;
         while (true)
