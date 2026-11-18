@@ -125,7 +125,7 @@ public sealed class WebQrScanner : IQrScanner
 }
 
 /// <summary>
-/// Web Serial ports for an MFRC522 on a USB serial adapter (Chrome/Edge on desktop).
+/// Web Serial ports for MFRC522 and PN532 readers on USB serial adapters (Chrome/Edge on desktop).
 /// </summary>
 public sealed class WebSerialPortFactory : ISerialPortFactory, ISerialPortRequester
 {

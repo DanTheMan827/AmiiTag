@@ -7,7 +7,7 @@ using AmiiTag.Nfc.Mfrc522;
 namespace AmiiTag.Maui.NfcProviders;
 
 /// <summary>
-/// COM ports through System.IO.Ports, for an MFRC522 on a USB serial adapter (driven directly in UART mode).
+/// COM ports through System.IO.Ports, for MFRC522 and PN532 readers on USB serial adapters (driven directly in UART mode).
 /// </summary>
 /// <remarks>
 /// Ports of a Flipper Zero are left out: probing its USB serial (CLI) port with MFRC522 commands crashes it.
@@ -78,7 +78,7 @@ public sealed class SystemSerialPortFactory : ISerialPortFactory
     {
         if (FlipperPorts().Contains(portId))
         {
-            throw new NfcException($"{portId} is a Flipper Zero, not an MFRC522 reader.");
+            throw new NfcException($"{portId} is a Flipper Zero, not a supported NFC serial reader.");
         }
 
         var port = new SerialPort(portId, baudRate)

@@ -86,8 +86,9 @@ namespace AmiiTag.Maui
             builder.Services.AddSingleton<INfcProvider, AmiiTag.Maui.NfcProviders.IosNfcProvider>();
 #elif WINDOWS
             builder.Services.AddSingleton<INfcProvider, AmiiTag.Nfc.PcSc.PcscNfcProvider>();
-            builder.Services.AddSingleton<AmiiTag.Nfc.Mfrc522.ISerialPortFactory, AmiiTag.Maui.NfcProviders.SystemSerialPortFactory>();
+            builder.Services.AddSingleton<AmiiTag.Nfc.ISerialPortFactory, AmiiTag.Maui.NfcProviders.SystemSerialPortFactory>();
             builder.Services.AddSingleton<INfcProvider, AmiiTag.Nfc.Mfrc522.Mfrc522NfcProvider>();
+            builder.Services.AddSingleton<INfcProvider, AmiiTag.Nfc.Pn532.Pn532NfcProvider>();
 #endif
 
             builder.Services.AddAmiiTagCore();

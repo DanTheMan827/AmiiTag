@@ -49,7 +49,7 @@ public static class AmiiboV3NfcOperations
             return await ReadV3Async(connection, progress, cancellationToken: cancellationToken);
         }
 
-        return await AmiiboNfcOperations.ReadTagAsync(connection, progress, cancellationToken);
+        return await AmiiboNfcOperations.ReadTagAfterVersionAsync(connection, version, progress, cancellationToken);
     }
 
     private static async Task<bool> LooksLikeV3Async(INfcTagConnection connection, CancellationToken cancellationToken)

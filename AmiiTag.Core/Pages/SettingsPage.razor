@@ -81,6 +81,11 @@
                 </div>
             }
 
+            @if (_selectedProvider?.Id == "pn532-serial")
+            {
+                <p class="footnote">Set the PN532 module to HSU / UART mode and connect through a USB serial adapter at 115,200 baud. Choose the reader type here; USB serial adapters do not identify the attached NFC chip.</p>
+            }
+
             @if (_selectedProvider is INfcBaudRateSetting serial)
             {
                 <div class="field">

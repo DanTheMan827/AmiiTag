@@ -30,15 +30,28 @@ public static class AmiiboNfcOperations
     {
         var client = new Ntag215Client(connection);
 
-        var version = await client.GetVersionAsync(cancellationToken);
+        var version = await Ntag215ReadRecovery.RunAsync(connection, () => client.GetVersionAsync(cancellationToken), cancellationToken);
+        return await ReadTagAfterVersionAsync(connection, version, progress, cancellationToken);
+    }
+
+    // ReadAnyAsync already obtained and checked the version to distinguish NTAG215 from v3.
+    // Do not immediately issue a second GET_VERSION to the same tag.
+    internal static async Task<TagDump> ReadTagAfterVersionAsync(INfcTagConnection connection, NtagVersion? version,
+        IProgress<double>? progress = null, CancellationToken cancellationToken = default)
+    {
+        var client = new Ntag215Client(connection);
         if (version != null && !version.IsNtag215)
         {
             throw new NfcException("This is not an NTAG215 tag.");
         }
 
         connection.SetStatus("Reading tag...");
-        var data = await client.ReadPagesAsync(0, Ntag215Client.LastPage, progress, cancellationToken);
-        var signature = await client.ReadSignatureAsync(cancellationToken) ?? new byte[TagDump.SignatureLength];
+        // NTAG215 has no sector switching here. Reselecting and restarting this read is safe; the v3 path retains
+        // its separate recovery/sector restoration. Never put write or authentication operations in this retry loop.
+        var data = await Ntag215ReadRecovery.RunAsync(connection,
+            () => client.ReadPagesAsync(0, Ntag215Client.LastPage, progress, cancellationToken), cancellationToken);
+        var signature = await Ntag215ReadRecovery.RunAsync(connection,
+            () => client.ReadSignatureAsync(cancellationToken), cancellationToken) ?? new byte[TagDump.SignatureLength];
 
         var full = new byte[TagDump.FullLength];
         data.CopyTo(full, 0);

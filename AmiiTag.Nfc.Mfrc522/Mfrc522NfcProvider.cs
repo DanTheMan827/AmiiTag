@@ -178,7 +178,15 @@ public sealed class Mfrc522NfcProvider : INfcProvider, INfcReaderRequester, INfc
 
             await ResetCoreAsync();
             var reader = await FindChipAsync(portId, cancellationToken);
-            await reader.InitAsync(cancellationToken);
+            try
+            {
+                await reader.InitAsync(cancellationToken);
+            }
+            catch
+            {
+                await reader.Uart.DisposeAsync();
+                throw;
+            }
             _reader = reader;
             _openPortId = portId;
             return reader;
@@ -236,30 +244,43 @@ public sealed class Mfrc522NfcProvider : INfcProvider, INfcReaderRequester, INfc
             .ToArray();
         foreach (var rate in rates)
         {
-            var reader = await OpenAsync(portId, rate, cancellationToken);
-            var version = await reader.GetVersionAsync(cancellationToken);
-            System.Diagnostics.Debug.WriteLine($"MFRC522: {portId} at {rate} baud -> VersionReg {(version is byte v ? v.ToString("X2") : "no answer")}");
-            if (version == null || !Mfrc522Reg.KnownVersions.ContainsKey(version.Value))
+            Mfrc522Reader? reader = null;
+            try
             {
-                await reader.Uart.DisposeAsync();
-                continue;
-            }
-
-            if (rate != BaudRate && Mfrc522Reg.SerialSpeeds.TryGetValue(BaudRate, out var speed))
-            {
-                var faster = await SwitchBaudRateAsync(reader, portId, speed, cancellationToken);
-                if (faster != null)
+                reader = await OpenAsync(portId, rate, cancellationToken);
+                var version = await reader.GetVersionAsync(cancellationToken);
+                System.Diagnostics.Debug.WriteLine($"MFRC522: {portId} at {rate} baud -> VersionReg {(version is byte v ? v.ToString("X2") : "no answer")}");
+                if (version == null || !Mfrc522Reg.KnownVersions.ContainsKey(version.Value))
                 {
-                    ChipVersion = version;
-                    return faster;
+                    continue;
                 }
 
-                // Couldn't talk at the faster rate: carry on at this one.
-                reader = await OpenAsync(portId, rate, cancellationToken);
-            }
+                if (rate != BaudRate && Mfrc522Reg.SerialSpeeds.TryGetValue(BaudRate, out var speed))
+                {
+                    // SwitchBaudRateAsync takes ownership of the current stream, even if cancelled.
+                    var switching = reader;
+                    reader = null;
+                    var faster = await SwitchBaudRateAsync(switching, portId, speed, cancellationToken);
+                    if (faster != null)
+                    {
+                        ChipVersion = version;
+                        return faster;
+                    }
 
-            ChipVersion = version;
-            return reader;
+                    reader = await OpenAsync(portId, rate, cancellationToken);
+                }
+
+                ChipVersion = version;
+                var found = reader;
+                reader = null; // Ownership transfers to GetReaderAsync.
+                return found;
+            }
+            finally
+            {
+                // Selection changes cancel probing. Dispose temporary streams before the next provider opens
+                // the same COM port; these streams haven't been assigned to _reader yet.
+                if (reader != null) await reader.Uart.DisposeAsync();
+            }
         }
 
         throw new NfcException(
@@ -281,32 +302,47 @@ public sealed class Mfrc522NfcProvider : INfcProvider, INfcReaderRequester, INfc
         }
 
         var faster = await OpenAsync(portId, BaudRate, cancellationToken);
-        var version = await faster.GetVersionAsync(cancellationToken);
-        if (version != null && Mfrc522Reg.KnownVersions.ContainsKey(version.Value))
-        {
-            return faster;
-        }
-
-        // Put the chip back to the power-on rate so the fallback can reach it.
+        var retained = false;
         try
         {
-            await faster.Uart.Port.WriteAsync([Mfrc522Reg.SerialSpeed, Mfrc522Reg.SerialSpeeds[PowerOnBaudRate]], cancellationToken);
-            await Task.Delay(50, cancellationToken);
-        }
-        catch
-        {
-        }
+            var version = await faster.GetVersionAsync(cancellationToken);
+            if (version != null && Mfrc522Reg.KnownVersions.ContainsKey(version.Value))
+            {
+                retained = true;
+                return faster;
+            }
 
-        await faster.Uart.DisposeAsync();
-        return null;
+            // Put the chip back to the power-on rate so the fallback can reach it.
+            try
+            {
+                await faster.Uart.Port.WriteAsync([Mfrc522Reg.SerialSpeed, Mfrc522Reg.SerialSpeeds[PowerOnBaudRate]], cancellationToken);
+                await Task.Delay(50, cancellationToken);
+            }
+            catch
+            {
+            }
+            return null;
+        }
+        finally
+        {
+            if (!retained) await faster.Uart.DisposeAsync();
+        }
     }
 
     private async Task<Mfrc522Reader> OpenAsync(string portId, int rate, CancellationToken cancellationToken)
     {
         var port = await _ports.OpenAsync(portId, rate, cancellationToken);
         var uart = new Mfrc522Uart(port, rate);
-        await uart.DrainAsync(TimeSpan.FromMilliseconds(30), cancellationToken);
-        return new Mfrc522Reader(uart);
+        try
+        {
+            await uart.DrainAsync(TimeSpan.FromMilliseconds(30), cancellationToken);
+            return new Mfrc522Reader(uart);
+        }
+        catch
+        {
+            await uart.DisposeAsync();
+            throw;
+        }
     }
 
     private async Task ResetAsync()

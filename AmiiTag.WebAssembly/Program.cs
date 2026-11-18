@@ -43,6 +43,7 @@ builder.Services.AddSingleton<IBleAdapter, WebBluetoothAdapter>();
 // NFC: browsers can't send raw NFC commands, but an MFRC522 on a USB serial adapter can be driven over Web Serial.
 builder.Services.AddSingleton<ISerialPortFactory, WebSerialPortFactory>();
 builder.Services.AddSingleton<INfcProvider, Mfrc522NfcProvider>();
+builder.Services.AddSingleton<INfcProvider, AmiiTag.Nfc.Pn532.Pn532NfcProvider>();
 
 builder.Services.AddAmiiTagCore();
 

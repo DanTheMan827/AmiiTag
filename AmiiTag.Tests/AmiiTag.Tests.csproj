@@ -26,6 +26,7 @@
     <ProjectReference Include="..\AmiiTag.Nfc\AmiiTag.Nfc.csproj" />
     <ProjectReference Include="..\AmiiTag.Nfc.PcSc\AmiiTag.Nfc.PcSc.csproj" />
     <ProjectReference Include="..\AmiiTag.Nfc.Mfrc522\AmiiTag.Nfc.Mfrc522.csproj" />
+    <ProjectReference Include="..\AmiiTag.Nfc.Pn532\AmiiTag.Nfc.Pn532.csproj" />
     <ProjectReference Include="..\AmiiTag.Bluetooth\AmiiTag.Bluetooth.csproj" />
     <ProjectReference Include="..\AmiiTag.Simulation\AmiiTag.Simulation.csproj" />
     <ProjectReference Include="..\AmiiTag.Nfc.Flipper\AmiiTag.Nfc.Flipper.csproj" />

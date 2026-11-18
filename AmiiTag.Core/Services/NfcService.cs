@@ -469,8 +469,8 @@ public sealed class NfcService
     public string NoReaderMessage => _providers.Count == 0
         ? "This version of AmiiTag has no NFC support."
         : $"No NFC reader is available ({string.Join(", ", _providers.Select(p => p.DisplayName))}). " +
-          "In a browser, NFC needs an MFRC522 reader on a USB serial adapter (Web Serial), which works in Chrome or Edge on desktop. " +
-          "On Windows, connect a USB NFC reader or an MFRC522 serial reader.";
+          "In a browser, NFC needs an MFRC522 or PN532 reader on a USB serial adapter (Web Serial), which works in Chrome or Edge on desktop. " +
+          "On Windows, connect a USB NFC reader or an MFRC522 or PN532 serial reader.";
 
     private static bool SafeIsSupported(INfcProvider provider)
     {
