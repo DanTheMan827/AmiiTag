@@ -10,7 +10,7 @@ public class V3DetectionRecoveryTests
     public async Task ReadableV3DoesNotDependOnGetVersion()
     {
         var figure = AmiiboV3Dump.Create(AmiiboV3Tests.V3Id, TestData.Keys);
-        var tag = NtagI2cPlusSimulator.FromImage(figure);
+        var tag = NtagI2cPlusSimulator.FromAmiiboImage(figure);
         await using var connection = new SimulatedTagConnection(tag, unsupportedCommands: [0x60]);
         Assert.IsType<AmiiboV3Dump>(await AmiiboV3NfcOperations.ReadAnyAsync(connection));
         Assert.DoesNotContain(tag.CommandLog, command => command[0] == 0x60);
@@ -20,7 +20,7 @@ public class V3DetectionRecoveryTests
     public async Task AFailedReselectDoesNotRunTheReadBeforeRestorationSucceeds()
     {
         var figure = AmiiboV3Dump.Create(AmiiboV3Tests.V3Id, TestData.Keys).WithLockOn(new byte[] { 1, 2, 3 });
-        await using var connection = new RecoveryConnection(new SimulatedTagConnection(NtagI2cPlusSimulator.FromImage(figure)));
+        await using var connection = new RecoveryConnection(new SimulatedTagConnection(NtagI2cPlusSimulator.FromAmiiboImage(figure)));
         var dump = await AmiiboV3NfcOperations.ReadV3Async(connection);
         Assert.True(dump.HasAmiiboId);
         Assert.Equal(3, connection.Reselects);

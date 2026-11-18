@@ -407,14 +407,15 @@ public class NtagI2cPlusSimulatorTests
     public void SessionRegisters_ReportPassThroughAndSramReady()
     {
         var tag = NtagI2cPlusSimulator.CreateBlank();
+        tag.RequireLockOnRequest = false; // Explicit legacy replay profile.
         var session = Send(tag, 0x3A, 0xEC, 0xED).Data;
         Assert.Equal(0, session[0] & NtagI2cPlusSimulator.NcPassThroughOn);
-        Assert.Equal(0, session[6] & NtagI2cPlusSimulator.NsSramI2cReady);
+        Assert.Equal(0, session[6] & NtagI2cPlusSimulator.NsSramRfReady);
 
         tag.SramMirrored = true;
         session = Send(tag, 0x3A, 0xEC, 0xED).Data;
         Assert.NotEqual(0, session[0] & NtagI2cPlusSimulator.NcPassThroughOn);
-        Assert.NotEqual(0, session[6] & NtagI2cPlusSimulator.NsSramI2cReady);
+        Assert.NotEqual(0, session[6] & NtagI2cPlusSimulator.NsSramRfReady);
     }
 
     // ---------------------------------------------------------------- SRAM (lock-on)
@@ -423,13 +424,14 @@ public class NtagI2cPlusSimulatorTests
     public void Sram_IsReadableOnlyOnceTheI2cSideHasFilledIt()
     {
         var tag = NtagI2cPlusSimulator.CreateBlank();
+        tag.RequireLockOnRequest = false; // Explicit legacy replay profile.
         tag.Sram = Enumerable.Range(0, 64).Select(i => (byte)(i * 5)).ToArray();
         tag.SramMirrored = true;
         tag.SramReadyAfterSessionReads = 1;
 
         AssertNak(Send(tag, 0x3A, 0xF0, 0xF0));
         tag.Activate();
-        Assert.Equal(0, Send(tag, 0x3A, 0xEC, 0xED).Data[6] & NtagI2cPlusSimulator.NsSramI2cReady);
+        Assert.Equal(0, Send(tag, 0x3A, 0xEC, 0xED).Data[6] & NtagI2cPlusSimulator.NsSramRfReady);
         Assert.Equal(tag.Sram, Send(tag, 0x3A, 0xF0, 0xFF).Data);
     }
 
@@ -437,6 +439,7 @@ public class NtagI2cPlusSimulatorTests
     public void Sram_ReadingTheLastPageHandsItBackToI2c()
     {
         var tag = NtagI2cPlusSimulator.CreateBlank();
+        tag.RequireLockOnRequest = false; // Explicit legacy replay profile.
         tag.Sram = Enumerable.Range(0, 64).Select(i => (byte)i).ToArray();
         tag.SramMirrored = true;
 
@@ -445,8 +448,8 @@ public class NtagI2cPlusSimulatorTests
         AssertNak(Send(tag, 0x3A, 0xF0, 0xF0));
 
         tag.Activate();
-        Assert.Equal(0, Send(tag, 0x3A, 0xEC, 0xED).Data[6] & NtagI2cPlusSimulator.NsSramI2cReady);
-        Assert.NotEqual(0, Send(tag, 0x3A, 0xEC, 0xED).Data[6] & NtagI2cPlusSimulator.NsSramI2cReady);
+        Assert.Equal(0, Send(tag, 0x3A, 0xEC, 0xED).Data[6] & NtagI2cPlusSimulator.NsSramRfReady);
+        Assert.NotEqual(0, Send(tag, 0x3A, 0xEC, 0xED).Data[6] & NtagI2cPlusSimulator.NsSramRfReady);
         Assert.Equal(tag.Sram, Send(tag, 0x3A, 0xF0, 0xFF).Data);
     }
 
@@ -455,6 +458,7 @@ public class NtagI2cPlusSimulatorTests
     {
         var figure = AmiiboV3Dump.Create(Hex.FromHex(AmiiboV3Tests.V3Id), TestData.Keys, lockOn: new byte[] { 1, 2, 3 });
         var tag = NtagI2cPlusSimulator.FromImage(figure);
+        tag.RequireLockOnRequest = false; // Explicit legacy replay profile.
         Assert.Equal(figure.LockOn, Send(tag, 0x3A, 0xF0, 0xFF).Data);
         Assert.Equal(new byte[4], tag.GetPage(0, 0xF0)); // SRAM isn't EEPROM.
     }

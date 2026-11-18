@@ -17,6 +17,7 @@ public class Mfrc522FastWriteTests
     public async Task NativeFastWriteRefillsFifoInOneUartBatch(int baud, int startupMicroseconds)
     {
         var tag = NtagI2cPlusSimulator.CreateBlank();
+        tag.SramMirrored = true;
         var chip = new SimulatedMfrc522Bridge(tag);
         var provider = new Mfrc522NfcProvider(new SimulatedSerialPortFactory(chip)) { BaudRate = baud };
         await using var connection = await provider.ConnectAsync(new NfcConnectOptions());
@@ -74,6 +75,7 @@ public class Mfrc522FastWriteTests
     public async Task SendAsyncAlsoSupportsNativeFastWrite()
     {
         var tag = NtagI2cPlusSimulator.CreateBlank();
+        tag.SramMirrored = true;
         var chip = new SimulatedMfrc522Bridge(tag);
         var provider = new Mfrc522NfcProvider(new SimulatedSerialPortFactory(chip));
         await using var connection = await provider.ConnectAsync(new NfcConnectOptions());
@@ -93,7 +95,6 @@ public class Mfrc522FastWriteTests
         var figure = AmiiboV3Dump.Create(Hex.FromHex(AmiiboV3Tests.V3Id), TestData.Keys,
             new byte[] { 4, 1, 2, 3, 4, 5, 6 }, new byte[] { 2, 3, 4 });
         var tag = NtagI2cPlusSimulator.FromAmiiboImage(figure);
-        tag.SramReadyAfterSessionReads = 4;
         var chip = new SimulatedMfrc522Bridge(tag);
         var provider = new Mfrc522NfcProvider(new SimulatedSerialPortFactory(chip));
         await using var connection = await provider.ConnectAsync(new NfcConnectOptions());

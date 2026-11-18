@@ -17,7 +17,6 @@ public class V3ReadSequenceTests
             new byte[] { 4, 1, 2, 3, 4, 5, 6 }, new byte[] { 1, 2, 3 }).Data;
         raw[0xE7 * 4] |= AmiiboV3NfcOperations.PtI2c2kProt;
         var tag = NtagI2cPlusSimulator.FromAmiiboImage(new AmiiboV3Dump(raw));
-        tag.SramReadyAfterSessionReads = 4;
         await using var connection = new RecordingConnection(new SimulatedTagConnection(tag, batch), batch < 16);
 
         var dump = await AmiiboV3NfcOperations.ReadV3Async(connection);
@@ -50,7 +49,6 @@ public class V3ReadSequenceTests
         var figure = AmiiboV3Dump.Create(Hex.FromHex(AmiiboV3Tests.V3Id), TestData.Keys,
             new byte[] { 4, 1, 2, 3, 4, 5, 6 }, new byte[] { 1, 2, 3 });
         var tag = NtagI2cPlusSimulator.FromAmiiboImage(figure);
-        tag.SramReadyAfterSessionReads = 4;
         await using var connection = new RecordingConnection(new SimulatedTagConnection(tag));
 
         var dump = await AmiiboV3NfcOperations.ReadV3Async(connection);
@@ -72,7 +70,6 @@ public class V3ReadSequenceTests
         var figure = AmiiboV3Dump.Create(Hex.FromHex(AmiiboV3Tests.V3Id), TestData.Keys,
             new byte[] { 4, 1, 2, 3, 4, 5, 6 }, new byte[] { 1, 2, 3 });
         var tag = NtagI2cPlusSimulator.FromAmiiboImage(figure);
-        tag.SramReadyAfterSessionReads = 5;
         await using var connection = new RecordingConnection(new SimulatedTagConnection(tag))
             { RequireStatusOnlyPolling = true };
 
@@ -165,7 +162,6 @@ public class V3ReadSequenceTests
     {
         var tag = NtagI2cPlusSimulator.FromAmiiboImage(AmiiboV3Dump.Create(Hex.FromHex(AmiiboV3Tests.V3Id),
             TestData.Keys, new byte[] { 4, 1, 2, 3, 4, 5, 6 }, new byte[] { 1, 2, 3 }));
-        tag.SramReadyAfterSessionReads = 4;
         using var cts = new CancellationTokenSource();
         await using var connection = new RecordingConnection(new SimulatedTagConnection(tag)) { AfterAuth = cts.Cancel };
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => AmiiboV3NfcOperations.ReadV3Async(connection, cancellationToken: cts.Token));

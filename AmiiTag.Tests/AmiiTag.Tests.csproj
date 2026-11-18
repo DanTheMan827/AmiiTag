@@ -34,7 +34,6 @@
   <ItemGroup>
     <Compile Include="..\AmiiTag.Maui\Services\SyncedFigureImageFiles.cs" Link="SyncedFigureImageFiles.cs" />
     <!-- Exercise the browser serial adapter with the real JSInterop API without loading a WASM host. -->
-    <Compile Include="..\AmiiTag.WebAssembly\Services\WebSerialPortStream.cs" Link="WebSerialPortStream.cs" />
   </ItemGroup>
 
   <ItemGroup>

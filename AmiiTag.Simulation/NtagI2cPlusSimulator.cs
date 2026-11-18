@@ -31,10 +31,10 @@ namespace AmiiTag.Simulation;
 /// 2^AUTHLIM, after which authentication is permanently refused. ACCESS.NFC_DIS_SEC1 makes sector 1 unreachable.
 /// AUTH0 and ACCESS are latched when the tag is activated.</item>
 /// <item>Configuration registers E8h-E9h are writable (with the password, if protected) until REG_LOCK_NFC
-/// (E9h byte 2 bit 0, OTP) is set. Session registers and SRAM can't be written from NFC in this model.</item>
-/// <item>NC_REG.PTHRU_ON_OFF (EC byte 0 bit 6) and NS_REG.SRAM_I2C_READY (ED byte 2 bit 3) follow the simulated I²C side
-/// (<see cref="SramMirrored"/>, <see cref="SramReadyAfterSessionReads"/>). Reading page FFh hands SRAM back to the I²C
-/// side, which clears SRAM_I2C_READY until it fills SRAM again (see <see cref="SramRefillSessionReads"/>).</item>
+/// (E9h byte 2 bit 0, OTP) is set. Session registers cannot be written from NFC; SRAM accepts WRITE and FAST_WRITE requests.</item>
+/// <item>SRAM is request-gated by default. A valid lock-on request starts an I²C processing interval, then
+/// NS_REG.SRAM_RF_READY (08h) announces the response. Reading FFh consumes it. Session registers remain readable
+/// while I²C owns memory. Other memory accesses NAK (or optionally remain silent) until processing completes.</item>
 /// </list>
 /// The dynamic lock layout is inferred to match AmiiboZero's template (01 00 FF 00 locks the ID/salt pages and all of
 /// sector 1) rather than read from the datasheet.
@@ -75,7 +75,9 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
     public const byte AccessNfcDisSec1 = 0x20;
     public const byte AccessAuthLimMask = 0x07;
     public const byte NcPassThroughOn = 0x40;
-    public const byte NsSramI2cReady = 0x08;
+    public const byte NsSramRfReady = 0x08;
+    public const byte NsSramI2cReady = 0x10;
+    public const byte NsI2cLocked = 0x40;
     public const byte RegLockNfc = 0x01;
 
     /// <summary>
@@ -91,18 +93,43 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
     private bool _compatibilityWritePending;
     private int _compatibilityWritePage;
     private int _sramReadyAt;
+    private readonly TimeProvider _clock;
+    private readonly byte[] _request = new byte[64];
+    private ushort _requestPages;
+    private long _requestStarted;
+    private bool _processing;
+    private bool _responseReady;
+
+    /// <summary>Require a complete lock-on request before publishing the saved response.</summary>
+    public bool RequireLockOnRequest { get; set; } = true;
+
+    /// <summary>Simulated I²C response latency; 10 ms is a profile setting, not a measured original-figure guarantee.</summary>
+    public TimeSpan ResponseDelay { get; set; } = TimeSpan.FromMilliseconds(10);
+
+    /// <summary>Optional deterministic fault injection: lose this many request ACKs after accepting the request.</summary>
+    public int DropRequestAcknowledgements { get; set; }
+
+    /// <summary>Optional deterministic fault injection: silently drop this many ready SRAM read responses.</summary>
+    public int DropSramReadResponses { get; set; }
+
+    /// <summary>Use silence instead of a NAK for memory access during the I²C processing window.</summary>
+    public bool SilentWhileProcessing { get; set; }
+
+    public bool IsProcessingRequest { get { UpdateResponse(); return _processing; } }
+    public bool IsSramResponseReady { get { UpdateResponse(); return SramReady; } }
 
     // Latched at activation.
     private int _auth0;
     private byte _access;
 
-    public NtagI2cPlusSimulator(ReadOnlySpan<byte> raw2048, ReadOnlySpan<byte> lockOn = default)
+    public NtagI2cPlusSimulator(ReadOnlySpan<byte> raw2048, ReadOnlySpan<byte> lockOn = default, TimeProvider? timeProvider = null)
     {
         if (raw2048.Length != AmiiboV3Dump.ImageLength)
         {
             throw new ArgumentException("Expected a 2048 byte image.");
         }
 
+        _clock = timeProvider ?? TimeProvider.System;
         raw2048[..0x400].CopyTo(_sectors[0]);
         raw2048[0x400..].CopyTo(_sectors[1]);
         _uid7 = raw2048[..7].ToArray();
@@ -172,7 +199,7 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
     public byte[] Signature { get; set; } = new byte[32];
 
     /// <summary>
-    /// The 64 byte SRAM, filled by the figure's I²C side (the lock-on response).
+    /// The saved 64 byte response template. Requests never overwrite this data.
     /// </summary>
     public byte[] Sram { get; set; } = new byte[64];
 
@@ -182,7 +209,7 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
     public bool SramMirrored { get; set; }
 
     /// <summary>
-    /// How many reads of the NS_REG page the I²C side takes to fill SRAM at first (0 = already filled).
+    /// Legacy replay mode only (RequireLockOnRequest=false): session reads before SRAM becomes ready.
     /// </summary>
     public int SramReadyAfterSessionReads
     {
@@ -191,7 +218,7 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
     }
 
     /// <summary>
-    /// After the reader takes the SRAM (reads page FFh), how many NS_REG reads the I²C side takes to fill it again.
+    /// Legacy replay mode only: session reads before a consumed response is available again.
     /// </summary>
     public int SramRefillSessionReads { get; set; } = 1;
 
@@ -203,7 +230,25 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
 
     public int CurrentSector => _sector;
 
-    private bool SramReady => SramMirrored && SessionReads >= _sramReadyAt;
+    private bool SramReady => SramMirrored && (RequireLockOnRequest ? _responseReady : SessionReads >= _sramReadyAt);
+
+    private void UpdateResponse()
+    {
+        if (_processing && _clock.GetElapsedTime(_requestStarted) >= ResponseDelay)
+        {
+            _processing = false;
+            _responseReady = true;
+        }
+    }
+
+    protected override void OnPowerCycle()
+    {
+        _processing = false;
+        _responseReady = false;
+        _requestPages = 0;
+        Array.Clear(_request);
+        LastSramRequest = null;
+    }
 
     private bool ProtectionEnabled => _auth0 <= LastProtectablePage;
 
@@ -275,6 +320,20 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
 
     protected override TagResponse Execute(ReadOnlySpan<byte> command)
     {
+        UpdateResponse();
+        if (RequireLockOnRequest && _processing && command[0] is CmdRead or CmdFastRead or CmdWrite or CmdFastWrite or CmdCompatibilityWrite)
+        {
+            var sessionRead = _sector == 0 && command[0] == CmdFastRead && command.Length == 3 &&
+                command[1] >= SessionPage0 && command[2] <= SessionPage1 && command[1] <= command[2];
+            if (!sessionRead)
+                return SilentWhileProcessing ? TagResponse.None : TagResponse.Nak(TagResponse.NakInvalidArgument);
+        }
+        if (RequireLockOnRequest && SramReady && DropSramReadResponses > 0 && _sector == 0 &&
+            command.Length >= 2 && command[0] is CmdRead or CmdFastRead && command[1] >= SramFirstPage)
+        {
+            DropSramReadResponses--;
+            return TagResponse.None; // Lost RF response: leave SRAM pending for a retry.
+        }
         if (_awaitingSector)
         {
             _awaitingSector = false;
@@ -351,19 +410,31 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
     /// </summary>
     public bool Sector1Writable { get; set; }
 
-    /// <summary>
-    /// FAST_WRITE of the whole SRAM (F0-FF, sector 0): the console's lock-on request. A v3 figure's microcontroller
-    /// would answer it through SRAM; here the stored lock-on response stays in place (as pixl.js and Amiibo Zero do),
-    /// so the request is acknowledged and kept for inspection.
-    /// </summary>
+    // Request storage is separate from the saved response, so RF writes cannot corrupt the response template.
     private TagResponse FastWrite(int start, int end, ReadOnlySpan<byte> data)
     {
-        if (_sector != 0 || start != SramFirstPage || end != SramLastPage)
-        {
+        if (_sector != 0 || start != SramFirstPage || end != SramLastPage || !SramMirrored || SramProtected)
             return TagResponse.Nak(TagResponse.NakInvalidArgument);
-        }
 
-        LastSramRequest = data.ToArray();
+        data.CopyTo(_request);
+        return AcceptRequest();
+    }
+
+    private bool SramProtected => !_authenticated && (_sectors[0][PtI2cPage * 4] & 0x04) != 0;
+
+    private TagResponse AcceptRequest()
+    {
+        LastSramRequest = (byte[])_request.Clone();
+        _requestPages = 0;
+        _responseReady = false;
+        _processing = RequireLockOnRequest && _request.AsSpan().SequenceEqual(LockOnResponse.Normalize([0x01]));
+        _requestStarted = _clock.GetTimestamp();
+        // The NTAG ACKs transport writes even when its attached controller does not understand the payload.
+        if (DropRequestAcknowledgements > 0)
+        {
+            DropRequestAcknowledgements--;
+            return TagResponse.None;
+        }
         return TagResponse.Ack;
     }
 
@@ -417,7 +488,10 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
         // Reading the last SRAM page hands the SRAM back to the I²C side, which has to fill it again.
         if (_sector == 0 && coversLastSramPage && SramMirrored)
         {
-            _sramReadyAt = SessionReads + SramRefillSessionReads;
+            if (RequireLockOnRequest)
+                _responseReady = false; // A new response requires a new request, not more polling.
+            else
+                _sramReadyAt = SessionReads + SramRefillSessionReads;
         }
     }
 
@@ -433,7 +507,7 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
         {
             if (page >= SramFirstPage)
             {
-                if (!SramReady)
+                if (!SramReady || SramProtected)
                 {
                     return false;
                 }
@@ -452,6 +526,8 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
             {
                 data = GetPage(0, SessionPage0);
                 data[0] = SramMirrored ? (byte)(data[0] | NcPassThroughOn) : (byte)(data[0] & ~NcPassThroughOn);
+                if (RequireLockOnRequest && SramMirrored)
+                    data[0] = _processing || _responseReady ? (byte)(data[0] & 0xFE) : (byte)(data[0] | 0x01);
                 return true;
             }
 
@@ -460,7 +536,10 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
                 var ready = SramReady;
                 SessionReads++;
                 data = GetPage(0, SessionPage1);
-                data[2] = ready ? (byte)(data[2] | NsSramI2cReady) : (byte)(data[2] & ~NsSramI2cReady);
+                data[2] = (byte)(data[2] & ~(NsSramRfReady | NsSramI2cReady | NsI2cLocked));
+                if (ready) data[2] |= NsSramRfReady;
+                if (RequireLockOnRequest && _processing)
+                    data[2] = (byte)((data[2] & ~0x20) | NsI2cLocked | NsSramI2cReady);
                 return true;
             }
         }
@@ -494,6 +573,19 @@ public sealed class NtagI2cPlusSimulator : TagSimulator
 
     private TagResponse Write(int page, ReadOnlySpan<byte> data)
     {
+        if (_sector == 0 && page >= SramFirstPage)
+        {
+            if (!SramMirrored || SramProtected) return TagResponse.Nak(TagResponse.NakInvalidArgument);
+            if (page == SramFirstPage) _requestPages = 0;
+            data.CopyTo(_request.AsSpan((page - SramFirstPage) * 4, 4));
+            _requestPages |= (ushort)(1 << (page - SramFirstPage));
+            if (page == SramLastPage)
+            {
+                if (_requestPages == ushort.MaxValue) return AcceptRequest();
+                _requestPages = 0;
+            }
+            return TagResponse.Ack;
+        }
         var memory = _sectors[_sector];
         var readOnly = _sector == 0 && (page < StaticLockPage || page >= 0xEA);
         if (readOnly || IsProtected(page) || IsPageLocked(_sector, page))

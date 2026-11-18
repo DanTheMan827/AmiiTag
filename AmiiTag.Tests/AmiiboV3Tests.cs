@@ -376,7 +376,7 @@ public class AmiiboV3Tests
     public async Task ReadAny_ReadsAV3FigureWithItsLockOn()
     {
         var figure = Figure(LockOnPayload());
-        var tag = NtagI2cPlusSimulator.FromImage(figure);
+        var tag = NtagI2cPlusSimulator.FromAmiiboImage(figure);
         await using var connection = new SimulatedTagConnection(tag);
 
         var read = Assert.IsType<AmiiboV3Dump>(await AmiiboV3NfcOperations.ReadAnyAsync(connection));
@@ -407,14 +407,15 @@ public class AmiiboV3Tests
         // A figure as consoles see it (its password set): waiting for a request, it's sent the password and one.
         var figure = Figure(LockOnPayload());
         var tag = NtagI2cPlusSimulator.FromAmiiboImage(figure);
-        tag.SramReadyAfterSessionReads = 4;
+        tag.ResponseDelay = TimeSpan.FromMilliseconds(30);
         await using var connection = new SimulatedTagConnection(tag);
 
         var read = await AmiiboV3NfcOperations.ReadV3Async(connection);
 
         Assert.Equal(figure.Data, read.Data);
         Assert.True(read.HasLockOn);
-        Assert.True(tag.SessionReads > 4);
+        Assert.True(tag.SessionReads > 1);
+        Assert.NotNull(tag.LastSramRequest);
     }
 
     [Fact]
@@ -425,7 +426,6 @@ public class AmiiboV3Tests
         raw[0xEC * 4] |= AmiiboV3NfcOperations.NcPassThroughDirNfcToI2c;
         Assert.True(AmiiboImage.TryParse(raw, out var image));
         var tag = NtagI2cPlusSimulator.FromAmiiboImage(Assert.IsType<AmiiboV3Dump>(image));
-        tag.SramReadyAfterSessionReads = 3;
         await using var connection = new SimulatedTagConnection(tag);
 
         var read = await AmiiboV3NfcOperations.ReadV3Async(connection);
@@ -443,6 +443,7 @@ public class AmiiboV3Tests
     public async Task ReadV3_GivesUpOnTheLockOnAfterTheTimeout()
     {
         var tag = NtagI2cPlusSimulator.FromAmiiboImage(Figure(LockOnPayload()));
+        tag.RequireLockOnRequest = false; // Legacy no-response profile tests the reader deadline.
         tag.SramReadyAfterSessionReads = int.MaxValue;
         await using var connection = new SimulatedTagConnection(tag);
 
@@ -480,7 +481,7 @@ public class AmiiboV3Tests
     public async Task ReadV3_ThroughTheMfrc522Bridge()
     {
         var figure = Figure(LockOnPayload());
-        var bridge = new SimulatedMfrc522Bridge(NtagI2cPlusSimulator.FromImage(figure));
+        var bridge = new SimulatedMfrc522Bridge(NtagI2cPlusSimulator.FromAmiiboImage(figure));
         var provider = new Mfrc522NfcProvider(new SimulatedSerialPortFactory(bridge));
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(20));
         await using var connection = await provider.ConnectAsync(new NfcConnectOptions(), cts.Token);
