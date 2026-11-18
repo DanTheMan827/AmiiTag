@@ -116,7 +116,7 @@ public sealed class LegacyPuckDevice : TagDeviceBase, ISlotTagDevice, IRenamable
         return slots;
     }
 
-    private async Task<SlotInfo> GetSlotInformationAsync(int slot, CancellationToken cancellationToken)
+    public async Task<SlotInfo> GetSlotInformationAsync(int slot, CancellationToken cancellationToken = default)
     {
         var data = await SendAndReadAsync([0x01, (byte)slot], r => r.Length == 82 && r[0] == 0x01 && r[1] == slot, cancellationToken);
         return new SlotInfo(slot, DumpFromSlotInfo(data.AsSpan(2)));

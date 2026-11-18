@@ -67,6 +67,10 @@ public interface ISlotTagDevice : ITagDevice
 
     Task<IReadOnlyList<SlotInfo>> GetSlotsAsync(IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
 
+    /// <summary>Refresh one slot without enumerating every other slot.</summary>
+    async Task<SlotInfo> GetSlotInformationAsync(int slot, CancellationToken cancellationToken = default) =>
+        new(slot, await ReadSlotAsync(slot, cancellationToken: cancellationToken));
+
     Task<TagDump> ReadSlotAsync(int slot, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
 
     /// <summary>
@@ -119,6 +123,10 @@ public interface IAmiitoolTagDevice : ISlotTagDevice
     bool AmiitoolEnabled { get; }
 
     bool AmiitoolKeysLoaded { get; }
+
+    bool CanUploadKeys => AmiitoolEnabled;
+
+    bool CanRandomizeUid => AmiitoolEnabled && AmiitoolKeysLoaded;
 
     Task<bool> UploadKeysAsync(byte[] keys, CancellationToken cancellationToken = default);
 

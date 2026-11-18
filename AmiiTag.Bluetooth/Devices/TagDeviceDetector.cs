@@ -31,12 +31,12 @@ public sealed class TagDeviceDetector
         }
 
         var name = device.Name ?? string.Empty;
-        if (name.StartsWith("amiibolink", StringComparison.OrdinalIgnoreCase))
+        if (name.Equals("amiibolink", StringComparison.OrdinalIgnoreCase))
         {
             return TagDeviceKind.AmiiboLink;
         }
 
-        if (name.StartsWith("AmiLoop", StringComparison.OrdinalIgnoreCase))
+        if (name.Equals("AmiLoop", StringComparison.OrdinalIgnoreCase))
         {
             return TagDeviceKind.AmiLoop;
         }

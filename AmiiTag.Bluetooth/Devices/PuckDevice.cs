@@ -41,6 +41,13 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
     private BleNotificationQueue? _responses;
     private int _packetSize = 20;
     private string? _name;
+    private readonly Queue<byte> _pendingBytes = new();
+    private readonly HashSet<byte> _amiitoolCommands = [];
+
+    /// <summary>Subcommands advertised by the firmware's EE capability query.</summary>
+    public IReadOnlyCollection<byte> AmiitoolCommands => _amiitoolCommands.ToArray();
+    public bool CanUploadKeys => AmiitoolEnabled && _amiitoolCommands.Contains(Cmd.AmiitoolKey);
+    public bool CanRandomizeUid => AmiitoolEnabled && AmiitoolKeysLoaded && _amiitoolCommands.Contains(Cmd.AmiitoolChangeUid);
 
     /// <param name="connection">The BLE connection.</param>
     /// <param name="amiitoolKeys">Returns key_retail.bin (160 bytes) to upload to pucks with amiitool support, if available.</param>
@@ -80,6 +87,7 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
 
         await Connection.RequestMtuAsync(247, cancellationToken);
 
+        _responses?.Dispose();
         _responses = new BleNotificationQueue(notify);
         _responses.PacketReceived += (_, packet) =>
         {
@@ -115,7 +123,7 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
     {
         try
         {
-            var firmware = await SendAndReceiveAsync([Cmd.GetFirmware], timeout: TimeSpan.FromSeconds(2), cancellationToken: cancellationToken);
+            var firmware = await ReadIdentityAsync(Cmd.GetFirmware, cancellationToken);
             Firmware = DecodeNullTerminated(firmware.AsSpan(firmware.Length > 0 && firmware[0] == Cmd.GetFirmware ? 1 : 0));
         }
         catch (TimeoutException)
@@ -124,7 +132,7 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
 
         try
         {
-            var name = await SendAndReceiveAsync([Cmd.GetBluetoothName], timeout: TimeSpan.FromSeconds(2), cancellationToken: cancellationToken);
+            var name = await ReadIdentityAsync(Cmd.GetBluetoothName, cancellationToken);
             var decoded = DecodeNullTerminated(name.AsSpan(name.Length > 0 && name[0] == Cmd.GetBluetoothName ? 1 : 0));
             if (!string.IsNullOrWhiteSpace(decoded))
             {
@@ -136,60 +144,110 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
         }
     }
 
-    private async Task SetupAmiitoolAsync(CancellationToken cancellationToken)
+    private async Task<byte[]> ReadIdentityAsync(byte command, CancellationToken cancellationToken)
     {
+        await _lock.WaitAsync(cancellationToken);
         try
         {
-            var result = await SendAndReceiveAsync([Cmd.Amiitool], timeout: TimeSpan.FromSeconds(2), cancellationToken: cancellationToken);
-            AmiitoolEnabled = result.Length > 1;
+            ClearInput();
+            await SendChunkedAsync([command], null, cancellationToken);
+            var bytes = new List<byte>();
+            while (bytes.Count < 256)
+            {
+                var next = (await ReceiveBytesAsync(1, TimeSpan.FromSeconds(2), null, cancellationToken))[0];
+                if (next == 0) return bytes.ToArray();
+                bytes.Add(next);
+            }
+            throw new BleException("The puck returned an unterminated identity response.");
         }
-        catch (TimeoutException)
+        finally { _lock.Release(); }
+    }
+
+    private async Task SetupAmiitoolAsync(CancellationToken cancellationToken)
+    {
+        _amiitoolCommands.Clear();
+        AmiitoolEnabled = AmiitoolKeysLoaded = false;
+        await _lock.WaitAsync(cancellationToken);
+        try
         {
-            AmiitoolEnabled = false;
+            ClearInput();
+            await SendChunkedAsync([Cmd.Amiitool], null, cancellationToken);
+            var first = (await ReceiveBytesAsync(1, TimeSpan.FromSeconds(2), null, cancellationToken))[0];
+            if (first == (byte)'B')
+            {
+                // Both linked UART builds use this text for unsupported commands.
+                await ReceiveBytesAsync("Bad Command".Length - 1, TimeSpan.FromSeconds(2), null, cancellationToken);
+                return;
+            }
+            if (first > Cmd.AmiitoolChangeUid) return;
+            var advertised = new HashSet<byte> { first };
+            while (advertised.Count < 3)
+            {
+                byte next;
+                try { next = (await ReceiveBytesAsync(1, TimeSpan.FromMilliseconds(100), null, cancellationToken))[0]; }
+                catch (TimeoutException) { break; } // A firmware may expose only a subset.
+                if (next > Cmd.AmiitoolChangeUid || !advertised.Add(next)) return;
+            }
+            if (_pendingBytes.Count != 0) return; // Reject extra data, not a capability list.
+            _amiitoolCommands.UnionWith(advertised);
+            AmiitoolEnabled = true;
         }
+        catch (TimeoutException) { return; }
+        finally { _lock.Release(); }
 
-        if (!AmiitoolEnabled)
-        {
-            return;
-        }
-
-        var keyCheck = await SendAndReceiveAsync([Cmd.Amiitool, Cmd.AmiitoolKey], cancellationToken: cancellationToken);
-        AmiitoolKeysLoaded = keyCheck.Length == 1 && keyCheck[0] == 0x00;
-
+        if (!_amiitoolCommands.Contains(Cmd.AmiitoolKey)) return;
+        var keyCheck = await SendAndReceiveAsync([Cmd.Amiitool, Cmd.AmiitoolKey], 1, cancellationToken: cancellationToken);
+        if (keyCheck[0] > 1) throw new BleException("Invalid amiitool key status response.");
+        AmiitoolKeysLoaded = keyCheck[0] == 0;
         if (!AmiitoolKeysLoaded && _amiitoolKeys?.Invoke() is { Length: AmiiboKeySet.FileLength } keys)
-        {
             await UploadKeysAsync(keys, cancellationToken);
-        }
     }
 
     public async Task<bool> UploadKeysAsync(byte[] keys, CancellationToken cancellationToken = default)
     {
+        if (!CanUploadKeys)
+            throw new BleException("This puck doesn't support amiitool key uploads.");
         if (keys.Length != AmiiboKeySet.FileLength)
-        {
             throw new ArgumentException("Keys must be 160 bytes.", nameof(keys));
-        }
-
-        byte[] uploadCommand = [Cmd.Amiitool, Cmd.AmiitoolKey, 0x00];
-        var ack = await SendAndReceiveAsync(uploadCommand, cancellationToken: cancellationToken);
-        if (!ack.AsSpan().SequenceEqual(uploadCommand))
+        await _lock.WaitAsync(cancellationToken);
+        try
         {
-            throw new BleException("The puck didn't accept the key upload.");
+            byte[] uploadCommand = [Cmd.Amiitool, Cmd.AmiitoolKey, 0x00];
+            var ack = await SendAndReceiveLockedAsync(uploadCommand, 3, DefaultTimeout, null, null, cancellationToken);
+            if (!ack.AsSpan().SequenceEqual(uploadCommand))
+                throw new BleException("The puck didn't accept the key upload.");
+            var result = await SendAndReceiveLockedAsync(keys, 1, DefaultTimeout, null, null, cancellationToken);
+            if (result[0] > 1) throw new BleException("Invalid amiitool key upload response.");
+            AmiitoolKeysLoaded = result[0] == 0;
+            return AmiitoolKeysLoaded;
         }
-
-        var result = await SendAndReceiveAsync(keys, cancellationToken: cancellationToken);
-        AmiitoolKeysLoaded = result.Length == 1 && result[0] == 0x00;
-        return AmiitoolKeysLoaded;
+        finally { _lock.Release(); }
     }
 
     public async Task<SlotSummary> GetSlotSummaryAsync(CancellationToken cancellationToken = default)
     {
-        var response = await SendAndReceiveAsync([Cmd.SlotInformation], cancellationToken: cancellationToken);
-        if (response.Length < 3 || response[0] != Cmd.SlotInformation)
+        await _lock.WaitAsync(cancellationToken);
+        try
         {
+            ClearInput();
+            await SendChunkedAsync([Cmd.SlotInformation], null, cancellationToken);
+            for (var skipped = 0; skipped < 4; skipped++)
+            {
+                var header = (await ReceiveBytesAsync(1, DefaultTimeout, null, cancellationToken))[0];
+                if (header == Cmd.RestartNfc)
+                {
+                    // Older clients left this two-byte ACK pending; never parse it as a summary.
+                    await ReceiveBytesAsync(1, DefaultTimeout, null, cancellationToken);
+                    continue;
+                }
+                if (header != Cmd.SlotInformation) break;
+                var summary = await ReceiveBytesAsync(2, DefaultTimeout, null, cancellationToken);
+                if (summary[1] > 0 && summary[0] < summary[1]) return new SlotSummary(summary[0], summary[1]);
+                break;
+            }
             throw new BleException("Slot summary response invalid.");
         }
-
-        return new SlotSummary(response[1], response[2]);
+        finally { _lock.Release(); }
     }
 
     public async Task<IReadOnlyList<SlotInfo>> GetSlotsAsync(IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default)
@@ -200,6 +258,9 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
 
     public async Task<IReadOnlyList<SlotInfo>> GetSlotInformationAsync(int startSlot, int count, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default)
     {
+        if (startSlot < 0 || startSlot > 255 || count < 0 || count > 255 || startSlot + count > 256)
+            throw new ArgumentOutOfRangeException(nameof(count));
+        if (count == 0) return [];
         var total = SlotInfoLength * count;
         var received = await SendAndReceiveAsync(
             [Cmd.SlotInformation, (byte)startSlot, (byte)count],
@@ -223,6 +284,9 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
         return slots;
     }
 
+    public async Task<SlotInfo> GetSlotInformationAsync(int slot, CancellationToken cancellationToken = default) =>
+        (await GetSlotInformationAsync(slot, 1, cancellationToken: cancellationToken))[0];
+
     public async Task<TagDump> ReadSlotAsync(int slot, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default)
     {
         const int length = TagDump.FullLength + 4;
@@ -232,6 +296,8 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
             receiveProgress: progress == null ? null : new Progress<int>(bytes => progress.Report(new TransferProgress(bytes, length, "Reading"))),
             cancellationToken: cancellationToken);
 
+        if (!response.AsSpan(0, 4).SequenceEqual(new byte[] { Cmd.Read, (byte)slot, 0, 143 }))
+            throw new BleException("Invalid slot read response.");
         return new TagDump(response.AsSpan(4, TagDump.FullLength));
     }
 
@@ -240,30 +306,38 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
         var data = dump.ToArray(TagDump.FullLength);
         var targetSlot = slot ?? (await GetSlotSummaryAsync(cancellationToken)).Current;
 
-        await SendAndReceiveAsync([Cmd.FullWrite, (byte)targetSlot], cancellationToken: cancellationToken);
-        await SendAndReceiveAsync(
-            data,
-            sendProgress: progress == null ? null : new Progress<int>(bytes => progress.Report(new TransferProgress(bytes, data.Length, "Writing"))),
-            cancellationToken: cancellationToken);
-
-        progress?.Report(new TransferProgress(data.Length, data.Length, "Saving"));
-        await SendAndReceiveAsync([Cmd.Save, (byte)targetSlot], cancellationToken: cancellationToken);
-
-        // Reload the slot so the new tag is emulated immediately.
-        await SelectSlotAsync(targetSlot, cancellationToken);
+        await _lock.WaitAsync(cancellationToken);
+        try
+        {
+            byte[] start = [Cmd.FullWrite, (byte)targetSlot];
+            var ack = await SendAndReceiveLockedAsync(start, 2, DefaultTimeout, null, null, cancellationToken);
+            if (!ack.AsSpan().SequenceEqual(start)) throw new BleException("The puck didn't accept the slot write.");
+            var complete = await SendAndReceiveLockedAsync(data, 6, DefaultTimeout,
+                progress == null ? null : new Progress<int>(bytes => progress.Report(new TransferProgress(bytes, data.Length, "Writing"))),
+                null, cancellationToken);
+            if (complete[0] != Cmd.FullWrite || complete[1] != targetSlot)
+                throw new BleException("Invalid slot write response.");
+            progress?.Report(new TransferProgress(data.Length, data.Length, "Saving"));
+            byte[] save = [Cmd.Save, (byte)targetSlot];
+            var saved = await SendAndReceiveLockedAsync(save, 2, DefaultTimeout, null, null, cancellationToken);
+            if (!saved.AsSpan().SequenceEqual(save)) throw new BleException("Invalid slot save response.");
+            await SelectSlotLockedAsync(targetSlot, cancellationToken);
+        }
+        finally { _lock.Release(); }
     }
 
     public async Task SelectSlotAsync(int slot, CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken);
-        try
-        {
-            await RequireCommand().WriteAsync([Cmd.RestartNfc, (byte)slot], true, cancellationToken);
-        }
-        finally
-        {
-            _lock.Release();
-        }
+        try { await SelectSlotLockedAsync(slot, cancellationToken); }
+        finally { _lock.Release(); }
+    }
+
+    private async Task SelectSlotLockedAsync(int slot, CancellationToken cancellationToken)
+    {
+        byte[] command = [Cmd.RestartNfc, (byte)slot];
+        var ack = await SendAndReceiveLockedAsync(command, 2, DefaultTimeout, null, null, cancellationToken);
+        if (!ack.AsSpan().SequenceEqual(command)) throw new BleException("Invalid slot selection response.");
     }
 
     public async Task<byte[]> ClearSlotAsync(int slot, CancellationToken cancellationToken = default)
@@ -278,14 +352,12 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
     }
 
     public async Task MoveSlotAsync(int from, int to, CancellationToken cancellationToken = default) =>
-        await SendAndReceiveAsync([Cmd.MoveSlot, (byte)from, (byte)to], cancellationToken: cancellationToken);
+        await SendAndReceiveAsync([Cmd.MoveSlot, (byte)from, (byte)to], 3, cancellationToken: cancellationToken);
 
     public async Task<byte[]> RandomizeUidAsync(int slot, CancellationToken cancellationToken = default)
     {
-        if (!AmiitoolEnabled)
-        {
-            throw new BleException("This puck doesn't support amiitool.");
-        }
+        if (!AmiitoolEnabled || !_amiitoolCommands.Contains(Cmd.AmiitoolChangeUid))
+            throw new BleException("This puck doesn't support amiitool UID changes.");
 
         if (!AmiitoolKeysLoaded)
         {
@@ -319,7 +391,7 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
         await Connection.ExpectDeviceDisconnectAsync();
         try
         {
-            await SendAndReceiveAsync([Cmd.SetBluetoothName, .. bytes], timeout: RenameReplyTimeout, cancellationToken: cancellationToken);
+            await SendAndReceiveAsync([Cmd.SetBluetoothName, .. bytes], bytes.Length + 1, timeout: RenameReplyTimeout, cancellationToken: cancellationToken);
         }
         catch (TimeoutException)
         {
@@ -365,21 +437,46 @@ public sealed class PuckDevice : TagDeviceBase, IAmiitoolTagDevice, IRenamableTa
         IProgress<int>? receiveProgress = null,
         CancellationToken cancellationToken = default)
     {
-        var responses = _responses ?? throw new BleException("The puck isn't connected.");
         await _lock.WaitAsync(cancellationToken);
         try
         {
-            responses.Clear();
-            await SendChunkedAsync(bytes, sendProgress, cancellationToken);
-            var wait = timeout ?? DefaultTimeout;
-            return count > 0
-                ? await responses.ReceiveBytesAsync(count, wait, receiveProgress, cancellationToken)
-                : await responses.ReceiveAsync(wait, cancellationToken);
+            return await SendAndReceiveLockedAsync(bytes, count, timeout ?? DefaultTimeout, sendProgress, receiveProgress, cancellationToken);
         }
-        finally
+        finally { _lock.Release(); }
+    }
+
+    private void ClearInput()
+    {
+        _pendingBytes.Clear();
+        (_responses ?? throw new BleException("The puck isn't connected.")).Clear();
+    }
+
+    private async Task<byte[]> SendAndReceiveLockedAsync(byte[] bytes, int count, TimeSpan timeout,
+        IProgress<int>? sendProgress, IProgress<int>? receiveProgress, CancellationToken cancellationToken)
+    {
+        ClearInput();
+        await SendChunkedAsync(bytes, sendProgress, cancellationToken);
+        return count > 0 ? await ReceiveBytesAsync(count, timeout, receiveProgress, cancellationToken)
+            : await _responses!.ReceiveAsync(timeout, cancellationToken);
+    }
+
+    // Nordic UART is a byte stream: a firmware Bluetooth.write() may be fragmented or
+    // coalesced with another one. Keep surplus bytes instead of discarding packet tails.
+    private async Task<byte[]> ReceiveBytesAsync(int count, TimeSpan timeout, IProgress<int>? progress, CancellationToken cancellationToken)
+    {
+        var result = new byte[count];
+        var offset = 0;
+        while (offset < count)
         {
-            _lock.Release();
+            if (_pendingBytes.Count == 0)
+            {
+                var packet = await _responses!.ReceiveAsync(timeout, cancellationToken);
+                foreach (var value in packet) _pendingBytes.Enqueue(value);
+            }
+            while (offset < count && _pendingBytes.TryDequeue(out var value)) result[offset++] = value;
+            progress?.Report(offset);
         }
+        return result;
     }
 
     private async Task SendChunkedAsync(byte[] bytes, IProgress<int>? progress, CancellationToken cancellationToken)

@@ -37,12 +37,18 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Simulation", "AmiiT
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Nfc.Flipper", "AmiiTag.Nfc.Flipper\AmiiTag.Nfc.Flipper.csproj", "{8C2E4A6B-1F3D-4E5A-B7C9-2D4F6A8B0C72}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Nfc.Pn532", "AmiiTag.Nfc.Pn532\AmiiTag.Nfc.Pn532.csproj", "{395C5E91-C386-480D-A1B9-FA460193146A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{395C5E91-C386-480D-A1B9-FA460193146A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{395C5E91-C386-480D-A1B9-FA460193146A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{395C5E91-C386-480D-A1B9-FA460193146A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{395C5E91-C386-480D-A1B9-FA460193146A}.Release|Any CPU.Build.0 = Release|Any CPU
 		{3F1B6C2A-7D4E-4A8B-9C05-1E2D3F4A5B61}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{3F1B6C2A-7D4E-4A8B-9C05-1E2D3F4A5B61}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{3F1B6C2A-7D4E-4A8B-9C05-1E2D3F4A5B61}.Release|Any CPU.ActiveCfg = Release|Any CPU

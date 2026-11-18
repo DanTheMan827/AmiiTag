@@ -239,12 +239,17 @@
             new("Write character here", () => PickCharacter(slot.Slot)),
         };
 
-        if (device is IAmiitoolTagDevice { AmiitoolEnabled: true, AmiitoolKeysLoaded: true } amiitool)
+        if (device is IAmiitoolTagDevice amiitool && amiitool.CanRandomizeUid)
         {
             items.Add(new("Randomize UID", async () =>
             {
-                await Actions.WithProgressAsync("Randomizing UID", (_, ct) => amiitool.RandomizeUidAsync(slot.Slot, ct));
-                await RefreshSlots();
+                var updated = await Actions.WithProgressAsync("Randomizing UID", async (_, ct) =>
+                {
+                    await amiitool.RandomizeUidAsync(slot.Slot, ct);
+                    return await device.GetSlotInformationAsync(slot.Slot, ct);
+                });
+                if (updated != null && ReferenceEquals(_device, device) && _slots != null)
+                    _slots = _slots.Select(existing => existing.Slot == updated.Slot ? updated : existing).ToArray();
             }));
         }
 
@@ -388,9 +393,17 @@
             return true;
         });
 
-        if (ok && device is ISlotTagDevice)
+        if (ok && device is ISlotTagDevice slots)
         {
-            await RefreshSlots();
+            var summary = await slots.GetSlotSummaryAsync();
+            var updated = await slots.GetSlotInformationAsync(slot ?? summary.Current);
+
+            if (ReferenceEquals(_device, device) && _slots != null)
+            {
+                _activeSlot = summary.Current;
+                _slots = _slots.Select(existing =>
+                    existing.Slot == updated.Slot ? updated : existing).ToArray();
+            }
         }
     }
 
@@ -422,7 +435,7 @@
             options.Add(("Change Name", () => Rename(renamable)));
         }
 
-        if (device is IAmiitoolTagDevice { AmiitoolEnabled: true, AmiitoolKeysLoaded: false } amiitool)
+        if (device is IAmiitoolTagDevice { CanUploadKeys: true, AmiitoolKeysLoaded: false } amiitool)
         {
             options.Add(("Upload amiitool keys", () => UploadKeys(amiitool)));
         }

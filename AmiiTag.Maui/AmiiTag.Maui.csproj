@@ -137,6 +137,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AmiiTag.Core\AmiiTag.Core.csproj" />
     <ProjectReference Include="..\AmiiTag.Nfc.Mfrc522\AmiiTag.Nfc.Mfrc522.csproj" />
+    <ProjectReference Include="..\AmiiTag.Nfc.Pn532\AmiiTag.Nfc.Pn532.csproj" />
     <ProjectReference Include="..\DanTheMan827.Helpers\DanTheMan827.Helpers.csproj" />
     <ProjectReference Include="..\DanTheMan827.ShaSync\DanTheMan827.ShaSync.csproj" />
   </ItemGroup>

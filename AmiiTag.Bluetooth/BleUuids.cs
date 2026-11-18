@@ -33,8 +33,8 @@ public static class BleUuids
     public static BleScanFilter TagDeviceFilter { get; } = new()
     {
         Services = [NordicUartService, LegacyPuckService, AmiiboLinkV2AdvertisedService],
-        Names = ["amiibolink", "Pixl.js"],
-        NamePrefixes = ["AmiLoop", "amiibolink", "Puck.js", "Pixl"],
+        Names = ["amiibolink", "AmiLoop", "Pixl.js"],
+        NamePrefixes = ["Puck.js", "Pixl"],
         OptionalServices = [NordicUartService, LegacyPuckService],
     };
 
