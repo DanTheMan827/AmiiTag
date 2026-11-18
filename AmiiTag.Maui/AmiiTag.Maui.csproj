@@ -103,8 +103,37 @@
     <MtouchLink>SdkOnly</MtouchLink>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net10.0-ios|AnyCPU'">
-    <MtouchLink>Full</MtouchLink>
+    <!--
+      SdkOnly, as in Debug: only the iOS and .NET SDK assemblies are trimmed, never the app's or the NuGet packages'.
+      Full trimming removed the app's Blazor screens (Blazor finds pages, [Parameter]s, [JSInvokable] methods and the
+      JSON the stores save through reflection, which the trimmer can't see). Don't set TrimMode for iOS either:
+      "partial" also trims every package marked trimmable (MAUI, Microsoft.Extensions...), and the app crashed at start.
+    -->
+    <MtouchLink>SdkOnly</MtouchLink>
+	<UseInterpreter>true</UseInterpreter>
   </PropertyGroup>
+
+  <!--
+    Android Release trims every assembly marked trimmable (its default), which includes the Blazor ones; they're kept
+    whole, as are the app's own, for the same reflection reasons as above.
+  -->
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <TrimmerRootAssembly Include="AmiiTag.Core" />
+    <TrimmerRootAssembly Include="AmiiTag.AmiiboData" />
+    <TrimmerRootAssembly Include="AmiiTag.Tags" />
+    <TrimmerRootAssembly Include="AmiiTag.Nfc" />
+    <TrimmerRootAssembly Include="AmiiTag.Nfc.Flipper" />
+    <TrimmerRootAssembly Include="AmiiTag.Nfc.Mfrc522" />
+    <TrimmerRootAssembly Include="AmiiTag.Bluetooth" />
+    <TrimmerRootAssembly Include="DanTheMan827.Helpers" />
+    <TrimmerRootAssembly Include="DanTheMan827.ShaSync" />
+    <TrimmerRootAssembly Include="libamiibo" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.Web" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.WebView" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.WebView.Maui" />
+    <TrimmerRootAssembly Include="Microsoft.JSInterop" />
+  </ItemGroup>
   <ItemGroup>
     <!--
       App icon: the AmiiTag mark (appiconfg.svg, from icon-transparent.svg) on black. Scaled to half the icon so it
