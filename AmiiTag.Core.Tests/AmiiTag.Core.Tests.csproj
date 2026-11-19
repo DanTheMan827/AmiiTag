@@ -14,5 +14,8 @@
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.0" PrivateAssets="all" />
     <ProjectReference Include="../AmiiTag.Core/AmiiTag.Core.csproj" />
     <Compile Include="../AmiiTag.Tests/Simulation/SimulatedBle.cs" Link="Simulation/SimulatedBle.cs" />
+    <Compile Include="../AmiiTag.WebAssembly/Data/AmiiboDatabaseContainer.cs" Link="Web/AmiiboDatabaseContainer.cs" />
+    <Compile Include="../AmiiTag.WebAssembly/Services/WebAppStorage.cs" Link="Web/WebAppStorage.cs" />
+    <Compile Include="../AmiiTag.WebAssembly/Services/WebFigureImageProvider.cs" Link="Web/WebFigureImageProvider.cs" />
   </ItemGroup>
 </Project>

@@ -25,7 +25,7 @@ public interface IFileService
 }
 
 /// <summary>
-/// Small persistent key/value blob storage (files on MAUI, localStorage on the web).
+/// Small persistent key/value blob storage (files on MAUI, IndexedDB on the web).
 /// </summary>
 public interface IAppStorage
 {

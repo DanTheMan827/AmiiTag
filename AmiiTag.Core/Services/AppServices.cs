@@ -64,7 +64,15 @@ public sealed class AppState
                 await using var dialog = _database.LoadsRemotely ? _dialogs.ShowProgress("Loading Database", "Downloading amiibo data...") : null;
                 try
                 {
-                    await _database.LoadData();
+                    // A remote database (the web) reports its progress, so the dialog can show a bar.
+                    if (dialog != null)
+                    {
+                        await _database.UpdateData(ShowProgressIn(dialog));
+                    }
+                    else
+                    {
+                        await _database.LoadData();
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -110,11 +118,7 @@ public sealed class AppState
         await using var dialog = _dialogs.ShowProgress("Updating Database", "Checking...");
         try
         {
-            await _database.UpdateData(info =>
-            {
-                dialog.Update($"{info.Current} / {info.Total}\n{info.Message}", info.Total > 0 ? (double)info.Current / info.Total : null);
-                return Task.CompletedTask;
-            });
+            await _database.UpdateData(ShowProgressIn(dialog));
         }
         catch (Exception ex)
         {
@@ -122,6 +126,16 @@ public sealed class AppState
             await _dialogs.AlertAsync("Database update failed", ex.Message);
         }
     }
+
+    /// <summary>
+    /// Database progress shown in a progress dialog: the step's message and a bar. Yields after each update so the web
+    /// (single threaded) gets to draw it before the next step's work starts.
+    /// </summary>
+    private static Func<ProgressInfo, Task> ShowProgressIn(IProgressDialog dialog) => async info =>
+    {
+        dialog.Update(info.Message, info.Total > 0 ? (double)info.Current / info.Total : null);
+        await Task.Yield();
+    };
 
 }
 

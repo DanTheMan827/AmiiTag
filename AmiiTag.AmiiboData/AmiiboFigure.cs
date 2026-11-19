@@ -96,6 +96,15 @@
         /// Creates a new instance with the same set of values.
         /// </summary>
         /// <returns></returns>
+        /// <summary>
+        /// Sets the ID and image URL as they were saved (<see cref="AmiiboDatabaseSnapshot"/>).
+        /// </summary>
+        internal void Restore(AmiiboId id, Uri? imageUri)
+        {
+            Id = id;
+            ImageUri = imageUri;
+        }
+
         internal AmiiboFigure Clone()
         {
             return new AmiiboFigure()

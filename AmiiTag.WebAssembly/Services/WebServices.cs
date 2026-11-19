@@ -9,33 +9,6 @@ using ZXing.QrCode;
 
 namespace AmiiTag.WebAssembly.Services;
 
-/// <summary>
-/// Stores blobs in localStorage (base64).
-/// </summary>
-public sealed class WebAppStorage : IAppStorage
-{
-    private readonly IJSRuntime _js;
-
-    public WebAppStorage(IJSRuntime js)
-    {
-        _js = js;
-    }
-
-    public async Task<byte[]?> ReadAsync(string name)
-    {
-        var value = await _js.InvokeAsync<string?>("amiitag.storage.read", name);
-        return value == null ? null : Convert.FromBase64String(value);
-    }
-
-    public async Task WriteAsync(string name, byte[] data) =>
-        await _js.InvokeVoidAsync("amiitag.storage.write", name, Convert.ToBase64String(data));
-
-    public async Task DeleteAsync(string name) => await _js.InvokeVoidAsync("amiitag.storage.remove", name);
-
-    public async Task<IReadOnlyList<string>> ListAsync(string prefix) =>
-        await _js.InvokeAsync<string[]>("amiitag.storage.list", prefix);
-}
-
 public sealed class WebFileService : IFileService
 {
     private readonly IJSRuntime _js;

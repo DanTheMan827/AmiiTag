@@ -142,32 +142,12 @@
         },
     };
 
-    // ------------------------------------------------------------------ Storage (localStorage, base64 values)
-
-    const storagePrefix = "amiitag:";
-
-    amiitag.storage = {
-        read: function (name) {
-            return localStorage.getItem(storagePrefix + name);
-        },
-        write: function (name, base64) {
-            localStorage.setItem(storagePrefix + name, base64);
-        },
-        remove: function (name) {
-            localStorage.removeItem(storagePrefix + name);
-        },
-        list: function (prefix) {
-            const names = [];
-            for (let i = 0; i < localStorage.length; i++) {
-                const key = localStorage.key(i);
-                if (key && key.startsWith(storagePrefix + prefix)) {
-                    names.push(key.substring(storagePrefix.length));
-                }
-            }
-
-            return names;
-        },
-    };
+    // ------------------------------------------------------------------ IndexedDB storage and the hash-keyed database cache
+    const indexedStore = () => import("./indexed-store.js");
+    amiitag.storage = Object.fromEntries(["read", "write", "remove", "list"].map(name =>
+        [name, async (...args) => (await indexedStore()).storage[name](...args)]));
+    amiitag.assets = Object.fromEntries(["readManifest", "commitManifest", "readFile", "readSnapshot", "writeSnapshot", "uncached", "cacheFiles", "retain", "imageUrl", "releaseImageUrls", "clear"].map(name =>
+        [name, async (...args) => (await indexedStore()).assets[name](...args)]));
 
     // ------------------------------------------------------------------ WebBluetooth
 

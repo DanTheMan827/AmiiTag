@@ -25,19 +25,18 @@ else
             return;
         }
 
-        _loadedFor = Figure;
+        var figure = Figure;
+        _loadedFor = figure;
         _url = null;
         _failed = false;
-        if (Figure != null)
+        if (figure != null)
         {
-            try
-            {
-                _url = await Images.GetImageUrlAsync(Figure);
-            }
-            catch
-            {
-                _url = null;
-            }
+            string? url;
+            try { url = await Images.GetImageUrlAsync(figure); }
+            catch { url = null; }
+            // An IndexedDB fetch may finish after this component is reused for
+            // another figure. A stale completion must not replace its image.
+            if (ReferenceEquals(_loadedFor, figure)) _url = url;
         }
     }
 }

@@ -74,7 +74,7 @@ namespace AmiiTag.AmiiboData
         /// <param name="path">The path to the amiibo data, either a local directory or a remote URL.</param>
         /// <param name="imagesUrlBase">The base URL for amiibo images. Defaults to "images/" relative to the path.</param>
         /// <param name="cancellationToken">A token to cancel the import operation.</param>
-        public async Task ImportData(string path, Uri? imagesUrlBase = null, CancellationToken cancellationToken = default)
+        public async Task ImportData(string path, Uri? imagesUrlBase = null, CancellationToken cancellationToken = default, Func<Uri, CancellationToken, Task<Stream>>? download = null)
         {
             var lowercasePath = path.ToLower();
 
@@ -87,12 +87,31 @@ namespace AmiiTag.AmiiboData
                     path = path + "/";
                 }
 
-                await ImportRemoteData(new Uri(path), imagesUrlBase ?? new Uri(new Uri(path), "images/"), cancellationToken);
+                await ImportRemoteData(new Uri(path), imagesUrlBase ?? new Uri(new Uri(path), "images/"), cancellationToken, download);
             }
             else
             {
                 await ImportLocalData(path, imagesUrlBase ?? new Uri(new Uri($"file://{path}/"), "images/"), cancellationToken);
             }
+        }
+
+        private static async Task<T?> DownloadRemoteJson<T>(Uri url, Func<Uri, CancellationToken, Task<Stream>>? download, CancellationToken ct)
+        {
+            if (download == null) return await Web.DownloadJsonAsync<T>(url, ct);
+            using var stream = await download(url, ct);
+            return await JsonSerializer.DeserializeAsync<T>(stream, cancellationToken: ct);
+        }
+
+        /// <summary>Publish a fully loaded database without exposing a partially imported update.</summary>
+        public void ReplaceData(AmiiboDatabase source)
+        {
+            if (ReferenceEquals(this, source)) return;
+            ClearData();
+            foreach (var item in source._AmiiboSeries) _AmiiboSeries.Add(item.Key, item.Value);
+            foreach (var item in source._Figures) _Figures.Add(item.Key, item.Value);
+            foreach (var item in source._Characters) _Characters.Add(item.Key, item.Value);
+            foreach (var item in source._GameSeries) _GameSeries.Add(item.Key, item.Value);
+            foreach (var item in source._Types) _Types.Add(item.Key, item.Value);
         }
 
         /// <summary>
@@ -115,7 +134,7 @@ namespace AmiiTag.AmiiboData
         /// <param name="cancellationToken">A token to cancel the import operation.</param>
         /// <returns></returns>
         /// <exception cref="ArgumentNullException"></exception>
-        private async Task ImportRemoteData(Uri path, Uri? imagesUrlBase, CancellationToken cancellationToken = default)
+        private async Task ImportRemoteData(Uri path, Uri? imagesUrlBase, CancellationToken cancellationToken = default, Func<Uri, CancellationToken, Task<Stream>>? download = null)
         {
             if (path == null)
             {
@@ -127,17 +146,17 @@ namespace AmiiTag.AmiiboData
 
             try
             {
-                hashDictionary = await Web.DownloadJsonAsync<Dictionary<string, string>>(hashJsonPath, cancellationToken);
+                hashDictionary = await DownloadRemoteJson<Dictionary<string, string>>(hashJsonPath, download, cancellationToken);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (ex is not OperationCanceledException)
             {
                 // It really doesn't matter if the sha1sum fails to load, we just won't have a cache buster.
             }
 
             // Load and process the amiibo database.
             {
-                var amiiboJsonPath = new Uri(path, $"database/amiibo.json?{GetKeyOrDefaultValue(hashDictionary, "database/amiibo.json", Guid.NewGuid().ToString())}");
-                var databaseJson = await Web.DownloadJsonAsync<AmiiboJsonBase>(amiiboJsonPath, cancellationToken);
+                var amiiboJsonPath = new Uri(path, $"database/amiibo.json?{GetKeyOrDefaultValue(hashDictionary, "database/amiibo.json", download == null ? Guid.NewGuid().ToString() : string.Empty)}");
+                var databaseJson = await DownloadRemoteJson<AmiiboJsonBase>(amiiboJsonPath, download, cancellationToken);
 
                 if (databaseJson != null)
                 {
@@ -147,14 +166,14 @@ namespace AmiiTag.AmiiboData
 
             // Load and process the game usage database.
             {
-                var gameInfoJsonPath = new Uri(path, $"database/games_info.json?{GetKeyOrDefaultValue(hashDictionary, "database/games_info.json", Guid.NewGuid().ToString())}");
+                var gameInfoJsonPath = new Uri(path, $"database/games_info.json?{GetKeyOrDefaultValue(hashDictionary, "database/games_info.json", download == null ? Guid.NewGuid().ToString() : string.Empty)}");
                 GameInfoJsonBase? gameInfoJson = null;
 
                 try
                 {
-                    gameInfoJson = await Web.DownloadJsonAsync<GameInfoJsonBase>(gameInfoJsonPath, cancellationToken);
+                    gameInfoJson = await DownloadRemoteJson<GameInfoJsonBase>(gameInfoJsonPath, download, cancellationToken);
                 }
-                catch (Exception ex)
+                catch (Exception ex) when (ex is not OperationCanceledException)
                 {
                     // If there's an error loading the game info, we can just skip it.
                 }

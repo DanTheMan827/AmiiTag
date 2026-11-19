@@ -37,7 +37,7 @@ builder.Services.AddSingleton<IAppNavigator, BrowserNavigator>();
 builder.Services.AddSingleton<IFileService, WebFileService>();
 builder.Services.AddSingleton<IAppStorage, WebAppStorage>();
 builder.Services.AddSingleton<IQrScanner, WebQrScanner>();
-builder.Services.AddSingleton<IFigureImageProvider, DirectFigureImageProvider>();
+builder.Services.AddSingleton<IFigureImageProvider, WebFigureImageProvider>();
 builder.Services.AddSingleton<IBleAdapter, WebBluetoothAdapter>();
 
 // NFC: browsers can't send raw NFC commands, but an MFRC522 on a USB serial adapter can be driven over Web Serial.
