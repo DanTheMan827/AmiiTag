@@ -21,15 +21,19 @@ public sealed partial class BlazorPage
     private long _appliedContentGeneration = -1;
     private double _pendingTopInset;
     private bool _applyingTopInset;
+    private bool _captionOnlyUnderlay;
 
     partial void InitializeNativeChrome(object webView)
     {
         if (webView is not WebView2 web) return;
         _nativeWebView = web;
+        web.Loaded += OnNativeWebViewLoaded;
         web.SizeChanged += OnNativeWebViewSizeChanged;
         web.LayoutUpdated += OnNativeLayoutUpdated;
         UpdateNativeChrome();
     }
+
+    private void OnNativeWebViewLoaded(object sender, Microsoft.UI.Xaml.RoutedEventArgs e) => UpdateNativeChrome();
 
     private void OnNativeLayoutUpdated(object? sender, object e) => UpdateNativeChrome();
 
@@ -84,7 +88,9 @@ public sealed partial class BlazorPage
         if (web == null || !ReferenceEquals(MauiNavigator.CurrentPage, this)) return;
         var nativeWindow = Window?.Handler?.PlatformView as Microsoft.UI.Xaml.Window;
         if (nativeWindow == null) return;
-        if (!nativeWindow.ExtendsContentIntoTitleBar) nativeWindow.ExtendsContentIntoTitleBar = true;
+        // OnWindowCreated precedes MAUI's title-bar/theme mappings. Reassert
+        // the transparent caption after the host is attached, including Home.
+        WindowsBackdrop.Apply(nativeWindow);
         WindowsBackdrop.RemoveUnderlayClipping(web);
         var scale = nativeWindow.Content?.XamlRoot?.RasterizationScale ?? 1;
         var captionHeight = nativeWindow.ExtendsContentIntoTitleBar ? nativeWindow.AppWindow.TitleBar.Height / scale : 0;
@@ -97,8 +103,23 @@ public sealed partial class BlazorPage
             top = Math.Max(0, captionHeight - webTop);
         }
         catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or System.Runtime.InteropServices.COMException) { return; }
-        if (toolbar != null)
+        if (toolbar == null)
         {
+            // Home has no app toolbar, especially before its template exists.
+            // Extend the WebView itself instead of waiting for a toolbar row.
+            var original = ContentPlacements.GetValue(web, view => new ContentPlacement(view.Margin));
+            var margin = original.Margin;
+            var underlayMargin = new Microsoft.UI.Xaml.Thickness(margin.Left, margin.Top - captionHeight, margin.Right, margin.Bottom);
+            if (!web.Margin.Equals(underlayMargin)) web.Margin = underlayMargin;
+            _captionOnlyUnderlay = true;
+        }
+        else
+        {
+            if (_captionOnlyUnderlay && ContentPlacements.TryGetValue(web, out var original))
+            {
+                web.Margin = original.Margin;
+                _captionOnlyUnderlay = false;
+            }
             if (toolbar.Background is not SolidColorBrush brush || brush.Color.A != 0)
                 toolbar.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
             ExtendUnderToolbar(web, toolbar, captionHeight);
@@ -152,6 +173,7 @@ public sealed partial class BlazorPage
     {
         if (_nativeWebView != null)
         {
+            _nativeWebView.Loaded -= OnNativeWebViewLoaded;
             _nativeWebView.SizeChanged -= OnNativeWebViewSizeChanged;
             _nativeWebView.LayoutUpdated -= OnNativeLayoutUpdated;
         }
