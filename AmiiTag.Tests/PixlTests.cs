@@ -439,8 +439,9 @@ public class PixlTests
         var renamed = (await device.GetTagsAsync()).Single(t => t.Id == added.Id);
         Assert.Equal("Hero", renamed.DisplayName);
 
-        await device.SetTagImageAsync(renamed, "folder");
-        Assert.Equal("folder", (await device.GetTagsAsync()).Single(t => t.Id == added.Id).Image);
+        await device.SetTagImageAsync(renamed, 37);
+        Assert.Contains($"tag.setImage({renamed.Index}, \"37\")", sim.Commands);
+        Assert.Equal("37", (await device.GetTagsAsync()).Single(t => t.Id == added.Id).Image);
 
         await device.CreateFolderAsync("Games");
         await device.GetTagsAsync();

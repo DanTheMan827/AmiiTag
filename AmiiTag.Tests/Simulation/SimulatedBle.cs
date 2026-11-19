@@ -835,6 +835,9 @@ public sealed class FlaskNextGenSimulator : SimulatedUartDevice
     private readonly StringBuilder _line = new();
     private int _nextId = 2;
 
+    // Folder IDs are their own sequence (they mustn't collide with the starting folders 2 and 3).
+    private int _nextFolderId = 4;
+
     public FlaskNextGenSimulator(bool slide = false, string name = "") : base(name)
     {
         IsSlide = slide;
@@ -896,8 +899,7 @@ public sealed class FlaskNextGenSimulator : SimulatedUartDevice
                 return Json(new { v = 10, d = IsSlide ? 1 : 0, free_pages = 34, total_pages = 39, effective_used_percent = 12.5 });
             case "process.version":
                 return "\"FO1.0\"";
-            case "Puck.getBatteryPercentage()":
-                return "85";
+            // Like the real one: no battery command (flask.run's demo mode answers it, the firmware doesn't).
             case "tag.getRichList()":
                 return Json(new
                 {
@@ -951,8 +953,9 @@ public sealed class FlaskNextGenSimulator : SimulatedUartDevice
 
         if ((match = Regex(@"^tag\.setImage\((\d+), ""([^""]+)""\)$", command)).Success)
         {
-            var at = Tags.FindIndex(t => t.Id == int.Parse(match.Groups[1].Value));
-            if (at >= 0)
+            // flask.run passes the tag's list index here, not its id.
+            var at = int.Parse(match.Groups[1].Value);
+            if (at < Tags.Count)
             {
                 var meta = Tags[at].Meta.Split(',');
                 meta[1] = match.Groups[2].Value;
@@ -964,7 +967,7 @@ public sealed class FlaskNextGenSimulator : SimulatedUartDevice
 
         if ((match = Regex(@"^tag\.createFolder\(""([^""]+)""\)$", command)).Success)
         {
-            Folders.Add((_nextId++, match.Groups[1].Value));
+            Folders.Add((_nextFolderId++, match.Groups[1].Value));
             return Memory();
         }
 

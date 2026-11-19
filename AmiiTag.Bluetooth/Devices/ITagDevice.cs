@@ -123,6 +123,12 @@ public sealed record StoredTag(int Index, string Name, string DisplayName, strin
     public string? Image { get; init; }
 
     /// <summary>
+    /// The full 16 hex digit amiibo ID, when the device lists it (next-gen Flask firmware); <see cref="AmiiboTail"/> is
+    /// its last 8 digits. Identifies the figure without downloading the tag.
+    /// </summary>
+    public string? AmiiboId { get; init; }
+
+    /// <summary>
     /// Whether it's stored as an NTAG215 (an amiibo-sized dump the app can open).
     /// </summary>
     public bool IsNtag215 => TagType is null or "215";

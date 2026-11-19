@@ -69,6 +69,7 @@ public sealed class FlaskDeviceTests
         Assert.Equal("Link", tags[0].DisplayName);
         Assert.Equal(7, tags[0].Id);
         Assert.Equal("034f0902", tags[0].AmiiboTail);
+        Assert.Equal("01010000034f0902", tags[0].AmiiboId);
         Assert.Equal(3, tags[0].FolderId);
         Assert.Equal("12", tags[0].Image);
         Assert.True(tags[0].IsNtag215);
@@ -76,6 +77,7 @@ public sealed class FlaskDeviceTests
         // Without an id the index is used; a MIFARE card has no amiibo tail.
         Assert.Equal(1, tags[1].Id);
         Assert.Null(tags[1].AmiiboTail);
+        Assert.Null(tags[1].AmiiboId);
         Assert.False(tags[1].IsNtag215);
         Assert.Equal(0, tags[1].FolderId);
     }

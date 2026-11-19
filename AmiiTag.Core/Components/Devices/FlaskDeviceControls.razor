@@ -45,7 +45,7 @@
             <ul class="list grid">
                 @foreach (var tag in VisibleTags)
                 {
-                    var figure = Lookup.GetFigureByTail(tag.AmiiboTail);
+                    var figure = FigureOf(tag);
                     var active = _current?.Name == tag.Name;
                     var items = TagItems(tag);
                     <li>
@@ -185,6 +185,10 @@
         if (_folder != 0 && NextGen is { } nextGen && nextGen.Folders.All(f => f.Id != _folder)) _folder = 0;
     }
 
+    // Next-gen firmware lists the whole amiibo ID, which names the exact figure; legacy names only carry its tail.
+    private AmiiboFigure? FigureOf(StoredTag tag) =>
+        (tag.AmiiboId != null ? Lookup.GetFigure(tag.AmiiboId) : null) ?? Lookup.GetFigureByTail(tag.AmiiboTail);
+
     private static string Describe(StoredTag tag, AmiiboFigure? figure)
     {
         if (!tag.IsNtag215 && tag.TagType != null)
@@ -276,9 +280,9 @@
 
     private async Task SetImage(FlaskNextGenDevice device, StoredTag tag)
     {
-        var image = await Dialogs.PromptAsync("Set Image", "The ID of an image from flask.run's image picker (\"folder\", \"github\"...).", tag.Image ?? "", 40);
-        if (string.IsNullOrWhiteSpace(image)) return;
-        await Actions.WithProgressAsync("Setting image", async (_, ct) => { await device.SetTagImageAsync(tag, image.Trim(), ct); return true; });
+        var text = await Dialogs.PromptAsync("Set Image", "The number of an icon in flask.run's image picker, counting from 1 across its categories (0 for none). Only flask.run shows it.", tag.Image ?? "0", 4);
+        if (!int.TryParse(text?.Trim(), out var image) || image < 0) return;
+        await Actions.WithProgressAsync("Setting image", async (_, ct) => { await device.SetTagImageAsync(tag, image, ct); return true; });
         await Refresh();
     }
 

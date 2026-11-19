@@ -43,7 +43,6 @@ public sealed class FlaskNextGenDevice : TagDeviceBase, ITagListDevice, ICommand
 
     private static readonly TimeSpan TransferTimeout = TimeSpan.FromSeconds(15);
 
-    private static readonly TagDeviceCommand Battery = new("battery", "Battery Level");
     private static readonly TagDeviceCommand Storage = new("storage", "Storage Used");
     private static readonly TagDeviceCommand DeleteAll = new("delete-all", "Delete All Tags", IsDestructive: true);
 
@@ -94,7 +93,8 @@ public sealed class FlaskNextGenDevice : TagDeviceBase, ITagListDevice, ICommand
 
     public event EventHandler? TagsChanged;
 
-    public IReadOnlyList<TagDeviceCommand> Commands => [Battery, Storage, DeleteAll];
+    // No battery level: the firmware rejects Puck.getBatteryPercentage() (flask.run defines the call but never makes it).
+    public IReadOnlyList<TagDeviceCommand> Commands => [Storage, DeleteAll];
 
     private EspruinoRepl Repl => _repl ?? throw new BleException("The device isn't set up.");
 
@@ -240,17 +240,20 @@ public sealed class FlaskNextGenDevice : TagDeviceBase, ITagListDevice, ICommand
         var id = TryGetInt(item, "id", out var parsedId) ? parsedId : index;
         var type = GetString(item, "type");
 
-        // The amiibo ID itself is more reliable than the tail in the name (blank and renamed tags).
+        // The list carries the whole amiibo ID (tagId), so the figure is known without downloading the tag; it's more
+        // reliable than the tail in the name too (blank and renamed tags).
         var tail = tag.AmiiboTail;
+        string? fullId = null;
         if (GetString(item, "tagId") is { Length: 16 } tagId && ulong.TryParse(tagId, NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var amiiboId))
         {
-            tail = amiiboId == 0 || type is not (null or "215" or "213" or "PLUS") ? null : tagId[8..].ToLowerInvariant();
+            fullId = amiiboId == 0 || type is not (null or "215" or "213" or "PLUS") ? null : tagId.ToLowerInvariant();
+            tail = fullId?[8..];
         }
 
         var meta = (GetString(item, "meta") ?? string.Empty).Split(',');
         var folder = meta.Length > 0 && int.TryParse(meta[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out var f) ? f : 0;
         var image = meta.Length > 1 && meta[1] is { Length: > 0 } m && m != "0" ? m : null;
-        return tag with { AmiiboTail = tail, Id = id, TagType = type, FolderId = folder, Image = image };
+        return tag with { AmiiboTail = tail, AmiiboId = fullId, Id = id, TagType = type, FolderId = folder, Image = image };
     }
 
     public async Task<StoredTag?> GetCurrentTagAsync(CancellationToken cancellationToken = default) =>
@@ -376,11 +379,13 @@ public sealed class FlaskNextGenDevice : TagDeviceBase, ITagListDevice, ICommand
     }
 
     /// <summary>
-    /// Sets the image the device shows for a tag (an image ID from flask.run's catalog, such as "folder").
+    /// Sets a tag's image: not a picture but a number, the 1-based position of an icon in flask.run's own catalogue
+    /// (0 for none), which the device stores in the tag's <c>meta</c>. flask.run sends the tag's list index and the
+    /// number as a string.
     /// </summary>
-    public async Task SetTagImageAsync(StoredTag tag, string image, CancellationToken cancellationToken = default)
+    public async Task SetTagImageAsync(StoredTag tag, int image, CancellationToken cancellationToken = default)
     {
-        UpdateMemory(await Repl.EvaluateAsync($"tag.setImage({IdOf(tag)}, {EspruinoRepl.Quote(image)})", null, cancellationToken));
+        UpdateMemory(await Repl.EvaluateAsync($"tag.setImage({tag.Index}, \"{image}\")", null, cancellationToken));
     }
 
     public async Task CreateFolderAsync(string name, CancellationToken cancellationToken = default)
@@ -423,9 +428,6 @@ public sealed class FlaskNextGenDevice : TagDeviceBase, ITagListDevice, ICommand
     {
         switch (command.Id)
         {
-            case "battery":
-                return $"{(await Repl.EvaluateAsync("Puck.getBatteryPercentage()", null, cancellationToken))?.ToString() ?? "?"}%";
-
             case "storage":
                 return await RefreshMemoryAsync(cancellationToken) is { } memory
                     ? $"{memory.UsedFraction:P0} used ({memory.FreePages} of {memory.TotalPages} pages free)."
