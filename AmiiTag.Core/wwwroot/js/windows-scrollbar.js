@@ -11,6 +11,8 @@ export function register(track, thumb, content) {
     registrations.get(root)?.dispose();
     let disposed = false;
     let frame = 0;
+    let poll = 0;
+    let measured = '';
     let drag = null;
     let metrics = { max: 0, travel: 0, height: 0, viewport: 0 };
     const removers = [];
@@ -42,6 +44,17 @@ export function register(track, thumb, content) {
     };
     const schedule = () => {
         if (!disposed && !frame) frame = requestAnimationFrame(() => { frame = 0; update(); });
+    };
+    // A backstop for changes nothing above reports (Blazor re-rendering a page in several passes, say): twice a
+    // second, compare the page and viewport sizes with the last ones and update only when they differ. Reading the
+    // sizes costs little when layout hasn't changed; skipped while the window is hidden.
+    const check = () => {
+        if (disposed || document.hidden) return;
+        const size = `${scroller.scrollHeight}x${scroller.clientHeight}x${window.innerHeight}`;
+        if (size !== measured) {
+            measured = size;
+            update();
+        }
     };
     const scrollTo = value => {
         scroller.scrollTop = clamp(value, metrics.max);
@@ -108,6 +121,7 @@ export function register(track, thumb, content) {
         endDrag();
         keyboardFocus();
         if (frame) cancelAnimationFrame(frame);
+        clearInterval(poll);
         resize?.disconnect();
         contentChanges?.disconnect();
         insetChanges?.disconnect();
@@ -142,6 +156,7 @@ export function register(track, thumb, content) {
         registrations.set(root, binding);
         root.classList.add(activeClass);
         update();
+        poll = setInterval(check, 500);
         return binding;
     } catch (error) {
         binding.dispose(); // Restore the native scrollbar if setup cannot finish.

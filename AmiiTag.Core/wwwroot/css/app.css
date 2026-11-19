@@ -696,6 +696,60 @@ h1:focus {
     letter-spacing: 0.02em;
 }
 
+/* A row with an action segment on its right edge (the UID's "new random UID"): a full-height button set off by a
+   separator, like a segmented control's last segment. */
+.info-row.with-segment {
+    align-items: stretch;
+    padding-right: 0;
+}
+
+.info-row.with-segment dt,
+.info-row.with-segment dd {
+    align-self: center;
+}
+
+.info-row.with-segment dd {
+    margin-left: auto;
+}
+
+.row-segment {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    margin: -10px 0;
+    padding: 0;
+    border: 0;
+    border-left: 0.5px solid var(--separator);
+    background: none;
+    color: var(--accent);
+    cursor: pointer;
+}
+
+.row-segment svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.row-segment:hover {
+    background: rgba(127, 127, 127, 0.12);
+}
+
+.row-segment:active {
+    background: rgba(127, 127, 127, 0.2);
+}
+
+.row-segment:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
 .validity.valid {
     color: var(--success);
 }
@@ -732,6 +786,35 @@ h1:focus {
 
 .tag-actions > .primary {
     grid-column: 1 / -1;
+}
+
+/* The last button fills the rest of its row (the whole row when it starts one). The grid makes as many 170px columns
+   as fit, which CSS can't count, so the container's width says how many there are: floor((width + 10) / 180). Full-row
+   (.primary) buttons come first and are left out of the count. */
+.tag-actions {
+    container-type: inline-size;
+}
+
+@container (min-width: 350px) and (max-width: 529.98px) {
+    .tag-actions > :last-child:nth-child(2n + 1 of :not(.primary)) { grid-column: span 2; }
+}
+
+@container (min-width: 530px) and (max-width: 709.98px) {
+    .tag-actions > :last-child:nth-child(3n + 1 of :not(.primary)) { grid-column: span 3; }
+    .tag-actions > :last-child:nth-child(3n + 2 of :not(.primary)) { grid-column: span 2; }
+}
+
+@container (min-width: 710px) and (max-width: 889.98px) {
+    .tag-actions > :last-child:nth-child(4n + 1 of :not(.primary)) { grid-column: span 4; }
+    .tag-actions > :last-child:nth-child(4n + 2 of :not(.primary)) { grid-column: span 3; }
+    .tag-actions > :last-child:nth-child(4n + 3 of :not(.primary)) { grid-column: span 2; }
+}
+
+@container (min-width: 890px) {
+    .tag-actions > :last-child:nth-child(5n + 1 of :not(.primary)) { grid-column: span 5; }
+    .tag-actions > :last-child:nth-child(5n + 2 of :not(.primary)) { grid-column: span 4; }
+    .tag-actions > :last-child:nth-child(5n + 3 of :not(.primary)) { grid-column: span 3; }
+    .tag-actions > :last-child:nth-child(5n + 4 of :not(.primary)) { grid-column: span 2; }
 }
 
 .tag-actions > .secondary {
@@ -1142,7 +1225,8 @@ h1:focus {
         grid-template-columns: 1fr 1fr;
     }
 
-    .home .button-stack .big-button.secondary {
+    /* The last button (Settings) fills the rest of its row: the whole row when it starts one. */
+    .home .button-stack > :last-child:nth-child(odd) {
         grid-column: 1 / -1;
     }
 }
@@ -1167,6 +1251,10 @@ h1:focus {
         grid-template-columns: 1fr 1fr;
         gap: 8px;
         margin: 0;
+    }
+
+    .home .button-stack > :last-child:nth-child(odd) {
+        grid-column: 1 / -1;
     }
 
     .home .big-button {

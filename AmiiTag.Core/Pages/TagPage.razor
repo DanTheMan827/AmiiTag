@@ -93,7 +93,17 @@
                     <h3 class="section-title">Tag</h3>
                     <dl class="info-list">
                         <div class="info-row"><dt>Format</dt><dd>@AmiiboImage.Describe(_dump.Format)</dd></div>
-                        <div class="info-row"><dt>UID</dt><dd class="mono">@_dump.UidHex</dd></div>
+                        <div class="info-row @(Keys.HasKeys && CanWrite ? "with-segment" : "")">
+                            <dt>UID</dt>
+                            <dd class="mono">@_dump.UidHex</dd>
+                            @if (Keys.HasKeys && CanWrite)
+                            {
+                                @* Re-encrypts the tag for a new random UID. *@
+                                <button type="button" class="row-segment" title="New random UID" aria-label="New random UID" @onclick="NewUid">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66" /><path d="M20 4v5h-5" /></svg>
+                                </button>
+                            }
+                        </div>
                         @if (IsAmiibo)
                         {
                             <div class="info-row"><dt>Writes</dt><dd>@_dump.WriteCounter</dd></div>
@@ -165,10 +175,6 @@
                         <BigButton OnClick="Emulate" Class="tonal">Emulate</BigButton>
                     }
                     <BigButton OnClick="ShowQr" Class="tonal">Show QR Code</BigButton>
-                    @if (Keys.HasKeys && CanWrite)
-                    {
-                        <BigButton OnClick="NewUid" Class="secondary">New UID</BigButton>
-                    }
                     @if (_dump is AmiiboV3Dump v3)
                     {
                         <BigButton OnClick="LoadLockOn" Class="secondary">@(v3.HasLockOn ? "Replace Lock-on" : "Load Lock-on")</BigButton>
