@@ -101,7 +101,37 @@ public sealed record StoredTag(int Index, string Name, string DisplayName, strin
     /// The device is emulating it in virtual tag mode.
     /// </summary>
     public bool IsVirtual { get; init; }
+
+    /// <summary>
+    /// The device's own ID for the tag, when it addresses tags by ID rather than by name (next-gen Flask firmware).
+    /// </summary>
+    public int? Id { get; init; }
+
+    /// <summary>
+    /// What kind of tag the device stores it as ("215" for NTAG215, "213", "PLUS", "1k", "2k"), when it says.
+    /// </summary>
+    public string? TagType { get; init; }
+
+    /// <summary>
+    /// The folder it's in (<see cref="TagFolder.Id"/>), or 0 for none.
+    /// </summary>
+    public int FolderId { get; init; }
+
+    /// <summary>
+    /// The image chosen for it on the device, if any.
+    /// </summary>
+    public string? Image { get; init; }
+
+    /// <summary>
+    /// Whether it's stored as an NTAG215 (an amiibo-sized dump the app can open).
+    /// </summary>
+    public bool IsNtag215 => TagType is null or "215";
 }
+
+/// <summary>
+/// A folder on a device that groups its stored tags (next-gen Flask firmware).
+/// </summary>
+public sealed record TagFolder(int Id, string Name);
 
 /// <summary>
 /// A device holding a list of named tags rather than fixed slots: tags are added and removed, one is selected for
@@ -135,9 +165,35 @@ public interface ITagListDevice : ITagDevice
 
     Task DeleteTagAsync(StoredTag tag, CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Whether <see cref="MoveTagAsync"/> works: the next-gen Flask firmware can't reorder tags.
+    /// </summary>
+    bool CanReorderTags => true;
+
     Task MoveTagAsync(StoredTag tag, int newIndex, CancellationToken cancellationToken = default);
 
     Task CreateBlankTagAsync(CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// A device that stores amiibo keys so it can generate or re-encrypt tags itself (a Flask).
+/// </summary>
+public interface IKeyStoreTagDevice : ITagDevice
+{
+    /// <summary>
+    /// Whether keys can be uploaded to this device (its firmware build supports it).
+    /// </summary>
+    bool CanUploadKeys { get; }
+
+    /// <summary>
+    /// Whether the device reported having keys, when it says.
+    /// </summary>
+    bool HasKeys { get; }
+
+    /// <summary>
+    /// Uploads key_retail.bin.
+    /// </summary>
+    Task UploadKeysAsync(byte[] keys, CancellationToken cancellationToken = default);
 }
 
 public interface IRenamableTagDevice : ITagDevice

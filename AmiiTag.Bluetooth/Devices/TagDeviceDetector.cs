@@ -108,6 +108,19 @@ public sealed class TagDeviceDetector
             }
 
             driver.Detach();
+
+            // A Flask or Slide may be on the next-gen firmware instead.
+            if (hint is TagDeviceKind.Flask or TagDeviceKind.Slide)
+            {
+                var nextGen = new FlaskNextGenDevice(connection, hint);
+                if (await nextGen.InitializeAsync(cancellationToken))
+                {
+                    return nextGen;
+                }
+
+                nextGen.Detach();
+            }
+
             throw new BleException($"{connection.Device.DisplayName} looks like an {Describe(hint)} but didn't respond like one.");
         }
 
@@ -169,10 +182,12 @@ public sealed class TagDeviceDetector
     /// Asks the Espruino console which app it runs, without calling into it: the Flask app defines <c>tag.getList</c>
     /// (a Flask or a Slide, told apart by <c>screen.getVersion()</c>), the puck firmware (modern protocol) defines
     /// <c>fastMode</c>. Null if the device doesn't answer like an Espruino console.
+    /// The next-gen Flask firmware isn't a console and rejects that question with an <c>ERR:</c> line; it's recognised
+    /// by <c>screen.getVersion()</c> reporting version 10 or later (<see cref="FlaskNextGenDevice"/>).
     /// </summary>
     private async Task<TagDeviceBase?> DetectEspruinoAsync(IBleConnection connection, IProgress<string>? status, CancellationToken cancellationToken)
     {
-        bool flask, puck, slide = false;
+        bool flask = false, puck = false, slide = false, nextGen = false, rejected = false;
         using (var repl = await EspruinoRepl.OpenAsync(connection, cancellationToken))
         {
             if (repl == null)
@@ -184,26 +199,77 @@ public sealed class TagDeviceDetector
             {
                 // Clears what the other probes left on the input line.
                 await repl.ClearInputLineAsync(cancellationToken);
-                var found = await repl.EvaluateAsync(
-                    "{flask:typeof tag!==\"undefined\"&&typeof tag.getList===\"function\",puck:typeof fastMode===\"function\"}",
-                    EspruinoProbeTimeout, cancellationToken);
-                if (found is not { ValueKind: System.Text.Json.JsonValueKind.Object } apps)
+                System.Text.Json.JsonElement? found;
+                try
                 {
-                    return null;
+                    found = await repl.EvaluateAsync(
+                        "{flask:typeof tag!==\"undefined\"&&typeof tag.getList===\"function\",puck:typeof fastMode===\"function\"}",
+                        EspruinoProbeTimeout, cancellationToken);
+                }
+                catch (DeviceCommandException)
+                {
+                    // Not a console: possibly the next-gen Flask firmware, asked below.
+                    found = null;
+                    rejected = true;
                 }
 
-                flask = apps.TryGetProperty("flask", out var f) && f.ValueKind == System.Text.Json.JsonValueKind.True;
-                puck = apps.TryGetProperty("puck", out var p) && p.ValueKind == System.Text.Json.JsonValueKind.True;
-                if (flask && await repl.EvaluateAsync("screen.getVersion()", EspruinoProbeTimeout, cancellationToken) is { ValueKind: System.Text.Json.JsonValueKind.Object } version)
+                if (!rejected)
                 {
-                    // A Slide reports d:"1".
-                    slide = version.TryGetProperty("d", out var d) && d.ToString() == "1";
+                    if (found is not { ValueKind: System.Text.Json.JsonValueKind.Object } apps)
+                    {
+                        return null;
+                    }
+
+                    flask = apps.TryGetProperty("flask", out var f) && f.ValueKind == System.Text.Json.JsonValueKind.True;
+                    puck = apps.TryGetProperty("puck", out var p) && p.ValueKind == System.Text.Json.JsonValueKind.True;
+                }
+
+                if (flask || rejected)
+                {
+                    // Twice: a late ERR line for the probe above would otherwise be taken as this answer.
+                    System.Text.Json.JsonElement? reply = null;
+                    for (var attempt = 0; attempt < 2 && reply == null; attempt++)
+                    {
+                        try
+                        {
+                            reply = await repl.EvaluateAsync("screen.getVersion()", EspruinoProbeTimeout, cancellationToken);
+                        }
+                        catch (DeviceCommandException)
+                        {
+                        }
+                    }
+
+                    if (reply is { ValueKind: System.Text.Json.JsonValueKind.Object } version)
+                    {
+                        // A Slide reports d:"1"; version 10 and later is the next-gen firmware.
+                        slide = FlaskNextGenDevice.IsSlide(version);
+                        nextGen = FlaskNextGenDevice.IsNextGenVersion(version, out _);
+                    }
                 }
             }
             catch (TimeoutException)
             {
                 return null;
             }
+        }
+
+        if (nextGen)
+        {
+            var kind = slide ? TagDeviceKind.Slide : TagDeviceKind.Flask;
+            status?.Report($"Setting up {Describe(kind)}...");
+            var device = new FlaskNextGenDevice(connection, kind);
+            if (await device.InitializeAsync(cancellationToken))
+            {
+                return device;
+            }
+
+            device.Detach();
+            throw new BleException($"{connection.Device.DisplayName} has the next-gen Flask firmware but didn't respond to it.");
+        }
+
+        if (rejected)
+        {
+            throw new BleException($"{connection.Device.DisplayName} rejected the Espruino console commands, and didn't report a Flask firmware version.");
         }
 
         if (flask)

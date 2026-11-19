@@ -824,3 +824,184 @@ public sealed class EspruinoPuckSimulator : EspruinoConsoleSimulator
         }
     }
 }
+
+/// <summary>
+/// A Flask (or Slide) on the next-gen firmware: not an Espruino console, but a fixed set of commands in the same
+/// <c>\x10Bluetooth.println(JSON.stringify(...))</c> framing, answered as flask.run's demo mode does. Anything else
+/// gets <c>ERR: unknown command</c> followed by the command echoed back, as the real one does.
+/// </summary>
+public sealed class FlaskNextGenSimulator : SimulatedUartDevice
+{
+    private readonly StringBuilder _line = new();
+    private int _nextId = 2;
+
+    public FlaskNextGenSimulator(bool slide = false, string name = "") : base(name)
+    {
+        IsSlide = slide;
+    }
+
+    public bool IsSlide { get; }
+
+    public sealed record Tag(int Id, string Name, string Type, string TagId, string Meta, byte[] Data);
+
+    public List<Tag> Tags { get; } =
+    [
+        new(0, "Mario|3zfkle|0", "215", "000000000e5c0502", "0,0,0,1", new byte[540]),
+        new(1, "Card|0|1", "1k", "0000000000000000", "2,0,0,0", new byte[1024]),
+    ];
+
+    public List<(int Id, string Name)> Folders { get; } = [(2, "Cards"), (3, "Spare")];
+
+    public int CurrentId { get; set; }
+
+    /// <summary>
+    /// Every command received, in order (rejected ones too).
+    /// </summary>
+    public List<string> Commands { get; } = [];
+
+    public string? Keys { get; private set; }
+
+    protected override void OnWrite(byte[] data)
+    {
+        foreach (var c in Encoding.Latin1.GetString(data))
+        {
+            if (c != '\n')
+            {
+                _line.Append(c);
+                continue;
+            }
+
+            var line = _line.ToString();
+            _line.Clear();
+            const string start = "\u0010Bluetooth.println(JSON.stringify(";
+            var command = line.StartsWith(start, StringComparison.Ordinal) && line.EndsWith("));", StringComparison.Ordinal)
+                ? line[start.Length..^3]
+                : line;
+            Commands.Add(command);
+            var reply = Handle(command);
+            var text = reply == null ? $"ERR: unknown command\n{command}\n" : reply + "\n";
+            foreach (var chunk in Encoding.Latin1.GetBytes(text).Chunk(20))
+            {
+                Notify(chunk);
+            }
+        }
+    }
+
+    private string? Handle(string command)
+    {
+        System.Text.RegularExpressions.Match match;
+        switch (command)
+        {
+            case "screen.getVersion()":
+                return Json(new { v = 10, d = IsSlide ? 1 : 0, free_pages = 34, total_pages = 39, effective_used_percent = 12.5 });
+            case "process.version":
+                return "\"FO1.0\"";
+            case "Puck.getBatteryPercentage()":
+                return "85";
+            case "tag.getRichList()":
+                return Json(new
+                {
+                    tags = Tags.Select((t, i) => new { id = t.Id, index = i, name = t.Name, type = t.Type, tagId = t.TagId, meta = t.Meta }),
+                    folders = Folders.Select(f => new { id = f.Id, name = f.Name }),
+                });
+            case "tag.get()":
+                return Current();
+            case "tag.createBlank()":
+                Tags.Add(new(_nextId++, $"Blank||{_nextId}", "215", "0000000000000000", "0,0,0,0", new byte[540]));
+                return Memory();
+            case "function deleteAll()":
+                Tags.Clear();
+                return Memory();
+        }
+
+        if ((match = Regex(@"^tag\.setById\((\d+)\)$", command)).Success)
+        {
+            CurrentId = int.Parse(match.Groups[1].Value);
+            return Current();
+        }
+
+        if ((match = Regex(@"^tag\.deleteById\(([\d,]+)\)$", command)).Success)
+        {
+            var ids = match.Groups[1].Value.Split(',').Select(int.Parse).ToHashSet();
+            Tags.RemoveAll(t => ids.Contains(t.Id));
+            return Memory();
+        }
+
+        if ((match = Regex(@"^tag\.rename\(""([^""]+)"", ""([^""]+)""\)$", command)).Success)
+        {
+            var at = Tags.FindIndex(t => t.Name == match.Groups[1].Value);
+            if (at >= 0) Tags[at] = Tags[at] with { Name = match.Groups[2].Value };
+            return Current();
+        }
+
+        if ((match = Regex(@"^tag\.download\(""([^""]+)""\)$", command)).Success)
+        {
+            var tag = Tags.FirstOrDefault(t => t.Name == match.Groups[1].Value);
+            return tag == null ? null : Json(tag.Data.Select(b => (int)b));
+        }
+
+        if ((match = Regex(@"^tag\.uploadWithMeta\(""([^""]+)"",(\d+),(\d+),""([^""]+)"",(\d+),(\d+),(\d+)\)$", command)).Success)
+        {
+            var data = Convert.FromBase64String(match.Groups[4].Value);
+            var tagId = data.Length >= 92 ? Convert.ToHexString(data, 84, 8).ToLowerInvariant() : "0000000000000000";
+            Tags.Add(new(_nextId++, match.Groups[1].Value, data.Length is >= 532 and <= 574 ? "215" : "1k", tagId,
+                $"{match.Groups[5].Value},{match.Groups[7].Value},0,1", data));
+            return Memory();
+        }
+
+        if ((match = Regex(@"^tag\.setImage\((\d+), ""([^""]+)""\)$", command)).Success)
+        {
+            var at = Tags.FindIndex(t => t.Id == int.Parse(match.Groups[1].Value));
+            if (at >= 0)
+            {
+                var meta = Tags[at].Meta.Split(',');
+                meta[1] = match.Groups[2].Value;
+                Tags[at] = Tags[at] with { Meta = string.Join(",", meta) };
+            }
+
+            return Memory();
+        }
+
+        if ((match = Regex(@"^tag\.createFolder\(""([^""]+)""\)$", command)).Success)
+        {
+            Folders.Add((_nextId++, match.Groups[1].Value));
+            return Memory();
+        }
+
+        if ((match = Regex(@"^folder\.remove\((\d+)\)$", command)).Success)
+        {
+            Folders.RemoveAll(f => f.Id == int.Parse(match.Groups[1].Value));
+            return Memory();
+        }
+
+        if ((match = Regex(@"^tag\.move\((\d+), (-?\d+)\)$", command)).Success)
+        {
+            var folder = Folders.Find(f => f.Id == int.Parse(match.Groups[1].Value));
+            Folders.Remove(folder);
+            var after = int.Parse(match.Groups[2].Value);
+            Folders.Insert(after < 0 ? 0 : Folders.FindIndex(f => f.Id == after) + 1, folder);
+            return "{\"success\":true}";
+        }
+
+        if ((match = Regex(@"^key\.add\(""([^""]+)""\)$", command)).Success)
+        {
+            Keys = match.Groups[1].Value;
+            return Memory();
+        }
+
+        return null;
+    }
+
+    private string Current()
+    {
+        var tag = Tags.FirstOrDefault(t => t.Id == CurrentId) ?? Tags.FirstOrDefault();
+        return tag == null ? "{}" : Json(new { name = tag.Name, index = Tags.IndexOf(tag) });
+    }
+
+    private static string Memory() => Json(new { free_pages = 33, total_pages = 39 });
+
+    private static string Json(object value) => System.Text.Json.JsonSerializer.Serialize(value);
+
+    private static System.Text.RegularExpressions.Match Regex(string pattern, string input) =>
+        System.Text.RegularExpressions.Regex.Match(input, pattern);
+}

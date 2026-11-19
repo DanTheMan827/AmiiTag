@@ -10,9 +10,15 @@ namespace AmiiTag.Bluetooth.Devices;
 /// through JavaScript calls on its console (<see cref="EspruinoRepl"/>): <c>tag.getList()</c>, <c>tag.download()</c>,
 /// <c>tag.upload()</c>... Each tag is a 540 byte NTAG215 dump named <c>display name|amiibo tail in base 36|set</c>.
 /// </summary>
-public sealed class FlaskDevice : TagDeviceBase, ITagListDevice, ICommandTagDevice
+/// <remarks>
+/// The next-gen firmware (script version 10 and later) has its own driver, <see cref="FlaskNextGenDevice"/>.
+/// </remarks>
+public sealed class FlaskDevice : TagDeviceBase, ITagListDevice, ICommandTagDevice, IKeyStoreTagDevice
 {
     private const int MaxNameLength = 27;
+
+    // The display name and tail together get at most this many characters, leaving room for the set and numbering.
+    private const int MaxBaseNameLength = 22;
 
     private static readonly TimeSpan TransferTimeout = TimeSpan.FromSeconds(15);
 
@@ -97,10 +103,22 @@ public sealed class FlaskDevice : TagDeviceBase, ITagListDevice, ICommandTagDevi
                 .Where(part => part != null));
             return true;
         }
-        catch (TimeoutException)
+        catch (Exception ex) when (ex is TimeoutException or DeviceCommandException)
         {
+            // A next-gen Flask rejects these calls: it's FlaskNextGenDevice's.
             return false;
         }
+    }
+
+    /// <summary>
+    /// The Flask app reads keys from <c>.ek</c>; the official app only writes it on Espruino 2v16.
+    /// </summary>
+    public bool CanUploadKeys => Kind == TagDeviceKind.Flask && EspruinoVersion == "2v16";
+
+    public async Task UploadKeysAsync(byte[] keys, CancellationToken cancellationToken = default)
+    {
+        await Repl.EvaluateAsync($"require(\"Storage\").write('.ek',atob({EspruinoRepl.Quote(Convert.ToBase64String(keys))}))", TransferTimeout, cancellationToken);
+        HasKeys = true;
     }
 
     public async Task<IReadOnlyList<StoredTag>> GetTagsAsync(CancellationToken cancellationToken = default)
@@ -336,24 +354,29 @@ public sealed class FlaskDevice : TagDeviceBase, ITagListDevice, ICommandTagDevi
     /// The stored name for an upload, built the way the Flask app builds it so its UI and sets recognise the tag:
     /// <c>display name|amiibo tail (bytes 88-91) in base 36|0</c>, at most 27 characters, numbered if it already exists.
     /// </summary>
-    public static string BuildName(TagDump dump, string displayName, IReadOnlyCollection<string> existing)
+    public static string BuildName(TagDump dump, string displayName, IReadOnlyCollection<string> existing) =>
+        BuildName(dump.ToArray(TagDump.DataLength), displayName, existing, MaxNameLength, MaxBaseNameLength);
+
+    /// <summary>
+    /// <see cref="BuildName(TagDump, string, IReadOnlyCollection{string})"/> for any tag data, with the given limits
+    /// (the next-gen firmware allows longer names). Data too short to hold an amiibo ID gets tail 0.
+    /// </summary>
+    internal static string BuildName(byte[] data, string displayName, IReadOnlyCollection<string> existing, int maxLength, int maxBaseLength)
     {
-        var data = dump.ToArray(TagDump.DataLength);
-        var tail = ((uint)data[88] << 24) | ((uint)data[89] << 16) | ((uint)data[90] << 8) | data[91];
+        var tail = data.Length >= 92 ? ((uint)data[88] << 24) | ((uint)data[89] << 16) | ((uint)data[90] << 8) | data[91] : 0;
         var display = SanitizeDisplayName(displayName);
         var tailPart = "|" + ToBase36(tail);
 
-        // The name and tail together get at most 22 characters, leaving room for the set and numbering.
-        if (display.Length + tailPart.Length > 22)
+        if (display.Length + tailPart.Length > maxBaseLength)
         {
-            display = display[..Math.Max(1, 22 - tailPart.Length)];
+            display = display[..Math.Max(1, maxBaseLength - tailPart.Length)];
         }
 
         var baseName = display + tailPart;
-        var name = Fit($"{baseName}|0");
+        var name = Fit($"{baseName}|0", maxLength);
         for (var number = 1; existing.Contains(name); number++)
         {
-            name = Fit($"{number}. {baseName}|0");
+            name = Fit($"{number}. {baseName}|0", maxLength);
         }
 
         return name;
@@ -378,10 +401,10 @@ public sealed class FlaskDevice : TagDeviceBase, ITagListDevice, ICommandTagDevi
         return result.Length == 0 ? "Tag" : result;
     }
 
-    // Shortens the display name so the whole name fits in 27 characters, keeping its "|tail|set" end.
-    private static string Fit(string name)
+    // Shortens the display name so the whole name fits, keeping its "|tail|set" end.
+    internal static string Fit(string name, int maxLength = MaxNameLength)
     {
-        if (name.Length <= MaxNameLength)
+        if (name.Length <= maxLength)
         {
             return name;
         }
@@ -389,14 +412,14 @@ public sealed class FlaskDevice : TagDeviceBase, ITagListDevice, ICommandTagDevi
         var separator = name.IndexOf('|');
         if (separator < 0)
         {
-            return name[..MaxNameLength];
+            return name[..maxLength];
         }
 
         var end = name[separator..];
-        return name[..Math.Max(1, MaxNameLength - end.Length)] + end;
+        return name[..Math.Max(1, maxLength - end.Length)] + end;
     }
 
-    private static string ToBase36(uint value)
+    internal static string ToBase36(uint value)
     {
         const string digits = "0123456789abcdefghijklmnopqrstuvwxyz";
         if (value == 0)

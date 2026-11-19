@@ -388,6 +388,95 @@ public class PixlTests
         Assert.Single(sim.Tags);
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Detection_IdentifiesNextGenFlaskFirmwareByItsVersion(bool slide)
+    {
+        var sim = new FlaskNextGenSimulator(slide);
+        var device = Assert.IsType<FlaskNextGenDevice>(await Detector().ConnectAsync(new Adapter(sim), sim.Device));
+
+        Assert.Equal(slide ? TagDeviceKind.Slide : TagDeviceKind.Flask, device.Kind);
+        Assert.Equal("10", device.ScriptVersion);
+        Assert.Equal("FO1.0", device.FirmwareBuild);
+        Assert.True(device.CanUploadKeys);
+        Assert.Equal(39, device.Memory?.TotalPages);
+
+        // The console probe was rejected, then the version asked for, as flask.run does.
+        Assert.Contains(sim.Commands, c => c.Contains("typeof tag.getList"));
+        Assert.Contains("screen.getVersion()", sim.Commands);
+    }
+
+    [Fact]
+    public async Task NextGenFlask_ManagesTagsFoldersAndKeysWithItsOwnCommands()
+    {
+        var sim = new FlaskNextGenSimulator();
+        var device = Assert.IsType<FlaskNextGenDevice>(await Detector().ConnectAsync(new Adapter(sim), sim.Device));
+        Assert.False(((ITagListDevice)device).CanReorderTags);
+
+        var tags = await device.GetTagsAsync();
+        Assert.Equal(2, tags.Count);
+        Assert.Equal("0e5c0502", tags[0].AmiiboTail);
+        Assert.Equal("1k", tags[1].TagType);
+        Assert.False(tags[1].IsNtag215);
+        Assert.Equal(2, tags[1].FolderId);
+        Assert.Equal(["Cards", "Spare"], device.Folders.Select(f => f.Name));
+
+        // Uploads go into a folder, with the longer next-gen names; later writes are up to 200 bytes.
+        var dump = TestData.Amiibo();
+        sim.Received.Clear();
+        await device.UploadAsync([("Link", dump.ToArray(TagDump.DataLength))], folderId: 2);
+        Assert.Contains(sim.Received, w => w.Length > 20 && w.Length <= 200);
+        var added = (await device.GetTagsAsync()).Single(t => t.DisplayName == "Link");
+        Assert.Equal(2, added.FolderId);
+        Assert.Contains(sim.Commands, c => c.StartsWith($"tag.uploadWithMeta(\"{added.Name}\",1,1,\"", StringComparison.Ordinal) && c.EndsWith("\",2,0,0)", StringComparison.Ordinal));
+        Assert.Equal(dump.ToArray(TagDump.DataLength), (await device.DownloadTagAsync(added)).ToArray(TagDump.DataLength));
+
+        await device.SelectTagAsync(added);
+        Assert.Equal(added.Id, sim.CurrentId);
+
+        await device.RenameTagAsync(added, "Hero");
+        var renamed = (await device.GetTagsAsync()).Single(t => t.Id == added.Id);
+        Assert.Equal("Hero", renamed.DisplayName);
+
+        await device.SetTagImageAsync(renamed, "folder");
+        Assert.Equal("folder", (await device.GetTagsAsync()).Single(t => t.Id == added.Id).Image);
+
+        await device.CreateFolderAsync("Games");
+        await device.GetTagsAsync();
+        var games = device.Folders.Single(f => f.Name == "Games");
+        await device.MoveFolderAsync(games, null);
+        Assert.Equal("Games", sim.Folders[0].Name);
+        await device.DeleteFolderAsync(games);
+        Assert.DoesNotContain(sim.Folders, f => f.Name == "Games");
+
+        await device.DeleteTagsAsync([tags[1], renamed]);
+        Assert.Equal("Mario|3zfkle|0", Assert.Single(sim.Tags).Name);
+
+        await device.UploadKeysAsync([1, 2, 3]);
+        Assert.Equal("AQID", sim.Keys);
+
+        // Every command was one the firmware knows.
+        var start = sim.Commands.IndexOf("screen.getVersion()");
+        Assert.DoesNotContain(sim.Commands.Skip(start), c => c.Contains("typeof", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task NextGenFlask_ReportsRejectedCommandsAsErrors()
+    {
+        var sim = new FlaskNextGenSimulator();
+        var device = Assert.IsType<FlaskNextGenDevice>(await Detector().ConnectAsync(new Adapter(sim), sim.Device));
+        var tag = (await device.GetTagsAsync())[0];
+
+        // The firmware can't reorder tags, and answers what it doesn't know with ERR.
+        await Assert.ThrowsAsync<NotSupportedException>(() => device.MoveTagAsync(tag, 1));
+        var error = await Assert.ThrowsAsync<DeviceCommandException>(() => device.DownloadDataAsync(tag with { Name = "Gone|0|0" }));
+        Assert.StartsWith("ERR:", error.Message);
+
+        // And keeps working afterwards.
+        Assert.Equal(2, (await device.GetTagsAsync()).Count);
+    }
+
     [Fact]
     public async Task Detection_FindsAnUnnamedAmiiboLinkByItsInfoReply()
     {

@@ -8,6 +8,9 @@ namespace AmiiTag.Bluetooth.Devices;
 /// is sent as <c>\x10Bluetooth.println(JSON.stringify(expression))</c> (\x10 stops Espruino echoing the line) and its
 /// reply is the next JSON line. One request at a time. Lines the firmware prints on its own with an <c>event</c> field
 /// (a Flask's button presses...) are raised as <see cref="EventReceived"/> instead of being taken as a reply.
+/// The next-gen Flask firmware (<see cref="FlaskNextGenDevice"/>) isn't Espruino but takes the same framing for its
+/// fixed set of commands, and answers anything else with an <c>ERR:</c> line, which fails the request with a
+/// <see cref="DeviceCommandException"/>.
 /// </summary>
 public sealed class EspruinoRepl : IDisposable
 {
@@ -18,7 +21,10 @@ public sealed class EspruinoRepl : IDisposable
     private static readonly HashSet<string> UnsolicitedEvents =
         ["button", "delete", "refresh", "backupStart", "backup", "deleteAllEnd", "factoryResetEnd", "endFirmware"];
 
-    private const int ChunkSize = 20;
+    /// <summary>
+    /// The default write size: one 20 byte write fits any connection.
+    /// </summary>
+    public const int DefaultChunkSize = 20;
 
     private readonly IBleCharacteristic _write;
     private readonly IBleCharacteristic _notify;
@@ -35,6 +41,11 @@ public sealed class EspruinoRepl : IDisposable
     }
 
     public static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>
+    /// How many bytes of a command go in each write. The next-gen Flask firmware takes 200.
+    /// </summary>
+    public int ChunkSize { get; set; } = DefaultChunkSize;
 
     /// <summary>
     /// A line the firmware printed on its own, with an <c>event</c> field.
@@ -95,9 +106,10 @@ public sealed class EspruinoRepl : IDisposable
             }
 
             var command = Encoding.Latin1.GetBytes($"\u0010Bluetooth.println(JSON.stringify({expression}));\n");
-            for (var offset = 0; offset < command.Length; offset += ChunkSize)
+            var chunkSize = Math.Max(1, ChunkSize);
+            for (var offset = 0; offset < command.Length; offset += chunkSize)
             {
-                await _write.WriteAsync(command[offset..Math.Min(command.Length, offset + ChunkSize)], true, cancellationToken);
+                await _write.WriteAsync(command[offset..Math.Min(command.Length, offset + chunkSize)], true, cancellationToken);
             }
 
             try
@@ -167,6 +179,21 @@ public sealed class EspruinoRepl : IDisposable
             return;
         }
 
+        // The next-gen Flask firmware rejected the command (Espruino itself never prints this). Only at the start of
+        // a line, so JSON that happens to contain the text (a tag name) is still a reply.
+        if (line.StartsWith("ERR:", StringComparison.Ordinal))
+        {
+            TaskCompletionSource<JsonElement?>? failed;
+            lock (_sync)
+            {
+                failed = _pending;
+                _pending = null;
+            }
+
+            failed?.TrySetException(new DeviceCommandException(line));
+            return;
+        }
+
         JsonElement? value;
         if (line.StartsWith("undefined", StringComparison.Ordinal))
         {
@@ -217,3 +244,8 @@ public sealed class EspruinoRepl : IDisposable
         }
     }
 }
+
+/// <summary>
+/// The device answered a command with an error (the next-gen Flask firmware's <c>ERR: unknown command</c>, say).
+/// </summary>
+public sealed class DeviceCommandException(string message) : BleException(message);

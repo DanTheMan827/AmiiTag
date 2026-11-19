@@ -24,6 +24,9 @@
     case FlaskDevice flask when flask.IsConnected:
         <FlaskDeviceControls @key="flask" Device="flask" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
         break;
+    case FlaskNextGenDevice nextGen when nextGen.IsConnected:
+        <FlaskDeviceControls @key="nextGen" Device="nextGen" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
     case AmiLoopDevice loop when loop.IsConnected:
         <AmiLoopDeviceControls @key="loop" Device="loop" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
         break;
