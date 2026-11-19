@@ -1,0 +1,13 @@
+<div class="button-stack">
+    <BigButton OnClick="() => _writer!.WriteFile(null)">Write Tag File</BigButton>
+    <BigButton OnClick="() => _writer!.PickCharacter(null)">Write Character</BigButton>
+    <BigButton OnClick="() => _writer!.WriteBlank()" Class="secondary">Write Blank Tag</BigButton>
+</div>
+<TagDeviceWriter @ref="_writer" Device="Device" OnOpeningChild="OnOpeningChild" />
+
+@code {
+    [Parameter, EditorRequired] public ITagDevice Device { get; set; } = default!;
+    [Parameter] public EventCallback OnOpeningChild { get; set; }
+    private TagDeviceWriter? _writer;
+    public Task DropFiles(IReadOnlyList<PickedFile> files) => _writer!.DroppedOnDevice(files, null);
+}

@@ -1,0 +1,49 @@
+using Microsoft.AspNetCore.Components.WebView;
+using Microsoft.AspNetCore.Components.WebView.Maui;
+using Microsoft.Extensions.FileProviders;
+using AmiiTag.Maui.Services;
+
+namespace AmiiTag.Maui.Pages;
+
+/// <summary>
+/// The BlazorWebView every screen uses. On Windows it serves wwwroot from the folder the app's files are in
+/// (<see cref="AppContext.BaseDirectory"/>): next to the exe normally, or the folder a single file exe extracts its
+/// content to, which MAUI's own lookup (the exe's folder) wouldn't find. The plain files are served, never the .br/.gz
+/// copies a publish can map them to.
+/// </summary>
+public sealed class AppBlazorWebView : BlazorWebView
+{
+    private readonly SyncedFigureImageFiles _figureImages;
+
+    public AppBlazorWebView(SyncedFigureImageFiles figureImages)
+    {
+        _figureImages = figureImages;
+        BlazorWebViewInitialized += OnInitialized;
+    }
+
+    /// <summary>
+    /// Files dropped from other apps, for the pages' drop zones. Windows: WebView2 in WinUI refuses files dropped from
+    /// Explorer (the "not allowed" cursor, no HTML drop events) unless AllowDrop is set, which MAUI doesn't do
+    /// (dotnet/maui#37903). Android: WebView doesn't pass them to the page, so they're forwarded natively.
+    /// </summary>
+    private static void OnInitialized(object? sender, BlazorWebViewInitializedEventArgs e)
+    {
+#if WINDOWS
+        e.WebView.AllowDrop = true;
+#elif ANDROID
+        WebViewDropForwarder.Attach(e.WebView);
+#endif
+    }
+
+    public override IFileProvider CreateFileProvider(string contentRootDir)
+    {
+#if WINDOWS
+        var root = Path.IsPathRooted(contentRootDir) ? contentRootDir : Path.Combine(AppContext.BaseDirectory, contentRootDir);
+        if (Directory.Exists(root) && File.Exists(Path.Combine(root, "index.html")))
+        {
+            return new CompositeFileProvider(_figureImages, new PhysicalFileProvider(root));
+        }
+#endif
+        return new CompositeFileProvider(_figureImages, base.CreateFileProvider(contentRootDir));
+    }
+}

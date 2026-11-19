@@ -1,0 +1,58 @@
+﻿<button type="button" class="btn @(ButtonKindClass(Style)) @(ButtonSizeClass(Size))">@(ChildContent)</button>
+
+@code {
+    public enum ButtonKind {
+        Primary,
+        Secondary,
+        Success,
+        Info,
+        Warning,
+        Danger,
+        Light,
+        Dark,
+        Link
+    }
+
+    public enum ButtonSize
+    {
+        Default,
+        Small,
+        Large
+    }
+
+    private string ButtonKindClass(ButtonKind kind)
+    {
+        switch (kind)
+        {
+            case ButtonKind.Primary: return "btn-primary";
+            case ButtonKind.Secondary: return "btn-secondary";
+            case ButtonKind.Success: return "btn-success";
+            case ButtonKind.Info: return "btn-info";
+            case ButtonKind.Warning: return "btn-warning";
+            case ButtonKind.Danger: return "btn-danger";
+            case ButtonKind.Light: return "btn-light";
+            case ButtonKind.Dark: return "btn-dark";
+            case ButtonKind.Link: return "btn-link";
+            default: return "";
+        }
+    }
+
+    private string ButtonSizeClass(ButtonSize size)
+    {
+        switch (size)
+        {
+            case ButtonSize.Small: return "btn-sm";
+            case ButtonSize.Large: return "btn-lg";
+            default: return "";
+        }
+    }
+
+    [Parameter]
+    public ButtonKind Style { get; set; } = ButtonKind.Primary;
+
+    [Parameter]
+    public ButtonSize Size { get; set; } = ButtonSize.Default;
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+}

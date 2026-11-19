@@ -1,0 +1,77 @@
+@page "/games"
+@implements IDisposable
+@inject GameCatalog Catalog
+@inject IDatabaseContainer DatabaseContainer
+@inject IAppNavigator Navigator
+@inject AppState State
+
+<AppPage Title="Game Info" Wide="true">
+    @if (Catalog.Games.Count == 0)
+    {
+        <p class="empty-state">@(DatabaseContainer.IsLoaded ? "No game information in the database." : "Loading the amiibo database...")</p>
+    }
+    else
+    {
+        <div class="search">
+            <input type="search" placeholder="Search games" @bind="_search" @bind:event="oninput" aria-label="Search games" />
+        </div>
+
+        <div class="chips" role="group" aria-label="Filter by system">
+            <button type="button" class="chip @(_system == null ? "selected" : "")" aria-pressed="@(_system == null)" @onclick="() => _system = null">All</button>
+            @foreach (var system in GameCatalog.Systems)
+            {
+                <button type="button" class="chip @(_system == system ? "selected" : "")" aria-pressed="@(_system == system)" @onclick="() => _system = system">@GameCatalog.SystemName(system)</button>
+            }
+        </div>
+
+        var games = Filtered.ToList();
+        @if (games.Count == 0)
+        {
+            <p class="empty-state small">No games match.</p>
+        }
+        else
+        {
+            <ul class="list grid">
+                @foreach (var game in games)
+                {
+                    <li>
+                        <button type="button" class="list-row" @onclick="() => OpenGame(game)">
+                            <span class="list-row-title">
+                                @game.Name
+                                <span class="list-row-subtitle">
+                                    <span class="system-badge @GameCatalog.SystemToken(game.System)">@game.SystemName</span>
+                                    @game.Amiibo.Count amiibo
+                                </span>
+                            </span>
+                            <span class="chevron" aria-hidden="true">&#x203A;</span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+    }
+</AppPage>
+
+@code {
+    private string _search = string.Empty;
+    private SystemKind? _system;
+
+    private IEnumerable<GameEntry> Filtered => Catalog.Games
+        .Where(g => _system == null || g.System == _system)
+        .Where(g => string.IsNullOrWhiteSpace(_search) || g.Name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        DatabaseContainer.DataChanged += OnDataChanged;
+        if (!DatabaseContainer.IsLoaded)
+        {
+            await State.EnsureStartedAsync();
+        }
+    }
+
+    private void OnDataChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private Task OpenGame(GameEntry game) => Navigator.NavigateAsync(AppRoutes.Game(game.Key, game.Name));
+
+    public void Dispose() => DatabaseContainer.DataChanged -= OnDataChanged;
+}

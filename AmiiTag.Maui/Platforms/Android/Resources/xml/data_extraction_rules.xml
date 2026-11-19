@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ (android:dataExtractionRules): the amiibo API data is re-downloaded, so it isn't backed up or transferred. -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="file" path="Database/" />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="file" path="Database/" />
+    </device-transfer>
+</data-extraction-rules>

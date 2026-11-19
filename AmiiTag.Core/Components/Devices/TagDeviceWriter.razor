@@ -1,0 +1,123 @@
+@inject TagActions Actions
+@inject AmiiboLookup Lookup
+@inject IDialogService Dialogs
+@inject IAppNavigator Navigator
+@inject IFileService Files
+
+<FigurePicker Open="_pickerOpen"
+              Title="@(_pickerSlot is int s ? $"Write to Slot {s + 1}" : "Write Character")"
+              Filter="IsNtag215Figure" OnPicked="WriteCharacter" OnCancelled="() => _pickerOpen = false" />
+
+@code {
+    [Parameter, EditorRequired] public ITagDevice Device { get; set; } = default!;
+    [Parameter] public EventCallback OnOpeningChild { get; set; }
+    [Parameter] public EventCallback<int?> OnWritten { get; set; }
+    private bool _pickerOpen;
+    private int? _pickerSlot;
+
+    public async Task WriteFile(int? slot)
+    {
+        var file = await Files.PickFileAsync("Write Tag", TagActions.TagFileExtensions);
+        if (file == null)
+        {
+            return;
+        }
+
+        if (!TagDump.TryCreate(file.Data, out var dump) || dump == null)
+        {
+            await Dialogs.AlertAsync("Invalid file", $"{file.Name} isn't an NTAG215 dump.");
+            return;
+        }
+
+        await WriteDump(dump, slot);
+    }
+
+    /// <summary>
+    /// A dump dropped on the device (or on a slot) is written there, after a confirmation naming what it is.
+    /// </summary>
+    public async Task DroppedOnDevice(IReadOnlyList<PickedFile> files, int? slot)
+    {
+        if (files.Count == 0) return;
+        var file = files[0];
+        if (!AmiiboImage.TryParse(file.Data, out var image) || image == null)
+        {
+            await Dialogs.AlertAsync("Not an amiibo", $"{file.Name} isn't an amiibo dump ({file.Data.Length} bytes).");
+            return;
+        }
+
+        if (image is not TagDump dump)
+        {
+            await Dialogs.AlertAsync("Can't write this figure", $"{file.Name} is a v3 amiibo, which {Device.Name} can't hold.");
+            return;
+        }
+
+        var target = slot is int s ? $"slot {s + 1}" : Device.Name;
+        var more = files.Count > 1 ? " Only the first dropped file is written." : string.Empty;
+        if (await Dialogs.ConfirmAsync($"Write to {target}?", $"{Lookup.GetDisplayName(dump)} ({file.Name}) replaces what's there.{more}", "Write", "Cancel"))
+        {
+            await WriteDump(dump, slot);
+        }
+    }
+
+    public Task WriteBlank() => WriteDump(TagDump.Blank(), null);
+
+    // Pucks and emulators hold NTAG215 images, so v3 (NTAG I²C) figures aren't offered.
+    private static bool IsNtag215Figure(AmiiboFigure figure) => figure.Id.Id.EndsWith("02", StringComparison.Ordinal);
+
+    public Task PickCharacter(int? slot)
+    {
+        _pickerSlot = slot;
+        _pickerOpen = true;
+        StateHasChanged();
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Generates a tag for the chosen character (like opening it from the library) and writes it to the device.
+    /// </summary>
+    private async Task WriteCharacter(AmiiboFigure figure)
+    {
+        _pickerOpen = false;
+        var slot = _pickerSlot;
+
+        IAmiiboImage? image;
+        try
+        {
+            image = await Actions.CreateFromFigureAsync(figure);
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.AlertAsync("Couldn't create the tag", ex.Message);
+            return;
+        }
+
+        if (image == null)
+        {
+            if (await Dialogs.ConfirmAsync("Keys needed", "Generating a tag needs both amiibo keys. Load them in Settings?", "Settings", "Cancel"))
+            {
+                await OnOpeningChild.InvokeAsync();
+                await Navigator.NavigateAsync(AppRoutes.Settings());
+            }
+
+            return;
+        }
+
+        if (image is not TagDump dump)
+        {
+            await Dialogs.AlertAsync("Can't write this figure", "v3 amiibo can't be written to a puck.");
+            return;
+        }
+
+        await WriteDump(dump, slot);
+    }
+
+    private async Task WriteDump(TagDump dump, int? slot)
+    {
+        var ok = await Actions.WithProgressAsync($"Writing {Device.Name}", async (progress, ct) =>
+        {
+            await Device.WriteTagAsync(dump, slot, progress, ct);
+            return true;
+        });
+        if (ok) await OnWritten.InvokeAsync(slot);
+    }
+}

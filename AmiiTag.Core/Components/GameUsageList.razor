@@ -1,0 +1,61 @@
+@* The games a figure works with, grouped by system, each linking to the game's page. *@
+@inject GameCatalog Catalog
+@inject IAppNavigator Navigator
+
+@if (_usage.Count > 0)
+{
+    <section class="game-usage" aria-label="Game usage">
+        <h2 class="section-title">Game usage (@_usage.Count @(_usage.Count == 1 ? "game" : "games"))</h2>
+
+        @foreach (var group in _usage.GroupBy(u => u.Game.System))
+        {
+            <details class="usage-system" open>
+                <summary>
+                    <span class="system-badge @GameCatalog.SystemToken(group.Key)">@GameCatalog.SystemName(group.Key)</span>
+                    <span class="usage-count">@group.Count()</span>
+                </summary>
+                <ul class="usage-list">
+                    @foreach (var (game, usage) in group)
+                    {
+                        <li>
+                            <button type="button" class="usage-game" @onclick="() => OpenGame(game)">
+                                <span class="usage-game-name">@game.Name</span>
+                                <span class="chevron" aria-hidden="true">&#x203A;</span>
+                            </button>
+                            @foreach (var item in usage)
+                            {
+                                <div class="usage-line">
+                                    @item.Description
+                                    @if (item.Writable)
+                                    {
+                                        <span class="badge">Saves data</span>
+                                    }
+                                </div>
+                            }
+                        </li>
+                    }
+                </ul>
+            </details>
+        }
+    </section>
+}
+
+@code {
+    private IReadOnlyList<(GameEntry Game, IReadOnlyList<GameUsage> Usage)> _usage = [];
+    private AmiiboFigure? _loadedFor;
+
+    [Parameter] public AmiiboFigure? Figure { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_loadedFor, Figure))
+        {
+            return;
+        }
+
+        _loadedFor = Figure;
+        _usage = Figure == null ? [] : Catalog.ForFigure(Figure);
+    }
+
+    private Task OpenGame(GameEntry game) => Navigator.NavigateAsync(AppRoutes.Game(game.Key, game.Name));
+}

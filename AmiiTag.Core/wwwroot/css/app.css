@@ -1,0 +1,2244 @@
+/*
+ * AmiiTag shared styles. Used by both the MAUI BlazorWebViews and the WebAssembly app.
+ * Look follows the Swift app (system font and blue, grouped sheets, black home screen), with soft depth: hairline
+ * bordered cards, two-layer shadows, faint gradients, and a lit stage for figures.
+ */
+
+:root {
+    color-scheme: light dark;
+    --bg: #ffffff;
+    --bg-glow: rgba(0, 122, 255, 0.07);
+    --sheet-bg: #f2f2f7;
+    --sheet-top: #f8f9fc;
+    --card-bg: #ffffff;
+    --card-border: rgba(15, 23, 42, 0.07);
+    --text: #0b0b0f;
+    --text-secondary: #6c6c72;
+    --text-tertiary: #9a9aa1;
+    --separator: rgba(60, 60, 67, 0.16);
+    --accent: #007aff;
+    --accent-top: #2b8fff;
+    --accent-pressed: #0062cc;
+    --accent-text: #ffffff;
+    --accent-tint: rgba(0, 122, 255, 0.1);
+    --accent-tint-pressed: rgba(0, 122, 255, 0.18);
+    --accent-glow: rgba(0, 122, 255, 0.28);
+    --secondary-button: #ffffff;
+    --secondary-button-text: #007aff;
+    --destructive: #ff3b30;
+    --success: #248a3d;
+    --success-tint: rgba(52, 199, 89, 0.14);
+    --danger-tint: rgba(255, 59, 48, 0.12);
+    --warning-tint: rgba(255, 159, 10, 0.12);
+    --neutral-tint: rgba(120, 120, 128, 0.12);
+    --dialog-bg: rgba(246, 246, 250, 0.94);
+    --backdrop: rgba(0, 0, 0, 0.35);
+    --placeholder: #e9e9ef;
+    --row-hover: rgba(120, 120, 128, 0.08);
+    --row-pressed: rgba(120, 120, 128, 0.16);
+    --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.05), 0 1px 3px rgba(15, 23, 42, 0.04);
+    --shadow-md: 0 2px 4px rgba(15, 23, 42, 0.05), 0 8px 20px rgba(15, 23, 42, 0.08);
+    --shadow-lg: 0 12px 40px rgba(15, 23, 42, 0.18), 0 2px 8px rgba(15, 23, 42, 0.08);
+    --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+    --stage-light: #ffffff;
+    --stage-mid: #eef1f7;
+    --stage-edge: #dfe4ee;
+    --stage-floor: rgba(15, 23, 42, 0.28);
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --radius-sm: 8px;
+    --radius: 12px;
+    --radius-lg: 18px;
+    --safe-top: env(safe-area-inset-top, 0px);
+    --safe-bottom: env(safe-area-inset-bottom, 0px);
+    --gutter: 16px;
+    --max-width: 640px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 15px;
+    line-height: 1.4;
+}
+
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --bg: #000000;
+        --bg-glow: rgba(10, 132, 255, 0.18);
+        --sheet-bg: #000000;
+        --sheet-top: #0d0f14;
+        --card-bg: #1c1c1e;
+        --card-border: rgba(255, 255, 255, 0.07);
+        --text: #f5f5f7;
+        --text-secondary: #a1a1a8;
+        --text-tertiary: #6e6e75;
+        --separator: rgba(84, 84, 88, 0.6);
+        --accent: #0a84ff;
+        --accent-top: #3398ff;
+        --accent-pressed: #0070dd;
+        --accent-tint: rgba(10, 132, 255, 0.18);
+        --accent-tint-pressed: rgba(10, 132, 255, 0.28);
+        --accent-glow: rgba(10, 132, 255, 0.3);
+        --secondary-button: #1c1c1e;
+        --secondary-button-text: #3d9bff;
+        --destructive: #ff453a;
+        --success: #30d158;
+        --success-tint: rgba(48, 209, 88, 0.16);
+        --danger-tint: rgba(255, 69, 58, 0.16);
+        --warning-tint: rgba(255, 159, 10, 0.14);
+        --neutral-tint: rgba(120, 120, 128, 0.22);
+        --dialog-bg: rgba(30, 30, 32, 0.94);
+        --backdrop: rgba(0, 0, 0, 0.55);
+        --placeholder: #2c2c2e;
+        --row-hover: rgba(255, 255, 255, 0.05);
+        --row-pressed: rgba(255, 255, 255, 0.1);
+        --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+        --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+        --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+        --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        --stage-light: #2e2f35;
+        --stage-mid: #18191d;
+        --stage-edge: #0c0c0e;
+        --stage-floor: rgba(0, 0, 0, 0.6);
+    }
+}
+
+:root[data-theme="dark"] {
+    --bg: #000000;
+    --bg-glow: rgba(10, 132, 255, 0.18);
+    --sheet-bg: #000000;
+    --sheet-top: #0d0f14;
+    --card-bg: #1c1c1e;
+    --card-border: rgba(255, 255, 255, 0.07);
+    --text: #f5f5f7;
+    --text-secondary: #a1a1a8;
+    --text-tertiary: #6e6e75;
+    --separator: rgba(84, 84, 88, 0.6);
+    --accent: #0a84ff;
+    --accent-top: #3398ff;
+    --accent-pressed: #0070dd;
+    --accent-tint: rgba(10, 132, 255, 0.18);
+    --accent-tint-pressed: rgba(10, 132, 255, 0.28);
+    --accent-glow: rgba(10, 132, 255, 0.3);
+    --secondary-button: #1c1c1e;
+    --secondary-button-text: #3d9bff;
+    --destructive: #ff453a;
+    --success: #30d158;
+    --success-tint: rgba(48, 209, 88, 0.16);
+    --danger-tint: rgba(255, 69, 58, 0.16);
+    --warning-tint: rgba(255, 159, 10, 0.14);
+    --neutral-tint: rgba(120, 120, 128, 0.22);
+    --dialog-bg: rgba(30, 30, 32, 0.94);
+    --backdrop: rgba(0, 0, 0, 0.55);
+    --placeholder: #2c2c2e;
+    --row-hover: rgba(255, 255, 255, 0.05);
+    --row-pressed: rgba(255, 255, 255, 0.1);
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --shadow-md: 0 2px 4px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.4);
+    --highlight: inset 0 1px 0 rgba(255, 255, 255, 0.14);
+    --stage-light: #2e2f35;
+    --stage-mid: #18191d;
+    --stage-edge: #0c0c0e;
+    --stage-floor: rgba(0, 0, 0, 0.6);
+}
+
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-font-smoothing: antialiased;
+}
+
+body {
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-x: hidden;
+}
+
+button {
+    font: inherit;
+    color: inherit;
+}
+
+h1:focus {
+    outline: none;
+}
+
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------ Pages */
+
+.app-page {
+    --header-bg: var(--bg);
+    min-height: 100vh;
+    min-height: 100dvh;
+    background: var(--bg);
+}
+
+.app-page.sheet {
+    --header-bg: var(--sheet-bg);
+    background: linear-gradient(180deg, var(--sheet-top) 0, var(--sheet-bg) 360px) var(--sheet-bg);
+}
+
+.page-header {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 8px;
+    padding: calc(var(--safe-top) + 10px) var(--gutter) 10px;
+    background: var(--header-bg);
+    background: color-mix(in srgb, var(--header-bg) 82%, transparent);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 0.5px solid var(--separator);
+}
+
+.page-header-side {
+    display: flex;
+    min-width: 0;
+}
+
+.page-header-side.end {
+    justify-content: flex-end;
+}
+
+.page-title {
+    margin: 0;
+    font-size: 17px;
+    font-weight: 600;
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60vw;
+}
+
+.page-actions {
+    display: flex;
+    justify-content: flex-end;
+    padding: 8px var(--gutter) 0;
+}
+
+.page-content {
+    width: 100%;
+    max-width: var(--max-width);
+    margin: 0 auto;
+    padding: 16px var(--gutter) calc(var(--safe-bottom) + 28px);
+}
+
+.link-button {
+    border: 0;
+    background: none;
+    color: var(--accent);
+    font-size: 16px;
+    padding: 6px 0;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.section-title {
+    margin: 22px 4px 8px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.section-title .list-row-subtitle {
+    margin: 0;
+    font-weight: 400;
+}
+
+.empty-state {
+    margin: 48px 8px;
+    text-align: center;
+    color: var(--text-secondary);
+    font-size: 15px;
+}
+
+.empty-state.small {
+    margin: 16px 8px;
+    font-size: 14px;
+}
+
+.notice {
+    margin: 12px 0;
+    padding: 10px 14px;
+    border-radius: var(--radius);
+    background: var(--neutral-tint);
+    color: var(--text-secondary);
+    font-size: 14px;
+    text-align: center;
+}
+
+.footnote {
+    margin: 32px 4px 0;
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-align: center;
+}
+
+.dimmed {
+    opacity: 0.5;
+}
+
+.mono {
+    font-variant-numeric: tabular-nums;
+    word-break: break-all;
+}
+
+/* ------------------------------------------------------------------ Home */
+
+.app-page.home {
+    background: radial-gradient(120% 60% at 50% -12%, var(--bg-glow), transparent 62%) var(--bg);
+}
+
+.home .page-content {
+    padding-top: calc(var(--safe-top) + 48px);
+}
+
+.logo-button {
+    display: block;
+    width: 100%;
+    padding: 0;
+    margin: 0 0 20px;
+    border: 0;
+    background: none;
+    cursor: pointer;
+}
+
+.home-logo {
+    display: block;
+    width: 100%;
+    height: auto;
+    filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.12));
+}
+
+/* ------------------------------------------------------------------ Buttons */
+
+.button-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.button-stack.compact {
+    gap: 8px;
+}
+
+/* A list straight after buttons (no section title between them). */
+.button-stack + .list {
+    margin-top: 16px;
+}
+
+/* Primary: a filled accent with a faint top light. */
+.big-button {
+    display: block;
+    width: 100%;
+    min-height: 50px;
+    padding: 12px 16px;
+    border: 0;
+    border-radius: var(--radius);
+    background: linear-gradient(180deg, var(--accent-top), var(--accent));
+    color: var(--accent-text);
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    box-shadow: var(--highlight), 0 1px 2px rgba(0, 0, 0, 0.12), 0 4px 14px var(--accent-glow);
+    cursor: pointer;
+    transition: filter 0.15s, box-shadow 0.15s, transform 0.1s;
+}
+
+.big-button:active:not(:disabled) {
+    background: var(--accent-pressed);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+    transform: scale(0.99);
+}
+
+.big-button:disabled {
+    opacity: 0.45;
+    cursor: default;
+    box-shadow: none;
+}
+
+/* Tonal: accent text on an accent tint, for actions next to a primary one. */
+.big-button.tonal {
+    background: var(--accent-tint);
+    color: var(--accent);
+    box-shadow: none;
+}
+
+.big-button.tonal:active:not(:disabled) {
+    background: var(--accent-tint-pressed);
+}
+
+/* Secondary: a quiet card. */
+.big-button.secondary {
+    background: var(--secondary-button);
+    color: var(--secondary-button-text);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+}
+
+.big-button.secondary:active:not(:disabled) {
+    background: var(--row-pressed);
+}
+
+.big-button.destructive {
+    background: var(--secondary-button);
+    color: var(--destructive);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+}
+
+.compact .big-button {
+    min-height: 44px;
+    font-size: 15px;
+}
+
+.button-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 12px;
+}
+
+.pill-button {
+    border: 0;
+    border-radius: 999px;
+    padding: 7px 15px;
+    background: linear-gradient(180deg, var(--accent-top), var(--accent));
+    color: var(--accent-text);
+    font-size: 14px;
+    font-weight: 600;
+    box-shadow: var(--highlight), 0 1px 2px rgba(0, 0, 0, 0.12);
+    cursor: pointer;
+}
+
+.pill-button.destructive {
+    background: var(--secondary-button);
+    color: var(--destructive);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+}
+
+/* ------------------------------------------------------------------ Lists */
+
+.search input {
+    width: 100%;
+    padding: 9px 12px;
+    margin-bottom: 10px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--card-bg);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+    color: var(--text);
+    font-size: 15px;
+}
+
+.search input:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-tint), inset 0 0 0 1px var(--accent);
+}
+
+/* Phones: an inset grouped card. */
+.list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+    overflow: hidden;
+}
+
+.list > li + li {
+    border-top: 0.5px solid var(--separator);
+}
+
+.list-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    min-height: 52px;
+    padding: 10px 14px;
+    border: 0;
+    background: none;
+    text-align: left;
+    font-size: 16px;
+    line-height: 1.3;
+    cursor: pointer;
+    transition: background-color 120ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.list-row:active {
+    background: var(--row-pressed);
+}
+
+.list-row:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.list-row.with-image {
+    min-height: 80px;
+}
+
+.list-row-title {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.list-row-subtitle {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-top: 2px;
+}
+
+.list-row-image {
+    flex: none;
+    width: 56px;
+    height: 64px;
+    object-fit: contain;
+    filter: drop-shadow(0 3px 4px rgba(0, 0, 0, 0.16));
+}
+
+.chevron {
+    color: var(--text-tertiary);
+    font-size: 20px;
+    line-height: 1;
+}
+
+.list-row-split {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.list-row-split .link-button {
+    font-size: 14px;
+    padding-right: 4px;
+}
+
+.image-placeholder {
+    background: var(--placeholder);
+    border-radius: var(--radius-sm);
+}
+
+/* ------------------------------------------------------------------ Tag info */
+
+.tag-info {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+}
+
+/* The figure on a lit stage, like a display case. */
+.tag-stage {
+    position: relative;
+    display: grid;
+    place-items: center;
+    width: min(100%, 380px);
+    aspect-ratio: 1 / 0.92;
+    margin: 4px auto 18px;
+    border-radius: var(--radius-lg);
+    background:
+        radial-gradient(70% 62% at 50% 38%, var(--stage-light) 0%, var(--stage-mid) 62%, var(--stage-edge) 100%);
+    box-shadow: var(--shadow-md), inset 0 0 0 1px var(--card-border), inset 0 1px 0 rgba(255, 255, 255, 0.3);
+    overflow: hidden;
+}
+
+/* A soft floor shadow under the figure's base. */
+.tag-stage::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    bottom: 8%;
+    width: 50%;
+    height: 8%;
+    transform: translateX(-50%);
+    border-radius: 50%;
+    background: radial-gradient(closest-side, var(--stage-floor), transparent);
+    pointer-events: none;
+}
+
+.tag-image {
+    position: absolute;
+    z-index: 1;
+    inset: 7% 9% 11%;
+    display: block;
+    width: 82%;
+    height: 82%;
+    object-fit: contain;
+    filter: drop-shadow(0 10px 12px rgba(0, 0, 0, 0.22));
+}
+
+.tag-stage .image-placeholder {
+    width: 46%;
+    height: 62%;
+    border-radius: var(--radius);
+    filter: none;
+    background: linear-gradient(180deg, var(--placeholder), transparent);
+    opacity: 0.8;
+}
+
+.tag-heading {
+    margin: 0 0 14px;
+    text-align: center;
+}
+
+.tag-name {
+    margin: 0;
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: -0.02em;
+    overflow-wrap: anywhere;
+}
+
+.tag-subtitle {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+.status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 10px;
+    padding: 4px 11px 4px 9px;
+    border-radius: 999px;
+    background: var(--neutral-tint);
+    color: var(--text-secondary);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.status-pill::before {
+    content: "";
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.status-pill.valid {
+    background: var(--success-tint);
+    color: var(--success);
+}
+
+.status-pill.corrupt,
+.status-pill.notamiibo {
+    background: var(--danger-tint);
+    color: var(--destructive);
+}
+
+/* Grouped label/value rows. */
+.info-group {
+    margin: 0 0 14px;
+}
+
+.info-group > .section-title {
+    margin-top: 0;
+}
+
+.info-list {
+    margin: 0;
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+    overflow: hidden;
+}
+
+.info-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 10px 14px;
+    font-size: 15px;
+}
+
+.info-row + .info-row {
+    border-top: 0.5px solid var(--separator);
+}
+
+.info-row dt {
+    flex: none;
+    color: var(--text-secondary);
+}
+
+.info-row dd {
+    margin: 0;
+    min-width: 0;
+    text-align: right;
+    overflow-wrap: anywhere;
+}
+
+.info-row dd.mono {
+    font-family: var(--mono);
+    font-size: 13.5px;
+    letter-spacing: 0.02em;
+}
+
+/* A row with an action segment on its right edge (the UID's "new random UID"): a full-height button set off by a
+   separator, like a segmented control's last segment. */
+.info-row.with-segment {
+    align-items: stretch;
+    padding-right: 0;
+}
+
+.info-row.with-segment dt,
+.info-row.with-segment dd {
+    align-self: center;
+}
+
+.info-row.with-segment dd {
+    margin-left: auto;
+}
+
+.row-segment {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    margin: -10px 0;
+    padding: 0;
+    border: 0;
+    border-left: 0.5px solid var(--separator);
+    background: none;
+    color: var(--accent);
+    cursor: pointer;
+}
+
+.row-segment svg {
+    width: 18px;
+    height: 18px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.row-segment:hover {
+    background: rgba(127, 127, 127, 0.12);
+}
+
+.row-segment:active {
+    background: rgba(127, 127, 127, 0.2);
+}
+
+.row-segment:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.validity.valid {
+    color: var(--success);
+}
+
+.validity.corrupt,
+.validity.notamiibo {
+    color: var(--destructive);
+}
+
+.validity.blank,
+.validity.unverified {
+    color: var(--text-secondary);
+}
+
+.validation-problems {
+    margin: 0 0 14px;
+    padding: 10px 14px 10px 32px;
+    border-radius: var(--radius);
+    background: var(--warning-tint);
+    color: var(--text);
+    font-size: 14px;
+}
+
+.validation-problems li + li {
+    margin-top: 4px;
+}
+
+.tag-actions {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr));
+    gap: 10px;
+    margin-top: 4px;
+}
+
+.tag-actions > .primary {
+    grid-column: 1 / -1;
+}
+
+/* The last button fills the rest of its row (the whole row when it starts one). The grid makes as many 170px columns
+   as fit, which CSS can't count, so the container's width says how many there are: floor((width + 10) / 180). Full-row
+   (.primary) buttons come first and are left out of the count. */
+.tag-actions {
+    container-type: inline-size;
+}
+
+@container (min-width: 350px) and (max-width: 529.98px) {
+    .tag-actions > :last-child:nth-child(2n + 1 of :not(.primary)) { grid-column: span 2; }
+}
+
+@container (min-width: 530px) and (max-width: 709.98px) {
+    .tag-actions > :last-child:nth-child(3n + 1 of :not(.primary)) { grid-column: span 3; }
+    .tag-actions > :last-child:nth-child(3n + 2 of :not(.primary)) { grid-column: span 2; }
+}
+
+@container (min-width: 710px) and (max-width: 889.98px) {
+    .tag-actions > :last-child:nth-child(4n + 1 of :not(.primary)) { grid-column: span 4; }
+    .tag-actions > :last-child:nth-child(4n + 2 of :not(.primary)) { grid-column: span 3; }
+    .tag-actions > :last-child:nth-child(4n + 3 of :not(.primary)) { grid-column: span 2; }
+}
+
+@container (min-width: 890px) {
+    .tag-actions > :last-child:nth-child(5n + 1 of :not(.primary)) { grid-column: span 5; }
+    .tag-actions > :last-child:nth-child(5n + 2 of :not(.primary)) { grid-column: span 4; }
+    .tag-actions > :last-child:nth-child(5n + 3 of :not(.primary)) { grid-column: span 3; }
+    .tag-actions > :last-child:nth-child(5n + 4 of :not(.primary)) { grid-column: span 2; }
+}
+
+.tag-actions > .secondary {
+    min-height: 44px;
+    font-size: 15px;
+}
+
+/* Older detail lists (kept for other screens). */
+.details {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 6px 14px;
+    margin: 0 0 12px;
+    font-size: 15px;
+}
+
+.details dt {
+    color: var(--text-secondary);
+}
+
+.details dd {
+    margin: 0;
+    min-width: 0;
+}
+
+.device-summary {
+    margin: 0 4px 12px;
+    color: var(--text-secondary);
+    font-size: 14px;
+}
+
+/* ------------------------------------------------------------------ QR */
+
+.qr {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.qr-image {
+    width: 100%;
+    height: auto;
+    image-rendering: pixelated;
+    background: #fff;
+    border-radius: var(--radius);
+    padding: 12px;
+    box-shadow: var(--shadow-md);
+}
+
+/* ------------------------------------------------------------------ Settings */
+
+.card {
+    background: var(--card-bg);
+    border-radius: var(--radius);
+    padding: 12px 16px 14px;
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+}
+
+.card + .card {
+    margin-top: 14px;
+}
+
+.card p {
+    margin: 4px 0;
+}
+
+.status {
+    color: var(--text-secondary);
+}
+
+.status.ok {
+    color: var(--success);
+}
+
+.toggle-row, .radio-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 9px 0;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.toggle-row input, .radio-row input {
+    margin-top: 2px;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--accent);
+    flex: none;
+}
+
+.radio-row span {
+    display: flex;
+    flex-direction: column;
+}
+
+.field {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin-top: 8px;
+}
+
+.field label {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+.field select {
+    padding: 9px 10px;
+    border-radius: var(--radius-sm);
+    border: 0;
+    box-shadow: inset 0 0 0 1px var(--separator);
+    background: var(--sheet-bg);
+    color: var(--text);
+    font-size: 15px;
+}
+
+/* ------------------------------------------------------------------ Dialogs (web) */
+
+.dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    background: var(--backdrop);
+    animation: fade-in 0.15s ease-out;
+}
+
+.dialog {
+    width: min(100%, 320px);
+    border-radius: 16px;
+    background: var(--dialog-bg);
+    -webkit-backdrop-filter: blur(24px) saturate(180%);
+    backdrop-filter: blur(24px) saturate(180%);
+    overflow: hidden;
+    box-shadow: var(--shadow-lg), inset 0 0 0 1px var(--card-border);
+    animation: dialog-in 0.18s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+
+@keyframes dialog-in {
+    from {
+        opacity: 0;
+        transform: scale(1.04);
+    }
+}
+
+.dialog.action-sheet {
+    width: min(100%, 420px);
+}
+
+/* Character picker: a tall sheet with a search box and a scrolling list. */
+.dialog.picker {
+    display: flex;
+    flex-direction: column;
+    width: min(100%, 520px);
+    height: min(80vh, 720px);
+    text-align: left;
+}
+
+.picker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 16px 8px;
+}
+
+.picker-search {
+    padding: 0 16px;
+}
+
+.picker-list {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 8px 8px;
+}
+
+/* Inside the picker the dialog is the card. */
+.picker-list .list {
+    background: none;
+    box-shadow: none;
+    border-radius: 0;
+}
+
+.list-row.with-image.compact {
+    min-height: 64px;
+    padding: 6px 8px;
+    font-size: 15px;
+}
+
+.list-row.with-image.compact .list-row-image {
+    width: 44px;
+    height: 48px;
+}
+
+@media (max-width: 560px) {
+    .dialog-backdrop:has(.dialog.picker) {
+        align-items: flex-end;
+        padding: 0;
+    }
+
+    .dialog.picker {
+        width: 100%;
+        height: 88vh;
+        border-radius: 16px 16px 0 0;
+        padding-bottom: var(--safe-bottom);
+    }
+}
+
+.dialog-body {
+    padding: 20px 16px 16px;
+    text-align: center;
+}
+
+.dialog-title {
+    font-size: 17px;
+    font-weight: 600;
+}
+
+.dialog-message {
+    margin-top: 6px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    white-space: pre-line;
+    word-break: break-word;
+}
+
+.dialog-input {
+    width: 100%;
+    margin-top: 12px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    border: 0;
+    box-shadow: inset 0 0 0 1px var(--separator);
+    background: var(--card-bg);
+    color: var(--text);
+    font-size: 15px;
+}
+
+.dialog-progress {
+    width: 100%;
+    margin-top: 14px;
+    accent-color: var(--accent);
+}
+
+.dialog-options {
+    display: flex;
+    flex-direction: column;
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.dialog-option, .dialog-button {
+    flex: 1;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 0;
+    border-top: 0.5px solid var(--separator);
+    background: none;
+    color: var(--accent);
+    font-size: 16px;
+    cursor: pointer;
+}
+
+.dialog-buttons {
+    display: flex;
+}
+
+.dialog-buttons .dialog-button + .dialog-button {
+    border-left: 0.5px solid var(--separator);
+}
+
+.dialog-button.primary {
+    font-weight: 600;
+}
+
+.spinner {
+    width: 24px;
+    height: 24px;
+    margin: 14px auto 0;
+    border: 3px solid var(--separator);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.spinner.small {
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin: 0;
+    border-width: 2px;
+}
+
+@keyframes spin {
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes fade-in {
+    from {
+        opacity: 0;
+    }
+}
+
+/* ------------------------------------------------------------------ Blazor plumbing */
+
+#blazor-error-ui {
+    background: #ffd60a;
+    color: #000;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 2000;
+}
+
+#blazor-error-ui .dismiss {
+    cursor: pointer;
+    position: absolute;
+    right: 0.75rem;
+    top: 0.5rem;
+}
+
+.loading-progress {
+    position: relative;
+    display: block;
+    width: 8rem;
+    height: 8rem;
+    margin: 20vh auto 1rem auto;
+}
+
+.loading-progress circle {
+    fill: none;
+    stroke: var(--placeholder);
+    stroke-width: 0.6rem;
+    transform-origin: 50% 50%;
+    transform: rotate(-90deg);
+}
+
+.loading-progress circle:last-child {
+    stroke: var(--accent);
+    stroke-dasharray: calc(3.141 * var(--blazor-load-percentage, 0%) * 0.8), 500%;
+    transition: stroke-dasharray 0.05s ease-in-out;
+}
+
+.loading-progress-text {
+    position: absolute;
+    text-align: center;
+    font-weight: bold;
+    inset: calc(20vh + 3.25rem) 0 auto 0.2rem;
+}
+
+.loading-progress-text:after {
+    content: var(--blazor-load-percentage-text, "Loading");
+}
+
+/* ------------------------------------------------------------------ Responsive layout */
+
+/* Wide pages (library, tag info, device slots) get more room on large screens. */
+.app-page.wide .page-content {
+    max-width: 1120px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+    /* .list.grid is listed too: the grid's card background is more specific than a plain .list-row:hover. */
+    .list-row:hover,
+    .list.grid .list-row:hover {
+        background: var(--row-hover);
+    }
+
+    .big-button:hover:not(:disabled) {
+        filter: brightness(1.06);
+    }
+
+    .big-button.secondary:hover:not(:disabled),
+    .big-button.destructive:hover:not(:disabled) {
+        filter: none;
+        background: var(--row-hover);
+    }
+
+    .dialog-option:hover, .dialog-button:hover {
+        background: rgba(127, 127, 127, 0.12);
+    }
+}
+
+/* Home: a comfortable centred column, two button columns when there's room. */
+.home .page-content {
+    max-width: 720px;
+}
+
+@media (min-width: 720px) {
+    .home .page-content {
+        padding-top: calc(var(--safe-top) + 8vh);
+    }
+
+    .home .button-stack {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+    }
+
+    /* The last button (Settings) fills the rest of its row: the whole row when it starts one. */
+    .home .button-stack > :last-child:nth-child(odd) {
+        grid-column: 1 / -1;
+    }
+}
+
+/* Phones in landscape: logo beside the buttons instead of above them. */
+@media (orientation: landscape) and (max-height: 520px) {
+    .home .page-content {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
+        gap: 24px;
+        align-items: center;
+        max-width: 960px;
+        padding-top: calc(var(--safe-top) + 16px);
+    }
+
+    .home .logo-button {
+        margin: 0;
+    }
+
+    .home .button-stack {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin: 0;
+    }
+
+    .home .button-stack > :last-child:nth-child(odd) {
+        grid-column: 1 / -1;
+    }
+
+    .home .big-button {
+        min-height: 44px;
+        font-size: 15px;
+    }
+}
+
+/* Lists become card grids on wider screens. */
+@media (min-width: 720px) {
+    .list.grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 12px;
+        background: none;
+        box-shadow: none;
+        border-radius: 0;
+        overflow: visible;
+    }
+
+    .list.grid > li + li {
+        border-top: 0;
+    }
+
+    .list.grid .list-row {
+        height: 100%;
+        padding: 12px 14px;
+        border-radius: var(--radius);
+        background: var(--card-bg);
+        box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+        font-size: 15px;
+    }
+
+    .list.grid .list-row.with-image {
+        flex-direction: column;
+        justify-content: flex-start;
+        gap: 10px;
+        min-height: 200px;
+        padding-top: 16px;
+        text-align: center;
+        background:
+            radial-gradient(90% 55% at 50% 30%, var(--stage-light), transparent 75%) var(--card-bg);
+    }
+
+    .list.grid .list-row.with-image .list-row-title {
+        align-items: center;
+    }
+
+    .list.grid .list-row.with-image .list-row-image {
+        width: 120px;
+        height: 130px;
+        filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.18));
+    }
+
+    .list.grid .list-row:active {
+        background: var(--row-pressed);
+        transform: scale(0.99);
+    }
+}
+
+/* Grid cards lift slightly under the pointer. */
+@media (min-width: 720px) and (hover: hover) and (pointer: fine) {
+    .list.grid .list-row:hover {
+        box-shadow: var(--shadow-md), inset 0 0 0 1px var(--card-border);
+        transform: translateY(-2px);
+    }
+
+    .list.grid .list-row.with-image:hover {
+        background:
+            radial-gradient(90% 55% at 50% 30%, var(--stage-light), transparent 75%) var(--card-bg);
+    }
+
+    .list.grid .list-row:active {
+        box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+        transform: scale(0.99);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .list-row,
+    .big-button,
+    .dialog {
+        transition: none;
+        animation: none;
+    }
+
+    .list.grid .list-row:hover,
+    .list.grid .list-row:active,
+    .big-button:active:not(:disabled) {
+        transform: none;
+    }
+}
+
+/* Tag info: stage beside the details and buttons. */
+@media (min-width: 820px) {
+    .tag-info {
+        display: grid;
+        grid-template-columns: minmax(280px, 1fr) minmax(340px, 1.05fr);
+        column-gap: 36px;
+        align-items: start;
+    }
+
+    .tag-info > .tag-stage {
+        position: sticky;
+        top: calc(var(--native-top, var(--web-header-height, 0px)) + 16px);
+        grid-column: 1;
+        grid-row: 1 / span 20;
+        width: 100%;
+        max-width: 480px;
+        margin: 0 auto;
+    }
+
+    .tag-info > :not(.tag-stage) {
+        grid-column: 2;
+    }
+
+    .tag-heading {
+        text-align: left;
+        margin-top: 4px;
+    }
+
+    .tag-name {
+        font-size: 26px;
+    }
+}
+
+/* QR codes don't need to be huge on big screens. */
+.qr {
+    max-width: 520px;
+    margin: 0 auto;
+}
+
+/* Settings and other forms stay readable on wide windows. */
+.card {
+    max-width: 640px;
+}
+
+/* ------------------------------------------------------------------ Game info */
+
+.chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 4px 0 12px;
+}
+
+.chip {
+    border: 0;
+    border-radius: 999px;
+    padding: 6px 13px;
+    background: var(--card-bg);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+    color: var(--text);
+    font-size: 14px;
+    cursor: pointer;
+}
+
+.chip.selected {
+    background: linear-gradient(180deg, var(--accent-top), var(--accent));
+    box-shadow: var(--highlight), 0 1px 2px rgba(0, 0, 0, 0.12);
+    color: var(--accent-text);
+}
+
+.system-badge {
+    display: inline-block;
+    padding: 1px 7px;
+    margin-right: 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #fff;
+    background: #8e8e93;
+    vertical-align: 1px;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.15);
+}
+
+.system-badge.switch {
+    background: linear-gradient(180deg, #ff1a2b, #e60012);
+}
+
+.system-badge.wiiu {
+    background: linear-gradient(180deg, #12aee0, #009ac7);
+}
+
+.system-badge.\33 ds {
+    background: linear-gradient(180deg, #e52a30, #ce181e);
+}
+
+.badge {
+    display: inline-block;
+    margin-left: 4px;
+    padding: 0 6px;
+    border-radius: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    background: var(--accent-tint);
+    vertical-align: 1px;
+    white-space: nowrap;
+}
+
+.usage-line {
+    display: block;
+    margin-top: 3px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.35;
+}
+
+.game-usage {
+    margin-top: 20px;
+}
+
+.usage-system {
+    margin-bottom: 12px;
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+    overflow: hidden;
+}
+
+.usage-system > summary {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 11px 14px;
+    cursor: pointer;
+    font-weight: 600;
+    list-style: none;
+}
+
+.usage-system > summary::-webkit-details-marker {
+    display: none;
+}
+
+.usage-system > summary::after {
+    content: "\203A";
+    margin-left: auto;
+    color: var(--text-tertiary);
+    font-size: 20px;
+    line-height: 1;
+    transition: transform 0.15s;
+}
+
+.usage-system[open] > summary::after {
+    transform: rotate(90deg);
+}
+
+.usage-count {
+    color: var(--text-secondary);
+    font-weight: 400;
+}
+
+.usage-list {
+    list-style: none;
+    margin: 0;
+    padding: 0 14px 6px;
+}
+
+.usage-list > li {
+    padding: 9px 0;
+    border-top: 0.5px solid var(--separator);
+}
+
+.usage-game {
+    display: flex;
+    align-items: center;
+    width: 100%;
+    padding: 0;
+    border: 0;
+    background: none;
+    text-align: left;
+    font-size: 15px;
+    cursor: pointer;
+}
+
+.usage-game-name {
+    flex: 1;
+    min-width: 0;
+}
+
+@media (min-width: 900px) {
+    .usage-list {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        column-gap: 24px;
+    }
+}
+
+.title-ids {
+    margin-top: 20px;
+    color: var(--text-secondary);
+}
+
+.title-ids summary {
+    cursor: pointer;
+}
+
+.title-ids ul {
+    margin: 8px 0 0;
+    padding-left: 20px;
+    font-size: 13px;
+}
+
+/* ------------------------------------------------------------------ Selection */
+
+/* App-like: no text selection, long-press callouts or image dragging (inputs stay editable). */
+html, body {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+}
+
+input, textarea, select, [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+img {
+    -webkit-user-drag: none;
+    user-select: none;
+}
+
+/* ------------------------------------------------------------------ N2 Elite */
+
+.n2-summary {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+    margin: 0 0 16px;
+}
+
+.n2-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 12px 14px;
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+    min-width: 0;
+}
+
+.n2-stat.wide {
+    grid-column: 1 / -1;
+}
+
+.n2-stat-value {
+    font-size: 20px;
+    font-weight: 650;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.n2-stat-value.mono {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 500;
+}
+
+.n2-stat-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.list-row.n2-active {
+    box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.list.grid .list-row.n2-active {
+    box-shadow: var(--shadow-sm), inset 0 0 0 2px var(--accent);
+}
+
+.n2-empty-image {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    border: 2px dashed var(--separator);
+    border-radius: var(--radius);
+    filter: none;
+}
+
+/* ------------------------------------------------------------------ Pixl.js */
+
+.pixl-drives {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.pixl-drive {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 0;
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.pixl-drive:hover {
+    background: var(--row-hover);
+}
+
+.pixl-drive:active {
+    background: var(--row-pressed);
+}
+
+.pixl-drive.selected {
+    box-shadow: var(--shadow-sm), inset 0 0 0 2px var(--accent);
+}
+
+.pixl-drive.dimmed {
+    opacity: 0.6;
+}
+
+.pixl-drive-name {
+    font-weight: 600;
+}
+
+.pixl-drive-detail {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.pixl-usage {
+    display: block;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--placeholder);
+    overflow: hidden;
+}
+
+.pixl-usage-fill {
+    display: block;
+    height: 100%;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--accent-top), var(--accent));
+}
+
+.pixl-path {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 2px;
+    margin: 4px 4px 8px;
+    font-size: 14px;
+}
+
+.pixl-path .link-button {
+    padding: 4px 2px;
+    font-size: 14px;
+}
+
+.pixl-path-separator {
+    color: var(--text-tertiary);
+}
+
+.pixl-path-separator:last-child {
+    display: none;
+}
+
+.pixl-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.pixl-toolbar .pill-button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.pixl-icon {
+    position: relative;
+    filter: none;
+}
+
+.pixl-icon.folder::before {
+    content: "";
+    position: absolute;
+    inset: 24px 8px 18px;
+    border-radius: 6px;
+    background: linear-gradient(180deg, var(--accent-top), var(--accent));
+    opacity: 0.9;
+}
+
+.pixl-icon.folder::after {
+    content: "";
+    position: absolute;
+    top: 18px;
+    left: 8px;
+    width: 22px;
+    height: 9px;
+    border-radius: 4px 4px 0 0;
+    background: var(--accent);
+    opacity: 0.9;
+}
+
+.pixl-icon.file::before {
+    content: "";
+    position: absolute;
+    inset: 12px 14px;
+    border-radius: 6px;
+    border: 2px solid var(--text-tertiary);
+}
+
+@media (max-width: 420px) {
+    .n2-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+/* ------------------------------------------------------------------ Context menu (web, Mac) */
+
+.context-menu-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1100;
+}
+
+.context-menu {
+    position: fixed;
+    z-index: 1101;
+    min-width: 180px;
+    max-width: 228px;
+    padding: 5px;
+    border: 0;
+    border-radius: 10px;
+    background: var(--dialog-bg);
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    box-shadow: var(--shadow-lg), inset 0 0 0 1px var(--card-border);
+    font-size: 13px;
+    outline: none;
+    animation: context-menu-in 0.08s ease-out;
+}
+
+@keyframes context-menu-in {
+    from {
+        opacity: 0;
+        transform: scale(0.98);
+    }
+}
+
+.context-menu-title {
+    padding: 4px 10px 6px;
+    color: var(--text-secondary);
+    font-size: 12px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.context-menu-item {
+    display: block;
+    width: 100%;
+    padding: 5px 10px;
+    border: 0;
+    border-radius: 6px;
+    background: none;
+    color: var(--text);
+    font: inherit;
+    text-align: left;
+    cursor: default;
+}
+
+.context-menu-item.default {
+    font-weight: 600;
+}
+
+.context-menu-item.destructive {
+    color: var(--destructive);
+}
+
+.context-menu-item.focused,
+.context-menu-item:focus-visible {
+    background: linear-gradient(180deg, var(--accent-top), var(--accent));
+    color: var(--accent-text);
+    outline: none;
+}
+
+.context-menu-separator {
+    height: 1px;
+    margin: 5px 6px;
+    background: var(--separator);
+}
+
+/* ------------------------------------------------------------------ Flipper emulation */
+
+.emulate-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.emulate-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.emulate-light {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex: none;
+    background: var(--text-tertiary);
+}
+
+.emulate-light.ready {
+    background: #ff9f0a;
+    box-shadow: 0 0 0 3px rgba(255, 159, 10, 0.2);
+}
+
+.emulate-light.field {
+    background: #30d158;
+    box-shadow: 0 0 0 3px rgba(48, 209, 88, 0.22), 0 0 8px rgba(48, 209, 88, 0.6);
+}
+
+.button-stack.horizontal {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.button-stack.horizontal .big-button {
+    width: auto;
+    flex: 1 1 180px;
+}
+
+.emulate-log {
+    margin: 0;
+    padding: 12px 14px;
+    max-height: 60vh;
+    overflow: auto;
+    border-radius: var(--radius);
+    background: var(--card-bg);
+    box-shadow: var(--shadow-sm), inset 0 0 0 1px var(--card-border);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: pre;
+}
+
+.emulate-log .emulate-reader {
+    color: var(--accent);
+}
+
+.emulate-log .emulate-tag {
+    color: inherit;
+}
+
+.emulate-log .emulate-fieldoff,
+.emulate-log .emulate-halted,
+.emulate-log .emulate-info {
+    color: var(--text-secondary);
+}
+
+.emulate-log .emulate-error {
+    color: var(--destructive);
+}
+
+/* Log view switch and the plain text view. */
+.header-buttons {
+    display: inline-flex;
+    gap: 16px;
+}
+
+.log-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin: 22px 0 8px;
+}
+
+.log-header .section-title {
+    margin: 0 4px;
+}
+
+.segmented {
+    display: inline-flex;
+    flex: none;
+    padding: 2px;
+    border-radius: 9px;
+    background: var(--neutral-tint);
+}
+
+.segmented button {
+    min-width: 64px;
+    padding: 4px 12px;
+    border: 0;
+    border-radius: 7px;
+    background: none;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+}
+
+.segmented button.selected {
+    background: var(--card-bg);
+    box-shadow: var(--shadow-sm), inset 0 0 0 0.5px var(--card-border);
+    font-weight: 600;
+}
+
+.emulate-text {
+    display: block;
+    width: 100%;
+    min-height: 50vh;
+    border: 0;
+    resize: vertical;
+    color: var(--text);
+    white-space: pre;
+    overflow-wrap: normal;
+    -webkit-user-select: text;
+    user-select: text;
+}
+
+.emulate-text:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px var(--accent-tint), inset 0 0 0 1px var(--accent);
+}
+
+
+/* Tag data changed by a reader during emulation, not saved yet. */
+.notice.changed {
+    margin: 0 0 14px;
+    background: var(--accent-tint);
+    color: var(--text);
+    text-align: left;
+}
+
+/* Lock-on library */
+.lockon-placeholder {
+    display: block;
+    border-radius: 10px;
+    background: linear-gradient(145deg, var(--accent-tint), transparent);
+    box-shadow: inset 0 0 0 1px var(--card-border);
+    filter: none;
+}
+
+.list-row-subtitle.lockon-warning {
+    color: var(--destructive);
+}
+
+/* Drag and drop (DropZone): while files are over the window every zone that takes them is outlined; the one under
+   the pointer is solid and tinted, with what a drop does shown at the top of the window. */
+.drop-zone {
+    transition: outline-color 120ms ease, background-color 120ms ease;
+}
+
+.dragging-files .drop-zone:not(.app-page) {
+    outline: 2px dashed var(--accent-glow);
+    outline-offset: -2px;
+    border-radius: var(--radius);
+}
+
+.dragging-files .drop-zone.drop-active:not(.app-page) {
+    outline: 2px solid var(--accent);
+    background-color: var(--accent-tint);
+}
+
+/* A page that takes drops: a frame around the window. */
+.app-page.drop-zone::before {
+    content: "";
+    position: fixed;
+    inset: 8px;
+    border: 2px dashed transparent;
+    border-radius: 18px;
+    pointer-events: none;
+    z-index: 30;
+    transition: border-color 120ms ease, background-color 120ms ease;
+}
+
+.dragging-files .app-page.drop-zone::before {
+    border-color: var(--accent-glow);
+}
+
+.dragging-files .app-page.drop-zone.drop-active::before {
+    border-style: solid;
+    border-color: var(--accent);
+    background-color: var(--accent-tint);
+}
+
+.drop-active[data-drop-label]::after {
+    content: attr(data-drop-label);
+    position: fixed;
+    top: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    max-width: calc(100vw - 48px);
+    padding: 8px 16px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--accent-text);
+    font-size: 14px;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    box-shadow: 0 6px 18px var(--accent-glow);
+    pointer-events: none;
+    z-index: 31;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .drop-zone,
+    .app-page.drop-zone::before {
+        transition: none;
+    }
+}
+
+/* A lock-on's CRC check on the tag details: a dot and a word, green when it matches. */
+.crc-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-left: 8px;
+    padding: 1px 8px 1px 6px;
+    border-radius: 999px;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 18px;
+    vertical-align: middle;
+    white-space: nowrap;
+}
+
+.crc-badge::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.crc-badge.valid {
+    background: var(--success-tint);
+    color: var(--success);
+}
+
+.crc-badge.invalid {
+    background: var(--danger-tint);
+    color: var(--destructive);
+}
+
+/* Accessible toolbar-sized gear; native hosts place the action in their toolbar. */
+.settings-gear { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 8px; }
+
+/* iOS content and its background extend under the native material. Only the
+   content gets top padding; no native scroll offset or extra safe-top padding. */
+html[data-native-ios="true"] .page-content {
+    padding-top: calc(var(--native-top, 0px) + 16px);
+}
+
+html[data-native-ios="true"] .home .page-content {
+    padding-top: calc(var(--native-top, 0px) + 48px);
+}
+
+/* Native bars stay above the WebView. This is only their blurred background,
+   not a second HTML toolbar; native titles, Back and Settings stay native. */
+:root { --safe-left: env(safe-area-inset-left, 0px); --safe-right: env(safe-area-inset-right, 0px); --native-bar-tint: rgba(248, 249, 252, 0.62); }
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --native-bar-tint: rgba(13, 15, 20, 0.62); }
+}
+:root[data-theme="dark"] { --native-bar-tint: rgba(13, 15, 20, 0.62); }
+html[data-native-android="true"] #app::before,
+html[data-native-desktop="true"] #app::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--native-bar-height, var(--native-top, 0px));
+    z-index: 20;
+    pointer-events: none;
+    background: var(--native-bar-tint);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+}
+html[data-native-android="true"] .page-content,
+html[data-native-desktop="true"] .page-content {
+    padding-top: calc(var(--native-top, 0px) + 16px);
+}
+html[data-native-android="true"] .home .page-content,
+html[data-native-desktop="true"] .home .page-content {
+    padding-top: calc(var(--native-top, 0px) + 48px);
+}
+
+/* WebView2's document still fills the window under the native chrome. Shorten
+   only its vertical scrollbar track by the measured caption + navbar overlap.
+   Keep the document as the scroll owner so sticky content and refresh work. */
+html[data-native-desktop="true"]::-webkit-scrollbar {
+    width: 12px;
+    background: transparent;
+}
+html[data-native-desktop="true"]::-webkit-scrollbar-track:vertical {
+    margin-top: var(--native-top, 0px);
+    background: transparent;
+}
+html[data-native-desktop="true"]::-webkit-scrollbar-thumb:vertical {
+    background: var(--text-tertiary);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+}
+html[data-native-desktop="true"]::-webkit-scrollbar-thumb:vertical:hover {
+    background-color: var(--text-secondary);
+}
+html[data-native-desktop="true"]::-webkit-scrollbar-button:vertical {
+    display: none;
+}
+html[data-native-ios="true"] .page-content,
+html[data-native-android="true"] .page-content,
+html[data-native-desktop="true"] .page-content {
+    padding-left: max(var(--gutter), var(--safe-left));
+    padding-right: max(var(--gutter), var(--safe-right));
+}
+
+/* Windows retains document scrolling beneath the native blurred bars. Hide
+   only the document's built-in scrollbar after its replacement is ready. */
+html.windows-custom-scrollbar-active {
+    --windows-scrollbar-width: 14px;
+    scrollbar-width: none;
+}
+html.windows-custom-scrollbar-active::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+/* Reserve the scrollbar width only within page content. The navbar/background
+   remain full width, including the area above the custom scrollbar. */
+html.windows-custom-scrollbar-active .page-content {
+    padding-right: calc(max(var(--gutter), var(--safe-right)) + var(--windows-scrollbar-width));
+}
+html.windows-custom-scrollbar-active .app-page > .page-actions {
+    padding-right: calc(var(--gutter) + var(--windows-scrollbar-width));
+}
+.windows-scrollbar {
+    position: fixed;
+    top: calc(var(--native-top, 0px) + 3px);
+    bottom: 3px;
+    right: 0;
+    width: var(--windows-scrollbar-width, 14px);
+    z-index: 21;
+    touch-action: none;
+    user-select: none;
+}
+.windows-scrollbar[hidden] { display: none; }
+/* Programmatic focus during a pointer drag can inherit :focus-visible from
+   the previous keyboard-focused control. Keep that ring keyboard-only. */
+.windows-scrollbar.pointer-focus:focus {
+    outline: none;
+}
+.windows-scrollbar:focus-visible {
+    outline-offset: -2px;
+}
+.windows-scrollbar-thumb {
+    position: absolute;
+    top: 0;
+    left: 3px;
+    right: 3px;
+    border-radius: 999px;
+    background: var(--text-tertiary);
+}
+.windows-scrollbar:hover .windows-scrollbar-thumb,
+.windows-scrollbar.dragging .windows-scrollbar-thumb,
+.windows-scrollbar:focus-visible .windows-scrollbar-thumb {
+    background: var(--text-secondary);
+}
+@media (forced-colors: active) {
+    .windows-scrollbar-thumb { background: ButtonText; }
+}

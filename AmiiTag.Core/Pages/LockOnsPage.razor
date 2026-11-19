@@ -1,0 +1,230 @@
+@page "/lockons"
+@page "/lockons/pick/{TagKey}"
+@implements IDisposable
+@inject LockOnLibrary Library
+@inject TagActions Actions
+@inject TagStore Tags
+@inject AmiiboLookup Lookup
+@inject IAppNavigator Navigator
+@inject ContextMenus Menus
+
+@* The user's lock-on responses. Each figure's response is unique and can't be generated, so these are copies of real
+   figures (read here, or imported), kept under names the user chooses so they can be put back into v3 images later.
+   With a TagKey it's the Load Lock-on picker for that tag: choosing one (or a file) puts it in the tag and goes back. *@
+
+<AppPage Title="@(Picking ? "Load Lock-on" : "Lock-on Library")" OnFilesDropped="DroppedAsync"
+         DropLabel="@(Picking ? "Drop a lock-on to use it" : "Drop lock-ons to add them")">
+    <div class="button-stack compact">
+        @if (Picking)
+        {
+            <BigButton OnClick="LoadFromFile">Load from File</BigButton>
+        }
+        else
+        {
+            <BigButton OnClick="Actions.ImportLockOnsAsync">Import Lock-on Files</BigButton>
+        }
+    </div>
+
+    @if (!_loaded)
+    {
+        <p class="empty-state small"><span class="spinner small" aria-label="Loading"></span></p>
+    }
+    else if (Picking && Target == null)
+    {
+        <p class="empty-state">This tag is no longer available.</p>
+    }
+    else if (Library.Entries.Count == 0)
+    {
+        <p class="empty-state">
+            @if (Picking)
+            {
+                @:No saved lock-ons yet. Load one from a file, or save one from a v3 figure you've read.
+            }
+            else
+            {
+                @:No lock-ons yet. Read a v3 figure and use Save Lock-on on its page, or import .lockon files or v3 .bin images that include one.
+            }
+        </p>
+    }
+    else if (Picking)
+    {
+        var amiiboId = Target!.HasAmiiboId ? Target.AmiiboIdHex : null;
+        var mine = Library.Entries.Where(e => SameFigure(e, amiiboId)).ToList();
+        var others = Library.Entries.Where(e => !SameFigure(e, amiiboId)).ToList();
+        @if (mine.Count > 0)
+        {
+            <h2 class="section-title">This figure</h2>
+            @EntryList(mine)
+        }
+        @if (others.Count > 0)
+        {
+            <h2 class="section-title">@(mine.Count > 0 ? "Other figures" : "Saved lock-ons")</h2>
+            @EntryList(others)
+        }
+        <p class="empty-state small">Each lock-on is a copy of one physical figure's answer.</p>
+    }
+    else
+    {
+        @EntryList(Library.Entries)
+        <p class="empty-state small">
+            Each lock-on is a copy of one physical figure's answer. Use Load Lock-on on a v3 tag's page to put one in;
+            tags made from the library for a lock-on's figure get it automatically.
+        </p>
+    }
+</AppPage>
+
+@* Only v3 figures have a lock-on. *@
+<FigurePicker Open="_figureFor != null"
+              Title="@($"Figure for {_figureFor?.Name}")"
+              Filter="IsV3Figure"
+              OnPicked="SetFigure"
+              OnCancelled="() => _figureFor = null" />
+
+@code {
+    private bool _loaded;
+
+    // The entry whose figure is being chosen.
+    private LockOnEntry? _figureFor;
+
+    private static bool IsV3Figure(AmiiboFigure figure) => figure.Id.Id.EndsWith("03", StringComparison.Ordinal);
+
+    private async Task SetFigure(AmiiboFigure figure)
+    {
+        var entry = _figureFor;
+        _figureFor = null;
+        if (entry != null)
+        {
+            await Library.SetFigureAsync(entry, figure.Id.Id);
+        }
+    }
+
+    /// <summary>
+    /// The tag (in <see cref="TagStore"/>) a lock-on is being chosen for; null for the library itself.
+    /// </summary>
+    [Parameter] public string? TagKey { get; set; }
+
+    private bool Picking => !string.IsNullOrEmpty(TagKey);
+
+    private AmiiboV3Dump? Target => Tags.Get(TagKey) as AmiiboV3Dump;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Library.Changed += OnChanged;
+        await Library.EnsureLoadedAsync();
+        _loaded = true;
+    }
+
+    private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private static bool SameFigure(LockOnEntry entry, string? amiiboId) =>
+        amiiboId != null && string.Equals(entry.AmiiboId, amiiboId, StringComparison.OrdinalIgnoreCase);
+
+    private RenderFragment EntryList(IReadOnlyList<LockOnEntry> entries) => __builder =>
+    {
+        <ul class="list">
+            @foreach (var entry in entries)
+            {
+                var figure = entry.AmiiboId != null ? Lookup.GetFigure(entry.AmiiboId) : null;
+                var check = entry.Check;
+                var inUse = Picking && Target?.LockOn is { } current && Library.Find(current) == entry;
+                var items = Items(entry);
+                <li>
+                    <button type="button" class="list-row with-image compact"
+                            @onpointerdown="Menus.TrackPointer"
+                            @onclick="e => Menus.ClickAsync(e, entry.Name, items, tapShowsMenu: !Picking)"
+                            @oncontextmenu="e => Menus.ShowAsync(e, entry.Name, items)" @oncontextmenu:preventDefault="true">
+                        @if (figure != null)
+                        {
+                            <FigureImage Figure="figure" Class="list-row-image" />
+                        }
+                        else
+                        {
+                            <span class="list-row-image lockon-placeholder" aria-hidden="true"></span>
+                        }
+                        <span class="list-row-title">
+                            @entry.Name
+                            <span class="list-row-subtitle">
+                                @(figure?.Name ?? "Figure unknown") · @entry.Added.LocalDateTime.ToString("MMM d, yyyy", System.Globalization.CultureInfo.CurrentCulture)@(inUse ? " · In this tag" : "")
+                            </span>
+                            @if (check != LockOnCheck.Valid)
+                            {
+                                <span class="list-row-subtitle lockon-warning">@LockOnResponse.Describe(check)</span>
+                            }
+                        </span>
+                        @if (Picking)
+                        {
+                            <span class="chevron" aria-hidden="true">&#x203A;</span>
+                        }
+                    </button>
+                </li>
+            }
+        </ul>
+    };
+
+    // In the picker a tap uses the lock-on; right click or long press shows the rest. In the library a tap shows them.
+    private IReadOnlyList<ContextMenuItem> Items(LockOnEntry entry)
+    {
+        var items = new List<ContextMenuItem>();
+        if (Picking)
+        {
+            items.Add(new("Use", () => UseAsync(entry.Response), IsDefault: true));
+        }
+
+        items.Add(new("Rename", () => Actions.RenameLockOnAsync(entry), IsDefault: !Picking));
+        items.Add(new(entry.AmiiboId == null ? "Set Figure" : "Change Figure", () =>
+        {
+            _figureFor = entry;
+            StateHasChanged();
+            return Task.CompletedTask;
+        }));
+        if (entry.AmiiboId != null)
+        {
+            items.Add(new("Remove Figure", () => Library.SetFigureAsync(entry, null)));
+        }
+
+        items.Add(new("Export", () => Actions.ExportLockOnAsync(entry)));
+        items.Add(new("Delete", () => Actions.DeleteLockOnAsync(entry), IsDestructive: true));
+        return items;
+    }
+
+    /// <summary>
+    /// The picker uses a dropped lock-on (or a v3 amiibo's, saying why if it has no valid one); the library adds them.
+    /// </summary>
+    private async Task DroppedAsync(IReadOnlyList<PickedFile> files)
+    {
+        if (!Picking)
+        {
+            await Actions.AddLockOnsAsync(files);
+            return;
+        }
+
+        if (Target is { } target && await Actions.UseLockOnFileAsync(target, files[0]) is { } updated)
+        {
+            await UseAsync(updated.LockOn!);
+        }
+    }
+
+    private async Task LoadFromFile()
+    {
+        if (Target is { } target && await Actions.LoadLockOnFromFileAsync(target) is { } updated)
+        {
+            await UseAsync(updated.LockOn!);
+        }
+    }
+
+    /// <summary>
+    /// Puts the lock-on into the tag (its page follows <see cref="TagStore.Replaced"/>) and goes back to it.
+    /// </summary>
+    private async Task UseAsync(byte[] response)
+    {
+        if (TagKey == null || Target is not { } target)
+        {
+            return;
+        }
+
+        Tags.Replace(TagKey, target.WithLockOn(response));
+        await Navigator.GoBackAsync();
+    }
+
+    public void Dispose() => Library.Changed -= OnChanged;
+}

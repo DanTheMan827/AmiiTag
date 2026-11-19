@@ -1,0 +1,100 @@
+@using AmiiTag.Core.Services.Web
+@implements IDisposable
+@inject IDialogService DialogService
+
+@if (_service != null)
+{
+    @foreach (var dialog in _service.Dialogs)
+    {
+        <div class="dialog-backdrop" @key="dialog">
+            <div class="dialog @(dialog.Kind == DialogKind.Choose ? "action-sheet" : "")" role="dialog" aria-modal="true" aria-label="@dialog.Title">
+                <div class="dialog-body">
+                    <div class="dialog-title">@dialog.Title</div>
+                    @if (!string.IsNullOrEmpty(dialog.Message))
+                    {
+                        <div class="dialog-message">@dialog.Message</div>
+                    }
+                    @if (dialog.Kind == DialogKind.Progress)
+                    {
+                        @if (dialog.Fraction is double fraction)
+                        {
+                            <progress class="dialog-progress" max="1" value="@fraction.ToString(System.Globalization.CultureInfo.InvariantCulture)"></progress>
+                        }
+                        else
+                        {
+                            <div class="spinner" aria-hidden="true"></div>
+                        }
+                    }
+                    @if (dialog.Kind == DialogKind.Prompt)
+                    {
+                        <input class="dialog-input" @bind="dialog.InputValue" @bind:event="oninput" maxlength="@(dialog.MaxLength > 0 ? dialog.MaxLength : 524288)" autofocus />
+                    }
+                </div>
+
+                @switch (dialog.Kind)
+                {
+                    case DialogKind.Choose:
+                        <div class="dialog-options">
+                            @for (var i = 0; i < dialog.Options.Count; i++)
+                            {
+                                var index = i;
+                                <button type="button" class="dialog-option" @onclick="() => _service.Complete(dialog, index)">@dialog.Options[index]</button>
+                            }
+                        </div>
+                        <div class="dialog-buttons">
+                            <button type="button" class="dialog-button" @onclick="() => _service.Complete(dialog, -1)">@dialog.Cancel</button>
+                        </div>
+                        break;
+                    case DialogKind.Progress:
+                        @if (dialog.Cancel != null)
+                        {
+                            <div class="dialog-buttons">
+                                <button type="button" class="dialog-button" @onclick="() => _service.Complete(dialog, null)">@dialog.Cancel</button>
+                            </div>
+                        }
+                        break;
+                    case DialogKind.Alert:
+                        <div class="dialog-buttons">
+                            <button type="button" class="dialog-button primary" @onclick="() => _service.Complete(dialog, true)">@dialog.Accept</button>
+                        </div>
+                        break;
+                    case DialogKind.Confirm:
+                        <div class="dialog-buttons">
+                            <button type="button" class="dialog-button" @onclick="() => _service.Complete(dialog, false)">@dialog.Cancel</button>
+                            <button type="button" class="dialog-button primary" @onclick="() => _service.Complete(dialog, true)">@dialog.Accept</button>
+                        </div>
+                        break;
+                    case DialogKind.Prompt:
+                        <div class="dialog-buttons">
+                            <button type="button" class="dialog-button" @onclick="() => _service.Complete(dialog, null)">@dialog.Cancel</button>
+                            <button type="button" class="dialog-button primary" @onclick="() => _service.Complete(dialog, dialog.InputValue ?? string.Empty)">@dialog.Accept</button>
+                        </div>
+                        break;
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private BlazorDialogService? _service;
+
+    protected override void OnInitialized()
+    {
+        _service = DialogService as BlazorDialogService;
+        if (_service != null)
+        {
+            _service.Changed += OnChanged;
+        }
+    }
+
+    private void OnChanged() => InvokeAsync(StateHasChanged);
+
+    public void Dispose()
+    {
+        if (_service != null)
+        {
+            _service.Changed -= OnChanged;
+        }
+    }
+}

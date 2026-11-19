@@ -1,0 +1,169 @@
+@page "/devices"
+@implements IAsyncDisposable
+@inject BleDeviceManager Manager
+@inject IAppNavigator Navigator
+@inject IDialogService Dialogs
+@inject TagActions Actions
+@inject ContextMenus Menus
+
+@* The apps' Bluetooth device list. Browsers have their own device picker, which Manage Puck opens directly, so the
+   web only lands here from a bookmark. *@
+
+<AppPage Title="Devices">
+    @if (!Manager.Adapter.IsAvailable)
+    {
+        <p class="empty-state">Bluetooth isn't available here. In a browser, use Chrome or Edge (WebBluetooth) on desktop or Android.</p>
+    }
+    else
+    {
+        @if (_problem != null)
+        {
+            <p class="notice">@_problem</p>
+        }
+
+        @if (Manager.Adapter.CanRequestDevice)
+        {
+            <div class="button-stack compact">
+                <BigButton OnClick="RequestDevice">Pair a Device</BigButton>
+            </div>
+        }
+
+        @if (Manager.Connected.Count > 0)
+        {
+            <h2 class="section-title">Connected</h2>
+            <ul class="list">
+                @foreach (var device in Manager.Connected)
+                {
+                    var items = ConnectedItems(device);
+                    <li>
+                        <button type="button" class="list-row"
+                                @onpointerdown="Menus.TrackPointer"
+                                @onclick="e => Menus.ClickAsync(e, device.Name, items, tapShowsMenu: false)"
+                                @oncontextmenu="e => Menus.ShowAsync(e, device.Name, items)" @oncontextmenu:preventDefault="true">
+                            <span class="list-row-title">
+                                @device.Name
+                                <span class="list-row-subtitle">@TagDeviceDetector.Describe(device.Kind)@(device.Firmware != null ? $" · {device.Firmware}" : "")</span>
+                            </span>
+                            <span class="chevron" aria-hidden="true">&#x203A;</span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+
+        <h2 class="section-title">
+            @(Manager.Adapter.CanScan ? "Nearby" : "Paired")
+            @if (Manager.IsScanning)
+            {
+                <span class="spinner small" aria-label="Scanning"></span>
+            }
+        </h2>
+
+        var nearby = Manager.Discovered.Where(d => Manager.GetConnected(d.Id) == null).ToList();
+        @if (nearby.Count == 0)
+        {
+            <p class="empty-state small">
+                @(Manager.Adapter.CanScan ? "Looking for Puck.js, Pixl.js, AmiiboLinks, and AmiLoops..." : "Use \"Pair a Device\" to choose a Puck.js, Pixl.js, AmiiboLink, or AmiLoop.")
+            </p>
+        }
+        else
+        {
+            <ul class="list">
+                @foreach (var device in nearby)
+                {
+                    var guess = TagDeviceDetector.GuessKind(device);
+                    var items = NearbyItems(device);
+                    <li>
+                        <button type="button" class="list-row"
+                                @onpointerdown="Menus.TrackPointer"
+                                @onclick="e => Menus.ClickAsync(e, device.DisplayName, items, tapShowsMenu: false)"
+                                @oncontextmenu="e => Menus.ShowAsync(e, device.DisplayName, items)" @oncontextmenu:preventDefault="true">
+                            <span class="list-row-title">
+                                @device.DisplayName
+                                <span class="list-row-subtitle">@(guess == TagDeviceKind.Unknown ? "Will detect on connect" : TagDeviceDetector.Describe(guess))@(device.Rssi != 0 ? $" · {device.Rssi} dBm" : "")</span>
+                            </span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+
+        @if (Manager.Adapter.CanScan)
+        {
+            <label class="toggle-row">
+                <input type="checkbox" checked="@Manager.ShowAllDevices" @onchange="ToggleShowAll" />
+                <span>Show all Bluetooth devices</span>
+            </label>
+        }
+    }
+</AppPage>
+
+@code {
+    private string? _problem;
+    private bool _startedScan;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Manager.Changed += OnChanged;
+        if (Manager.Adapter.IsAvailable)
+        {
+            _startedScan = !Manager.IsScanning;
+            _problem = await Manager.StartScanningAsync();
+            if (_problem == null)
+            {
+                await Actions.RememberBluetoothUsedAsync();
+            }
+        }
+    }
+
+    private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private void ToggleShowAll(ChangeEventArgs e) => Manager.ShowAllDevices = e.Value is true;
+
+    // A tap or click opens (connects); right click or long press shows the rest.
+    private IReadOnlyList<ContextMenuItem> ConnectedItems(ITagDevice device) =>
+    [
+        new("Open", () => OpenDevice(device), IsDefault: true),
+        new("Disconnect", () => Manager.DisconnectAsync(device), IsDestructive: true),
+    ];
+
+    private IReadOnlyList<ContextMenuItem> NearbyItems(BleDeviceInfo device) =>
+    [
+        new("Connect", () => Connect(device), IsDefault: true),
+    ];
+
+    private async Task RequestDevice()
+    {
+        try
+        {
+            var device = await Manager.RequestDeviceAsync();
+            if (device != null)
+            {
+                await Connect(device);
+            }
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.AlertAsync("Bluetooth", ex.Message);
+        }
+    }
+
+    private async Task Connect(BleDeviceInfo device)
+    {
+        if (await Actions.ConnectDeviceAsync(device) is { } connected)
+        {
+            await OpenDevice(connected);
+        }
+    }
+
+    private Task OpenDevice(ITagDevice device) => Navigator.NavigateAsync(AppRoutes.Device(device.Info.Id, device.Name));
+
+    public async ValueTask DisposeAsync()
+    {
+        Manager.Changed -= OnChanged;
+        if (_startedScan)
+        {
+            await Manager.StopScanningAsync();
+        }
+    }
+}

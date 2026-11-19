@@ -1,0 +1,481 @@
+@inherits DeviceControlsBase<ITagListDevice>
+@implements IDisposable
+@inject AmiiboLookup Lookup
+@inject IFileService Files
+@inject ContextMenus Menus
+@inject KeyStore Keys
+
+@* A Flask or Slide (either firmware): a list of named tags. Tapping one makes it the emulated tag; its menu opens,
+   renames, moves or deletes it. Tags are added from files, the library, or by dropping dumps on the page.
+   The next-gen firmware (FlaskNextGenDevice) also has folders, tag images, other tag types and storage use. *@
+
+<DeviceManagementLayout Device="Device" OnSettings="ShowSettings" DropEnabled="true" OnFilesDropped="AddFiles">
+    <SummaryDetail>
+        @if (_tags != null) { <span> · @_tags.Count @(_tags.Count == 1 ? "tag" : "tags")</span> }
+        @if (NextGen?.Memory is { } memory) { <span> · @memory.UsedFraction.ToString("P0") used</span> }
+    </SummaryDetail>
+    <ChildContent>
+        @if (NextGen is { } nextGen && (nextGen.Folders.Count > 0 || _folder != 0))
+        {
+            <div class="chips">
+                <button type="button" class="chip @(_folder == 0 ? "selected" : "")" @onclick="() => _folder = 0">All tags</button>
+                @foreach (var folder in nextGen.Folders)
+                {
+                    var items = FolderItems(folder);
+                    <button type="button" class="chip @(_folder == folder.Id ? "selected" : "")"
+                            @onpointerdown="Menus.TrackPointer"
+                            @onclick="e => Menus.ClickAsync(e, folder.Name, items, tapShowsMenu: false)"
+                            @oncontextmenu="e => Menus.ShowAsync(e, folder.Name, items)" @oncontextmenu:preventDefault="true">@folder.Name</button>
+                }
+            </div>
+        }
+
+        @if (_tags == null)
+        {
+            <p class="empty-state small">Reading tags...</p>
+        }
+        else if (VisibleTags.Count == 0)
+        {
+            <p class="empty-state">
+                @(_folder == 0 ? "No tags yet. Add a tag file or a character, or drop amiibo dumps here." : "No tags in this folder. Tags added now go into it.")
+            </p>
+        }
+        else
+        {
+            <ul class="list grid">
+                @foreach (var tag in VisibleTags)
+                {
+                    var figure = FigureOf(tag);
+                    var active = _current?.Name == tag.Name;
+                    var items = TagItems(tag);
+                    <li>
+                        <button type="button" class="list-row with-image @(tag.AmiiboTail == null ? "dimmed" : "")"
+                                @onpointerdown="Menus.TrackPointer"
+                                @onclick="e => Menus.ClickAsync(e, tag.DisplayName, items, tapShowsMenu: false)"
+                                @oncontextmenu="e => Menus.ShowAsync(e, tag.DisplayName, items)" @oncontextmenu:preventDefault="true">
+                            <FigureImage Figure="figure" Class="list-row-image" />
+                            <span class="list-row-title">
+                                @tag.DisplayName
+                                <span class="list-row-subtitle">
+                                    @Describe(tag, figure)@(active ? " · Active" : "")@(active && _current!.IsVirtual ? " (virtual)" : "")
+                                </span>
+                            </span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+
+        @if (NextGen?.Memory is { } storage)
+        {
+            <p class="empty-state small">
+                <progress class="dialog-progress" max="1" value="@storage.UsedFraction.ToString(System.Globalization.CultureInfo.InvariantCulture)"></progress>
+                Storage @storage.UsedFraction.ToString("P0") used · @storage.FreePages of @storage.TotalPages pages free
+            </p>
+        }
+
+        <div class="button-stack compact">
+            <BigButton OnClick="PickFiles">Add Tag Files</BigButton>
+            <BigButton OnClick="() => _pickerOpen = true">Add Character</BigButton>
+            <BigButton OnClick="AddBlank" Class="secondary">Add Blank Tag</BigButton>
+            @if (NextGen != null)
+            {
+                <BigButton OnClick="NewFolder" Class="secondary">New Folder</BigButton>
+            }
+            <BigButton OnClick="Refresh" Class="secondary">Refresh</BigButton>
+        </div>
+
+        <PageRefreshAction OnRefresh="Refresh" />
+        @if (Device is ICommandTagDevice commands)
+        {
+            <DeviceCommandControls Device="commands" />
+        }
+    </ChildContent>
+</DeviceManagementLayout>
+
+<FigurePicker Open="_pickerOpen" Title="Add Character" Filter="IsNtag215Figure" OnPicked="AddCharacter" OnCancelled="() => _pickerOpen = false" />
+
+@code {
+    // How flask.run names the tag types the next-gen firmware stores.
+    private static readonly Dictionary<string, string> TypeNames = new()
+    {
+        ["213"] = "NTAG213",
+        ["215"] = "NTAG215",
+        ["PLUS"] = "NTAG215+",
+        ["1k"] = "MIFARE 1K",
+        ["2k"] = "I2C Plus",
+    };
+
+    private IReadOnlyList<StoredTag>? _tags;
+    private StoredTag? _current;
+    private bool _pickerOpen;
+    private ITagListDevice? _loaded;
+    private bool _disposed;
+
+    // The folder being shown (next-gen firmware); 0 is the top level, where tags outside any folder are.
+    private int _folder;
+
+    private FlaskNextGenDevice? NextGen => Device as FlaskNextGenDevice;
+
+    private IReadOnlyList<StoredTag> VisibleTags
+    {
+        get
+        {
+            if (_tags == null || NextGen is not { } nextGen)
+            {
+                return _tags ?? [];
+            }
+
+            // Tags whose folder no longer exists show at the top level, so they can't get lost.
+            var folders = nextGen.Folders.Select(f => f.Id).ToHashSet();
+            return _folder == 0
+                ? _tags.Where(t => t.FolderId == 0 || !folders.Contains(t.FolderId)).ToList()
+                : _tags.Where(t => t.FolderId == _folder).ToList();
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!ReferenceEquals(_loaded, Device))
+        {
+            if (_loaded != null) _loaded.TagsChanged -= OnTagsChanged;
+            _loaded = Device;
+            Device.TagsChanged += OnTagsChanged;
+            _tags = null;
+            _folder = 0;
+            await Refresh();
+        }
+    }
+
+    // The device changed its tags itself (a button press, a deletion on the device, a game renaming one).
+    private void OnTagsChanged(object? sender, EventArgs e) => _ = InvokeAsync(async () =>
+    {
+        if (!_disposed) await LoadQuietly();
+    });
+
+    private async Task Refresh()
+    {
+        var device = Device;
+        var result = await Actions.WithProgressAsync($"Reading {device.Name}", async (_, ct) =>
+            (Tags: await device.GetTagsAsync(ct), Current: await device.GetCurrentTagAsync(ct)));
+        if (!_disposed && ReferenceEquals(Device, device) && result.Tags != null)
+        {
+            (_tags, _current) = result;
+            KeepFolder();
+        }
+    }
+
+    private async Task LoadQuietly()
+    {
+        try
+        {
+            _tags = await Device.GetTagsAsync();
+            _current = await Device.GetCurrentTagAsync();
+            KeepFolder();
+            StateHasChanged();
+        }
+        catch (Exception ex) when (ex is TimeoutException or BleException)
+        {
+        }
+    }
+
+    // Back to the top level if the folder shown was deleted.
+    private void KeepFolder()
+    {
+        if (_folder != 0 && NextGen is { } nextGen && nextGen.Folders.All(f => f.Id != _folder)) _folder = 0;
+    }
+
+    // Next-gen firmware lists the whole amiibo ID, which names the exact figure; legacy names only carry its tail.
+    private AmiiboFigure? FigureOf(StoredTag tag) =>
+        (tag.AmiiboId != null ? Lookup.GetFigure(tag.AmiiboId) : null) ?? Lookup.GetFigureByTail(tag.AmiiboTail);
+
+    private static string Describe(StoredTag tag, AmiiboFigure? figure)
+    {
+        if (!tag.IsNtag215 && tag.TagType != null)
+        {
+            return TypeNames.TryGetValue(tag.TagType, out var type) ? type : tag.TagType;
+        }
+
+        return figure?.Name ?? (tag.AmiiboTail == null ? "Other NFC tag" : "Unknown amiibo");
+    }
+
+    private IReadOnlyList<ContextMenuItem> TagItems(StoredTag tag)
+    {
+        var device = Device;
+        var items = new List<ContextMenuItem>
+        {
+            new("Make active", async () =>
+            {
+                var current = await Actions.WithProgressAsync("Changing tag", (_, ct) => device.SelectTagAsync(tag, ct));
+                if (current != null) _current = current;
+            }, IsDefault: true),
+        };
+
+        if (tag.IsNtag215)
+        {
+            items.Add(new("Open", async () =>
+            {
+                var dump = await Actions.WithProgressAsync($"Reading {tag.DisplayName}", (progress, ct) => device.DownloadTagAsync(tag, progress, ct));
+                if (dump != null)
+                {
+                    await OnOpeningChild.InvokeAsync();
+                    await Actions.OpenTagAsync(dump, modal: false);
+                }
+            }));
+        }
+
+        if (device is FlaskNextGenDevice nextGen)
+        {
+            items.Add(new("Save File", () => SaveFile(nextGen, tag)));
+        }
+
+        items.Add(new("Rename", () => Rename(tag)));
+        if (device is FlaskNextGenDevice withImages)
+        {
+            items.Add(new("Set Image", () => SetImage(withImages, tag)));
+        }
+
+        if (device.CanReorderTags && _tags != null)
+        {
+            if (tag.Index > 0) items.Add(new("Move up", () => Move(tag, tag.Index - 1)));
+            if (tag.Index < _tags.Count - 1) items.Add(new("Move down", () => Move(tag, tag.Index + 1)));
+        }
+
+        items.Add(new("Delete", () => Delete(tag), IsDestructive: true));
+        return items;
+    }
+
+    private IReadOnlyList<ContextMenuItem> FolderItems(TagFolder folder)
+    {
+        var items = new List<ContextMenuItem> { new("Open", () => { _folder = folder.Id; return Task.CompletedTask; }, IsDefault: true) };
+        if (NextGen is { } nextGen)
+        {
+            var folders = nextGen.Folders;
+            var position = folders.ToList().FindIndex(f => f.Id == folder.Id);
+            if (position > 0)
+            {
+                // Before the one ahead of it: after the one before that, or first.
+                var after = position > 1 ? folders[position - 2] : null;
+                items.Add(new("Move left", () => MoveFolder(nextGen, folder, after)));
+            }
+
+            if (position >= 0 && position < folders.Count - 1)
+            {
+                items.Add(new("Move right", () => MoveFolder(nextGen, folder, folders[position + 1])));
+            }
+
+            items.Add(new("Delete Folder", () => DeleteFolder(nextGen, folder), IsDestructive: true));
+        }
+
+        return items;
+    }
+
+    private async Task Rename(StoredTag tag)
+    {
+        var name = await Dialogs.PromptAsync("Rename Tag", "Letters, numbers, spaces and hyphens.", tag.DisplayName, NextGen != null ? 30 : 20);
+        if (string.IsNullOrWhiteSpace(name)) return;
+        await Actions.WithProgressAsync("Renaming", async (_, ct) => { await Device.RenameTagAsync(tag, name, ct); return true; });
+        await Refresh();
+    }
+
+    private async Task SetImage(FlaskNextGenDevice device, StoredTag tag)
+    {
+        var text = await Dialogs.PromptAsync("Set Image", "The number of an icon in flask.run's image picker, counting from 1 across its categories (0 for none). Only flask.run shows it.", tag.Image ?? "0", 4);
+        if (!int.TryParse(text?.Trim(), out var image) || image < 0) return;
+        await Actions.WithProgressAsync("Setting image", async (_, ct) => { await device.SetTagImageAsync(tag, image, ct); return true; });
+        await Refresh();
+    }
+
+    private async Task SaveFile(FlaskNextGenDevice device, StoredTag tag)
+    {
+        var data = await Actions.WithProgressAsync($"Reading {tag.DisplayName}", (progress, ct) => device.DownloadDataAsync(tag, progress, ct));
+        if (data != null) await Files.SaveFileAsync($"{tag.DisplayName}.bin", data);
+    }
+
+    private async Task Move(StoredTag tag, int index)
+    {
+        await Actions.WithProgressAsync("Moving", async (_, ct) => { await Device.MoveTagAsync(tag, index, ct); return true; });
+        await Refresh();
+    }
+
+    private async Task Delete(StoredTag tag)
+    {
+        if (!await Dialogs.ConfirmAsync($"Delete {tag.DisplayName}?", $"It's removed from {Device.Name}.", "Delete", "Cancel")) return;
+        await Actions.WithProgressAsync("Deleting", async (_, ct) => { await Device.DeleteTagAsync(tag, ct); return true; });
+        await Refresh();
+    }
+
+    private async Task NewFolder()
+    {
+        if (NextGen is not { } device) return;
+        var name = await Dialogs.PromptAsync("New Folder", "Letters, numbers, spaces and hyphens.", "", 20);
+        if (string.IsNullOrWhiteSpace(name)) return;
+        await Actions.WithProgressAsync("Creating folder", async (_, ct) => { await device.CreateFolderAsync(name, ct); return true; });
+        await Refresh();
+    }
+
+    private async Task MoveFolder(FlaskNextGenDevice device, TagFolder folder, TagFolder? after)
+    {
+        await Actions.WithProgressAsync("Moving folder", async (_, ct) => { await device.MoveFolderAsync(folder, after, ct); return true; });
+        await Refresh();
+    }
+
+    private async Task DeleteFolder(FlaskNextGenDevice device, TagFolder folder)
+    {
+        var tags = _tags?.Where(t => t.FolderId == folder.Id).ToList() ?? [];
+        var message = tags.Count == 0
+            ? $"It's removed from {Device.Name}."
+            : $"Its {tags.Count} {(tags.Count == 1 ? "tag is" : "tags are")} deleted too.";
+        if (!await Dialogs.ConfirmAsync($"Delete {folder.Name}?", message, "Delete", "Cancel")) return;
+        await Actions.WithProgressAsync("Deleting folder", async (_, ct) =>
+        {
+            // flask.run only deletes empty folders, so the tags go first.
+            await device.DeleteTagsAsync(tags, ct);
+            await device.DeleteFolderAsync(folder, ct);
+            return true;
+        });
+        if (_folder == folder.Id) _folder = 0;
+        await Refresh();
+    }
+
+    private async Task AddBlank()
+    {
+        await Actions.WithProgressAsync("Adding a blank tag", async (_, ct) => { await Device.CreateBlankTagAsync(ct); return true; });
+        await Refresh();
+    }
+
+    private async Task PickFiles()
+    {
+        var files = await Files.PickFilesAsync("Add Tags", NextGen != null ? Array.Empty<string>() : TagActions.TagFileExtensions);
+        if (files.Count > 0) await AddFiles(files);
+    }
+
+    /// <summary>
+    /// Uploads every NTAG215 dump among the files (picked or dropped), each named after its figure. The next-gen
+    /// firmware also takes other tag images (NTAG213, MIFARE 1K/2K...), named after the file.
+    /// </summary>
+    private async Task AddFiles(IReadOnlyList<PickedFile> files)
+    {
+        var tags = new List<(string DisplayName, byte[] Data)>();
+        var skipped = new List<string>();
+        foreach (var file in files)
+        {
+            if (AmiiboImage.TryParse(file.Data, out var image) && image is TagDump dump)
+            {
+                var name = Lookup.Validate(dump).IsAmiibo ? Lookup.GetDisplayName(dump) : Path.GetFileNameWithoutExtension(file.Name);
+                tags.Add((name, dump.ToArray(TagDump.DataLength)));
+            }
+            else if (NextGen != null && FlaskNextGenDevice.IsSupportedSize(file.Data.Length))
+            {
+                tags.Add((Path.GetFileNameWithoutExtension(file.Name), file.Data));
+            }
+            else
+            {
+                skipped.Add(file.Name);
+            }
+        }
+
+        if (skipped.Count > 0)
+        {
+            var reason = NextGen != null
+                ? "Not NTAG215 amiibo dumps or other tag images the device takes"
+                : $"Not NTAG215 amiibo dumps (v3 figures can't go on {Device.Name})";
+            await Dialogs.AlertAsync("Not added", $"{reason}: {string.Join(", ", skipped)}.");
+        }
+
+        await Upload(tags);
+    }
+
+    // Pucks and emulators hold NTAG215 images, so v3 (NTAG I²C) figures aren't offered.
+    private static bool IsNtag215Figure(AmiiboFigure figure) => figure.Id.Id.EndsWith("02", StringComparison.Ordinal);
+
+    private async Task AddCharacter(AmiiboFigure figure)
+    {
+        _pickerOpen = false;
+        IAmiiboImage? image;
+        try
+        {
+            image = await Actions.CreateFromFigureAsync(figure);
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.AlertAsync("Couldn't create the tag", ex.Message);
+            return;
+        }
+
+        if (image == null)
+        {
+            if (await Dialogs.ConfirmAsync("Keys needed", "Generating a tag needs both amiibo keys. Load them in Settings?", "Settings", "Cancel"))
+            {
+                await OnOpeningChild.InvokeAsync();
+                await Navigator.NavigateAsync(AppRoutes.Settings());
+            }
+
+            return;
+        }
+
+        if (image is TagDump dump)
+        {
+            await Upload([(figure.Name, dump.ToArray(TagDump.DataLength))]);
+        }
+    }
+
+    private async Task Upload(IReadOnlyList<(string DisplayName, byte[] Data)> tags)
+    {
+        if (tags.Count == 0) return;
+        var title = tags.Count == 1 ? $"Adding {tags[0].DisplayName}" : $"Adding {tags.Count} tags";
+        var folder = _folder;
+        await Actions.WithProgressAsync(title, async (progress, ct) =>
+        {
+            if (Device is FlaskNextGenDevice nextGen)
+            {
+                // Into the folder being shown.
+                await nextGen.UploadAsync(tags, folder, progress, ct);
+            }
+            else
+            {
+                var dumps = new List<(string DisplayName, TagDump Dump)>();
+                foreach (var (name, data) in tags)
+                {
+                    if (TagDump.TryCreate(data, out var dump) && dump != null) dumps.Add((name, dump));
+                }
+
+                await Device.UploadTagsAsync(dumps, progress, ct);
+            }
+
+            return true;
+        });
+        await Refresh();
+    }
+
+    private Task ShowSettings()
+    {
+        var options = new List<(string Title, Func<Task> Run)>();
+        if (Device is IKeyStoreTagDevice { CanUploadKeys: true } keyStore)
+        {
+            options.Add((keyStore.HasKeys ? "Upload Keys Again" : "Upload Keys", () => UploadKeys(keyStore)));
+        }
+
+        if (NextGen != null) options.Add(("New Folder", NewFolder));
+        return ChooseSettings(options);
+    }
+
+    private async Task UploadKeys(IKeyStoreTagDevice device)
+    {
+        await Keys.EnsureLoadedAsync();
+        if (Keys.RawKeys is not { } keys)
+        {
+            await Dialogs.AlertAsync("Key file missing", "Load key_retail.bin in Settings first.");
+            return;
+        }
+
+        var ok = await Actions.WithProgressAsync("Uploading keys", async (_, ct) => { await device.UploadKeysAsync(keys, ct); return true; });
+        if (ok) await Dialogs.AlertAsync("Keys uploaded");
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        if (_loaded != null) _loaded.TagsChanged -= OnTagsChanged;
+    }
+}

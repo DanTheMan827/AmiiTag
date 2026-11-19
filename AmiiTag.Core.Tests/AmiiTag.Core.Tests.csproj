@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="bunit" Version="2.15.2" />
+    <PackageReference Include="AngleSharp" Version="1.10.5" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.0" PrivateAssets="all" />
+    <ProjectReference Include="../AmiiTag.Core/AmiiTag.Core.csproj" />
+    <Compile Include="../AmiiTag.Tests/Simulation/SimulatedBle.cs" Link="Simulation/SimulatedBle.cs" />
+    <Compile Include="../AmiiTag.WebAssembly/Data/AmiiboDatabaseContainer.cs" Link="Web/AmiiboDatabaseContainer.cs" />
+    <Compile Include="../AmiiTag.WebAssembly/Services/WebAppStorage.cs" Link="Web/WebAppStorage.cs" />
+    <Compile Include="../AmiiTag.WebAssembly/Services/WebFigureImageProvider.cs" Link="Web/WebFigureImageProvider.cs" />
+  </ItemGroup>
+</Project>

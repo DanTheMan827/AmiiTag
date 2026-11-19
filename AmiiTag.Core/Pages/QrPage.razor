@@ -1,0 +1,52 @@
+@page "/qr/{TagKey}"
+@inject TagStore Tags
+@inject AmiiboLookup Lookup
+@inject IFileService Files
+
+<AppPage Title="@_title">
+    @if (_dataUrl == null)
+    {
+        <p class="empty-state">This tag is no longer available.</p>
+    }
+    else
+    {
+        <div class="qr">
+            <img src="@_dataUrl" alt="QR code containing the tag data" class="qr-image" />
+            <BigButton OnClick="Share">Share QR Code</BigButton>
+        </div>
+    }
+</AppPage>
+
+@code {
+    private string? _dataUrl;
+    private string _title = "QR Code";
+    private string _name = "Amiibo";
+
+    [Parameter] public string? TagKey { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        var dump = Tags.Get(TagKey);
+        if (dump == null)
+        {
+            _dataUrl = null;
+            return;
+        }
+
+        _name = Lookup.GetDisplayName(dump);
+        _title = $"{_name} QR Code";
+        _dataUrl = QrCodes.ToPngDataUrl(dump.ToQrText());
+    }
+
+    private async Task Share()
+    {
+        var dump = Tags.Get(TagKey);
+        if (dump == null)
+        {
+            return;
+        }
+
+        var safeName = string.Join("_", _name.Split(Path.GetInvalidFileNameChars()));
+        await Files.SaveFileAsync($"{safeName}.png", QrCodes.ToPng(dump.ToQrText(), 10), "image/png");
+    }
+}

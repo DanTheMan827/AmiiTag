@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Datasheet based tag models (NTAG215, NTAG I2C Plus 2K, N2 Elite) answering raw NFC-A frames. Used by the tests
+       and by the Flipper Zero tag emulation harness. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AmiiTag.Simulation</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AmiiTag.Tags\AmiiTag.Tags.csproj" />
+  </ItemGroup>
+
+</Project>

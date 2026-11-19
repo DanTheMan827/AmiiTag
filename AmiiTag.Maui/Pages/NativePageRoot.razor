@@ -1,0 +1,14 @@
+@using Microsoft.AspNetCore.Components
+@using AmiiTag.Core.Interfaces
+@using AmiiTag.Core.Services
+
+<CascadingValue Value="Chrome" IsFixed="true">
+    <DynamicComponent Type="Route.Component" Parameters="_parameters" />
+</CascadingValue>
+
+@code {
+    [Parameter, EditorRequired] public AppRoute Route { get; set; } = default!;
+    [Parameter, EditorRequired] public PageChromeState Chrome { get; set; } = default!;
+    private IDictionary<string, object>? _parameters;
+    protected override void OnParametersSet() => _parameters = Route.Parameters.ToDictionary(p => p.Key, p => p.Value);
+}

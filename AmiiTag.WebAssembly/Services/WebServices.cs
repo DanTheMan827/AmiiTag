@@ -1,0 +1,211 @@
+using System.Threading.Channels;
+using AmiiTag.Core.Interfaces;
+using AmiiTag.Nfc;
+using AmiiTag.Nfc.Mfrc522;
+using Microsoft.JSInterop;
+using ZXing;
+using ZXing.Common;
+using ZXing.QrCode;
+
+namespace AmiiTag.WebAssembly.Services;
+
+public sealed class WebFileService : IFileService
+{
+    private readonly IJSRuntime _js;
+
+    public WebFileService(IJSRuntime js)
+    {
+        _js = js;
+    }
+
+    public async Task<PickedFile?> PickFileAsync(string title, IReadOnlyList<string> extensions)
+    {
+        var accept = extensions.Count == 0 ? null : string.Join(",", extensions);
+        var file = await _js.InvokeAsync<JsFile?>("amiitag.files.pick", accept);
+        return file == null ? null : new PickedFile(file.Name, Convert.FromBase64String(file.Base64));
+    }
+
+    public async Task<IReadOnlyList<PickedFile>> PickFilesAsync(string title, IReadOnlyList<string> extensions)
+    {
+        var accept = extensions.Count == 0 ? null : string.Join(",", extensions);
+        var files = await _js.InvokeAsync<JsFile[]?>("amiitag.files.pickMany", accept);
+        return (files ?? Array.Empty<JsFile>()).Select(f => new PickedFile(f.Name, Convert.FromBase64String(f.Base64))).ToList();
+    }
+
+    public async Task SaveFileAsync(string fileName, byte[] data, string contentType = "application/octet-stream") =>
+        await _js.InvokeVoidAsync("amiitag.files.download", fileName, data, contentType);
+
+    private sealed record JsFile(string Name, string Base64);
+}
+
+/// <summary>
+/// Camera QR scanning: BarcodeDetector where available, otherwise frames are decoded here with ZXing.Net.
+/// </summary>
+public sealed class WebQrScanner : IQrScanner
+{
+    private readonly IJSRuntime _js;
+    private readonly QRCodeReader _reader = new();
+
+    public WebQrScanner(IJSRuntime js)
+    {
+        _js = js;
+    }
+
+    public bool IsSupported => true;
+
+    public async Task<bool> HasCameraAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            return await _js.InvokeAsync<bool>("amiitag.qr.hasCamera", cancellationToken);
+        }
+        catch (JSException)
+        {
+            return false;
+        }
+    }
+
+    public async Task<string?> ScanAsync(CancellationToken cancellationToken = default)
+    {
+        using var reference = DotNetObjectReference.Create(this);
+        try
+        {
+            return await _js.InvokeAsync<string?>("amiitag.qr.scan", cancellationToken, reference);
+        }
+        catch (JSException ex)
+        {
+            throw new InvalidOperationException($"The camera couldn't be opened: {ex.Message}", ex);
+        }
+    }
+
+    [JSInvokable]
+    public string? Decode(int width, int height, byte[] rgba)
+    {
+        try
+        {
+            var source = new RGBLuminanceSource(rgba, width, height, RGBLuminanceSource.BitmapFormat.RGBA32);
+            var result = _reader.decode(new BinaryBitmap(new HybridBinarizer(source)), new Dictionary<DecodeHintType, object>
+            {
+                [DecodeHintType.TRY_HARDER] = true,
+            });
+            return result?.Text;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+}
+
+/// <summary>
+/// Web Serial ports for MFRC522 and PN532 readers on USB serial adapters (Chrome/Edge on desktop).
+/// </summary>
+public sealed class WebSerialPortFactory : ISerialPortFactory, ISerialPortRequester
+{
+    private readonly IJSRuntime _js;
+    private bool? _supported;
+
+    public WebSerialPortFactory(IJSRuntime js)
+    {
+        _js = js;
+    }
+
+    public bool IsSupported => _supported ??= ((IJSInProcessRuntime)_js).Invoke<bool>("amiitag.serial.isSupported");
+
+    public async Task<IReadOnlyList<NfcReaderInfo>> GetPortsAsync(CancellationToken cancellationToken = default)
+    {
+        var ports = await _js.InvokeAsync<JsPort[]>("amiitag.serial.getPorts", cancellationToken);
+        return ports.Select(p => new NfcReaderInfo(p.Id, p.Name)).ToList();
+    }
+
+    public async Task<NfcReaderInfo?> RequestPortAsync(CancellationToken cancellationToken = default)
+    {
+        var port = await _js.InvokeAsync<JsPort?>("amiitag.serial.requestPort", cancellationToken);
+        return port == null ? null : new NfcReaderInfo(port.Id, port.Name);
+    }
+
+    public async Task<ISerialPortStream> OpenAsync(string portId, int baudRate, CancellationToken cancellationToken = default)
+    {
+        var stream = new WebSerialPortStream(_js, portId);
+        try
+        {
+            await _js.InvokeVoidAsync("amiitag.serial.open", cancellationToken, portId, baudRate, stream.Reference);
+        }
+        catch (JSException ex)
+        {
+            stream.Reference.Dispose();
+            throw new NfcException($"Couldn't open the serial port: {ex.Message}", ex);
+        }
+
+        return stream;
+    }
+
+    private sealed record JsPort(string Id, string Name);
+}
+
+internal sealed class WebSerialPortStream : ISerialPortStream
+{
+    private readonly IJSRuntime _js;
+    private readonly string _portId;
+    private readonly Channel<byte[]> _received = Channel.CreateUnbounded<byte[]>();
+    private byte[]? _pending;
+    private int _pendingOffset;
+
+    public WebSerialPortStream(IJSRuntime js, string portId)
+    {
+        _js = js;
+        _portId = portId;
+        Reference = DotNetObjectReference.Create(this);
+    }
+
+    public DotNetObjectReference<WebSerialPortStream> Reference { get; }
+
+    [JSInvokable]
+    public void OnData(byte[] data) => _received.Writer.TryWrite(data);
+
+    [JSInvokable]
+    public void OnClosed() => _received.Writer.TryComplete();
+
+    public async Task WriteAsync(byte[] data, CancellationToken cancellationToken = default) =>
+        await _js.InvokeVoidAsync("amiitag.serial.write", cancellationToken, _portId, data);
+
+    public async Task<int> ReadAsync(byte[] buffer, int offset, int count, CancellationToken cancellationToken = default)
+    {
+        if (_pending == null)
+        {
+            try
+            {
+                _pending = await _received.Reader.ReadAsync(cancellationToken);
+            }
+            catch (ChannelClosedException)
+            {
+                throw new IOException("The serial port was closed.");
+            }
+
+            _pendingOffset = 0;
+        }
+
+        var take = Math.Min(count, _pending.Length - _pendingOffset);
+        Array.Copy(_pending, _pendingOffset, buffer, offset, take);
+        _pendingOffset += take;
+        if (_pendingOffset >= _pending.Length)
+        {
+            _pending = null;
+        }
+
+        return take;
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        try
+        {
+            await _js.InvokeVoidAsync("amiitag.serial.close", _portId);
+        }
+        catch (JSException)
+        {
+        }
+
+        Reference.Dispose();
+    }
+}

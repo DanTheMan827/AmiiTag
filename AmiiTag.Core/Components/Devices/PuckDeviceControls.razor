@@ -1,0 +1,36 @@
+@inherits DeviceControlsBase<PuckDevice>
+@inject KeyStore Keys
+
+<DeviceManagementLayout Device="Device" OnSettings="ShowSettings">
+    <SlotDeviceControls @ref="_slots" Device="Device" OnOpeningChild="OnOpeningChild" AdditionalActions="SlotActions" />
+</DeviceManagementLayout>
+
+@code {
+    private SlotDeviceControls? _slots;
+    private IReadOnlyList<ContextMenuItem> SlotActions(SlotInfo slot) => Device.CanRandomizeUid
+        ? [new("Randomize UID", async () =>
+        {
+            var ok = await Actions.WithProgressAsync("Randomizing UID", async (_, ct) => { await Device.RandomizeUidAsync(slot.Slot, ct); return true; });
+            if (ok && _slots != null) await _slots.RefreshSlotAsync(slot.Slot);
+        })] : [];
+
+    private Task ShowSettings()
+    {
+        var options = new List<(string Title, Func<Task> Run)> { ("Change Name", () => Rename(Device)) };
+        if (Device.CanUploadKeys && !Device.AmiitoolKeysLoaded) options.Add(("Upload amiitool keys", UploadKeys));
+        options.Add(("Enable UART", () => EnableUart(Device)));
+        return ChooseSettings(options);
+    }
+
+    private async Task UploadKeys()
+    {
+        await Keys.EnsureLoadedAsync();
+        if (Keys.RawKeys is not { } keys)
+        {
+            await Dialogs.AlertAsync("Key file missing", "Load key_retail.bin in Settings first.");
+            return;
+        }
+        var ok = await Actions.WithProgressAsync("Uploading keys", (_, ct) => Device.UploadKeysAsync(keys, ct));
+        await Dialogs.AlertAsync(ok ? "Keys uploaded" : "The puck rejected the keys");
+    }
+}

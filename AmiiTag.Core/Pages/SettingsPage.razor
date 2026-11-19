@@ -1,0 +1,239 @@
+@page "/settings"
+@implements IDisposable
+@inject KeyStore Keys
+@inject SignatureStore Signatures
+@inject SettingsStore SettingsStore
+@inject NfcService Nfc
+@inject IFileService Files
+@inject IDialogService Dialogs
+@inject IDatabaseContainer DatabaseContainer
+@inject AppState State
+@inject AppEnvironment Environment
+@inject TagActions Actions
+
+<AppPage OnRefresh="RefreshReaders" Title="Settings" OnFilesDropped="Actions.ImportKeysAsync" DropLabel="Drop key files to load them">
+    <h2 class="section-title">Keys</h2>
+    <div class="card">
+        <p>
+            @if (Keys.HasKeys)
+            {
+                <span class="status ok">Retail keys loaded</span>
+            }
+            else if (Keys.HasUnfixedInfo)
+            {
+                <span class="status">unfixed-info.bin loaded: tags can be decrypted. Load locked-secret.bin too to generate, re-encrypt and write tags.</span>
+            }
+            else if (Keys.HasLockedSecret)
+            {
+                <span class="status">locked-secret.bin loaded. Load unfixed-info.bin too: both keys are needed.</span>
+            }
+            else
+            {
+                <span class="status">No keys. Generating, re-encrypting and writing tags need key_retail.bin, or unfixed-info.bin and locked-secret.bin.</span>
+            }
+        </p>
+        @if (!Keys.HasKeys) {
+            <div class="button-row">
+                <button type="button" class="pill-button" @onclick="LoadKeys">@(Keys.HasKeys ? "Replace Keys" : Keys.HasAnyKey ? "Load Other Key" : "Load Key Files")</button>
+                @if (Keys.HasAnyKey)
+                {
+                    <button type="button" class="pill-button destructive" @onclick="RemoveKeys">Remove</button>
+                }
+            </div>
+        }
+        <label class="toggle-row">
+            <input type="checkbox" checked="@(_settings?.RandomizeGeneratedUid ?? true)" @onchange="ToggleRandomUid" />
+            <span>Use saved genuine UIDs for new tags (@Signatures.Count saved)</span>
+        </label>
+    </div>
+
+    @if (_nfcProviders.Count > 0)
+    {
+    <h2 class="section-title">NFC Reader</h2>
+    <div class="card">
+            @foreach (var provider in _nfcProviders)
+            {
+                <label class="radio-row">
+                    <input type="radio" name="nfc-provider" checked="@(_selectedProvider?.Id == provider.Id)" @onchange="() => SelectProvider(provider)" />
+                    <span>@provider.DisplayName</span>
+                </label>
+            }
+
+            @if (_selectedProvider is { SupportsReaderSelection: true })
+            {
+                <div class="field">
+                    <label for="nfc-reader">Reader</label>
+                    <select id="nfc-reader" value="@(_settings?.NfcReaderId ?? string.Empty)" @onchange="SelectReader">
+                        <option value="">First available</option>
+                        @foreach (var reader in _readers)
+                        {
+                            <option value="@reader.Id">@reader.DisplayName</option>
+                        }
+                    </select>
+                </div>
+                <div class="button-row">
+                    <button type="button" class="pill-button" @onclick="RefreshReaders">Refresh</button>
+                    @if (_selectedProvider is INfcReaderRequester { CanRequestReader: true })
+                    {
+                        @* Browsers only list serial ports the user has granted. *@
+                        <button type="button" class="pill-button" @onclick="RequestReader">Choose Serial Port...</button>
+                    }
+                </div>
+            }
+
+            @if (_selectedProvider?.Id == "pn532-serial")
+            {
+                <p class="footnote">Set the PN532 module to HSU / UART mode and connect through a USB serial adapter at 115,200 baud. Choose the reader type here; USB serial adapters do not identify the attached NFC chip.</p>
+            }
+
+            @if (_selectedProvider is INfcBaudRateSetting serial)
+            {
+                <div class="field">
+                    <label for="nfc-baud">Speed</label>
+                    <select id="nfc-baud" value="@serial.BaudRate" @onchange="SelectBaudRate">
+                        @foreach (var rate in serial.SupportedBaudRates)
+                        {
+                            <option value="@rate">@rate.ToString("N0") baud@(rate == serial.DefaultBaudRate ? " (default)" : "")</option>
+                        }
+                    </select>
+                </div>
+                <p class="footnote">If the reader stops answering at a high speed (some USB serial adapters can't keep up), pick a lower one.</p>
+            }
+    </div>
+    }
+
+    <h2 class="section-title">Database</h2>
+    <div class="card">
+        <p class="status">@DatabaseContainer.Database.Figures.Count amiibo loaded.</p>
+        <div class="button-row">
+            <button type="button" class="pill-button" @onclick="UpdateDatabase">Update Database</button>
+        </div>
+    </div>
+
+    <p class="footnote">Running on @Environment.Platform.</p>
+</AppPage>
+
+@code {
+    private AppSettings? _settings;
+    private INfcProvider? _selectedProvider;
+    private IReadOnlyList<NfcReaderInfo> _readers = [];
+    private IReadOnlyList<INfcProvider> _nfcProviders = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Keys.Changed += OnChanged;
+        DatabaseContainer.DataChanged += OnChanged;
+        await Keys.EnsureLoadedAsync();
+        await Signatures.EnsureLoadedAsync();
+        _settings = await SettingsStore.GetAsync();
+        _nfcProviders = Nfc.SupportedProviders;
+        _selectedProvider = await Nfc.GetSelectedProviderAsync();
+        await RefreshReaders();
+    }
+
+    private void OnChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    private async Task LoadKeys()
+    {
+        // Any number of files: the relevant ones are picked out by size and SHA-256.
+        var files = await Files.PickFilesAsync("Load key_retail.bin, or unfixed-info.bin and locked-secret.bin", [".bin"]);
+        if (files.Count > 0)
+        {
+            await Actions.ImportKeysAsync(files);
+        }
+    }
+
+    private async Task RemoveKeys()
+    {
+        if (await Dialogs.ConfirmAsync("Remove keys?", null, "Remove", "Cancel"))
+        {
+            await Keys.RemoveAsync();
+        }
+    }
+
+    private async Task ToggleRandomUid(ChangeEventArgs e)
+    {
+        if (_settings == null)
+        {
+            return;
+        }
+
+        _settings.RandomizeGeneratedUid = e.Value is true;
+        await SettingsStore.SaveAsync();
+    }
+
+    private async Task SelectProvider(INfcProvider provider)
+    {
+        _selectedProvider = provider;
+        await Nfc.SelectAsync(provider.Id, null);
+        await RefreshReaders();
+    }
+
+    private async Task SelectReader(ChangeEventArgs e)
+    {
+        if (_selectedProvider == null)
+        {
+            return;
+        }
+
+        var value = e.Value as string;
+        await Nfc.SelectAsync(_selectedProvider.Id, string.IsNullOrEmpty(value) ? null : value);
+    }
+
+    private async Task RefreshReaders()
+    {
+        if (_selectedProvider is not { SupportsReaderSelection: true })
+        {
+            _readers = [];
+            return;
+        }
+
+        try
+        {
+            _readers = await _selectedProvider.GetReadersAsync();
+        }
+        catch (Exception ex)
+        {
+            _readers = [];
+            await Dialogs.AlertAsync("Couldn't list readers", ex.Message);
+        }
+    }
+
+    private async Task SelectBaudRate(ChangeEventArgs e)
+    {
+        if (int.TryParse(e.Value?.ToString(), out var rate))
+        {
+            await Nfc.SetSerialBaudRateAsync(rate);
+        }
+    }
+
+    private async Task RequestReader()
+    {
+        if (_selectedProvider is not INfcReaderRequester requester)
+        {
+            return;
+        }
+
+        try
+        {
+            var reader = await requester.RequestReaderAsync();
+            if (reader != null)
+            {
+                await Nfc.SelectAsync(_selectedProvider.Id, reader.Id);
+                await RefreshReaders();
+            }
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.AlertAsync("Couldn't add the reader", ex.Message);
+        }
+    }
+
+    private Task UpdateDatabase() => State.UpdateDatabaseAsync();
+
+    public void Dispose()
+    {
+        Keys.Changed -= OnChanged;
+        DatabaseContainer.DataChanged -= OnChanged;
+    }
+}

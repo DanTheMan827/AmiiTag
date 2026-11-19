@@ -1,0 +1,16 @@
+@implements IDisposable
+
+@code {
+    [CascadingParameter] public PageChromeState? Chrome { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+    private PageChromeState? _registered;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_registered, Chrome)) _registered?.Remove(this);
+        _registered = Chrome;
+        Chrome?.SetRefresh(this, OnRefresh.HasDelegate ? () => InvokeAsync(() => OnRefresh.InvokeAsync()) : null);
+    }
+
+    public void Dispose() => _registered?.Remove(this);
+}

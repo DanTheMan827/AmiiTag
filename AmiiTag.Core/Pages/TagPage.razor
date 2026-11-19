@@ -1,0 +1,541 @@
+@page "/tag/{TagKey}"
+@page "/figure/{FigureId}"
+@implements IDisposable
+@inject TagStore Tags
+@inject TagActions Actions
+@inject AmiiboLookup Lookup
+@inject KeyStore Keys
+@inject IDatabaseContainer DatabaseContainer
+@inject IAppNavigator Navigator
+@inject AppState State
+@inject DeviceCapabilities Capabilities
+@inject BleDeviceManager Ble
+@inject FlipperEmulationService Flipper
+@inject LockOnLibrary LockOns
+
+<AppPage Title="@_title" Wide="true" ForceBack="OpenedAutomatically" OnBack="Navigator.GoBackAsync"
+         OnFilesDropped="DroppedLockOnAsync" DropEnabled="@(_dump is AmiiboV3Dump)" DropLabel="Drop a lock-on to put it in this tag">
+    @if (_dump == null && _figure == null)
+    {
+        <p class="empty-state">@(_message ?? "This tag is no longer available.")</p>
+    }
+    else
+    {
+        <div class="tag-info">
+            <div class="tag-stage">
+                @if (_figure != null)
+                {
+                    <FigureImage Figure="_figure" Class="tag-image" />
+                }
+                else
+                {
+                    <div class="image-placeholder" aria-hidden="true"></div>
+                }
+            </div>
+
+            <div class="tag-heading">
+                <h2 class="tag-name">@_title</h2>
+                @if (!string.IsNullOrEmpty(_nickname))
+                {
+                    <p class="tag-subtitle">Nicknamed &ldquo;@_nickname&rdquo;</p>
+                }
+                else if (IsAmiibo && _series != "Unknown")
+                {
+                    <p class="tag-subtitle">@_series</p>
+                }
+                @if (_validation != null)
+                {
+                    <span class="status-pill @_validation.Status.ToString().ToLowerInvariant()">@_validation.Summary</span>
+                }
+            </div>
+
+            @if (Flipper.HasUnsavedChanges(_key))
+            {
+                <p class="notice changed">A reader wrote to this tag while it was emulated. This is the new data; use Save Tag to keep it.</p>
+            }
+
+            @if (_validation is { Status: not AmiiboValidity.Valid } && _validation.Problems.Count > 0)
+            {
+                <ul class="validation-problems">
+                    @foreach (var problem in _validation.Problems.Concat(_validation.Notes))
+                    {
+                        <li>@problem</li>
+                    }
+                </ul>
+            }
+
+            @if (IsAmiibo || _figure != null)
+            {
+                <section class="info-group">
+                    <h3 class="section-title">Figure</h3>
+                    <dl class="info-list">
+                        @if (_figure != null)
+                        {
+                            <div class="info-row"><dt>Character</dt><dd>@_figure.Character</dd></div>
+                            <div class="info-row"><dt>Game</dt><dd>@_figure.GameSeries</dd></div>
+                        }
+                        @if (IsAmiibo)
+                        {
+                            <div class="info-row"><dt>Series</dt><dd>@_series</dd></div>
+                            <div class="info-row"><dt>Type</dt><dd>@_type</dd></div>
+                        }
+                        @if (_amiiboId != null && IsAmiibo)
+                        {
+                            <div class="info-row"><dt>Amiibo ID</dt><dd class="mono">@_amiiboId</dd></div>
+                        }
+                    </dl>
+                </section>
+            }
+
+            @if (_dump != null)
+            {
+                <section class="info-group">
+                    <h3 class="section-title">Tag</h3>
+                    <dl class="info-list">
+                        <div class="info-row"><dt>Format</dt><dd>@AmiiboImage.Describe(_dump.Format)</dd></div>
+                        <div class="info-row @(Keys.HasKeys && CanWrite ? "with-segment" : "")">
+                            <dt>UID</dt>
+                            <dd class="mono">@_dump.UidHex</dd>
+                            @if (Keys.HasKeys && CanWrite)
+                            {
+                                @* Re-encrypts the tag for a new random UID. *@
+                                <button type="button" class="row-segment" title="New random UID" aria-label="New random UID" @onclick="NewUid">
+                                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.34-5.66" /><path d="M20 4v5h-5" /></svg>
+                                </button>
+                            }
+                        </div>
+                        @if (IsAmiibo)
+                        {
+                            <div class="info-row"><dt>Writes</dt><dd>@_dump.WriteCounter</dd></div>
+                        }
+                        @if (_dump is AmiiboV3Dump v3Info)
+                        {
+                            <div class="info-row">
+                                <dt>Lock-on</dt>
+                                <dd>
+                                    @if (v3Info.LockOn is { } response)
+                                    {
+                                        var check = LockOnResponse.Check(response);
+                                        @(LockOns.Find(response)?.Name ?? "Included")
+                                        <span class="crc-badge @(check == LockOnCheck.Valid ? "valid" : "invalid")"
+                                              title="@LockOnResponse.Describe(check)">@(check switch
+                                              {
+                                                  LockOnCheck.Valid => "CRC valid",
+                                                  LockOnCheck.CrcMismatch => "CRC mismatch",
+                                                  _ => "Invalid",
+                                              })</span>
+                                    }
+                                    else
+                                    {
+                                        @:None
+                                    }
+                                </dd>
+                            </div>
+                        }
+                    </dl>
+                </section>
+            }
+
+            @if (_releases.Count > 0)
+            {
+                <section class="info-group">
+                    <h3 class="section-title">Released</h3>
+                    <dl class="info-list">
+                        @foreach (var (region, date) in _releases)
+                        {
+                            <div class="info-row">
+                                <dt>@region</dt>
+                                <dd>@date.ToString("MMM d, yyyy", System.Globalization.CultureInfo.CurrentCulture)</dd>
+                            </div>
+                        }
+                    </dl>
+                </section>
+            }
+
+            @if (_dump == null)
+            {
+                <p class="notice">@_message</p>
+                @if (!Keys.HasKeys)
+                {
+                    <BigButton OnClick="OpenSettings">Load Key File</BigButton>
+                }
+            }
+            else
+            {
+                @* Write is the main action when there is one; otherwise Save is. Blank, non-amiibo or damaged data is
+                   never written. *@
+                <div class="tag-actions">
+                    @if (ShowsWrite)
+                    {
+                        <BigButton OnClick="Write" Class="primary">@(_dump is AmiiboV3Dump ? "Write App Data" : "Write Tag")</BigButton>
+                    }
+                    <BigButton OnClick="Save" Class="@(ShowsWrite ? "tonal" : "primary")">Save Tag</BigButton>
+                    @if (Flipper.IsAvailable && FlipperEmulationService.CanEmulate(_dump))
+                    {
+                        <BigButton OnClick="Emulate" Class="tonal">Emulate</BigButton>
+                    }
+                    <BigButton OnClick="ShowQr" Class="tonal">Show QR Code</BigButton>
+                    @if (_dump is AmiiboV3Dump v3)
+                    {
+                        <BigButton OnClick="LoadLockOn" Class="secondary">@(v3.HasLockOn ? "Replace Lock-on" : "Load Lock-on")</BigButton>
+                        @if (v3.LockOn is { } current && LockOns.Find(current) == null && LockOnResponse.IsUsable(LockOnResponse.Check(current)))
+                        {
+                            <BigButton OnClick="SaveLockOn" Class="secondary">Save Lock-on to Library</BigButton>
+                        }
+                        @if (v3.HasLockOn)
+                        {
+                            <BigButton OnClick="RemoveLockOn" Class="secondary">Remove Lock-on</BigButton>
+                        }
+                    }
+                </div>
+            }
+        </div>
+
+        @if (_figure != null)
+        {
+            <GameUsageList Figure="_figure" />
+        }
+    }
+</AppPage>
+
+@code {
+    private IAmiiboImage? _dump;
+    private AmiiboFigure? _figure;
+    private string _title = "Tag";
+    private string? _nickname;
+    private string _series = "Unknown";
+    private string _type = "Unknown";
+    private string? _amiiboId;
+    private List<(string Region, DateTime Date)> _releases = [];
+    private string? _message;
+    private string? _key;
+    private AmiiboValidation? _validation;
+
+    /// <summary>
+    /// Amiibo rows (series, type, ID...) are only shown for images laid out like an amiibo, or a figure from the library.
+    /// </summary>
+    private bool IsAmiibo => _validation?.IsAmiibo ?? _figure != null;
+
+    /// <summary>
+    /// Valid, or not verifiable because the keys aren't loaded. Damaged data is never written.
+    /// </summary>
+    private bool CanWrite => _validation is { Status: AmiiboValidity.Valid or AmiiboValidity.Unverified };
+
+    /// <summary>
+    /// Whether Write is offered: writable data, and a way to write it here (v3 app data needs an NFC reader).
+    /// </summary>
+    private bool ShowsWrite => _dump != null && CanWrite && (_dump is AmiiboV3Dump ? Capabilities.HasNfc : Capabilities.CanUseTags);
+
+    /// <summary>
+    /// A tag stored in <see cref="TagStore"/>.
+    /// </summary>
+    [Parameter] public string? TagKey { get; set; }
+
+    /// <summary>
+    /// Web: opened by the main menu's background scan (?auto=1). The browser skips the main menu's history entry after
+    /// a navigation nobody tapped for, so this page shows its own Back to the main menu.
+    /// </summary>
+    /// <remarks>
+    /// Taken as text: Blazor parses a bool query value with bool.Parse, so "?auto=1" threw while rendering and left a
+    /// black page.
+    /// </remarks>
+    [SupplyParameterFromQuery(Name = "auto")]
+    public string? Auto { get; set; }
+
+    private bool OpenedAutomatically => Auto is "1" || string.Equals(Auto, "true", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// A figure ID from the library; a tag is generated for it.
+    /// </summary>
+    [Parameter] public string? FigureId { get; set; }
+
+    // Scanning while this screen is open, so Write can offer nearby Bluetooth devices.
+    private bool _startedScan;
+    private bool _disposed;
+
+    protected override void OnInitialized()
+    {
+        Keys.Changed += OnKeysChanged;
+        Flipper.Changed += OnFlipperChanged;
+        Flipper.TagUpdated += OnTagUpdated;
+        LockOns.Changed += OnLockOnsChanged;
+        Tags.Replaced += OnTagUpdated;
+    }
+
+    private void OnLockOnsChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    /// <summary>
+    /// v3 tags take a dropped lock-on (a .lockon, or a v3 amiibo that has one), as Load from File would.
+    /// </summary>
+    private async Task DroppedLockOnAsync(IReadOnlyList<PickedFile> files)
+    {
+        if (_dump is AmiiboV3Dump v3 && await Actions.UseLockOnFileAsync(v3, files[0]) is { } updated)
+        {
+            _key ??= Tags.Add(updated);
+            Update(updated);
+        }
+    }
+
+    private async Task SaveLockOn()
+    {
+        if (_dump is AmiiboV3Dump v3)
+        {
+            await Actions.SaveLockOnToLibraryAsync(v3);
+        }
+    }
+
+    // The Emulate button follows the Flipper being plugged in and out.
+    private void OnFlipperChanged(object? sender, EventArgs e) => _ = InvokeAsync(StateHasChanged);
+
+    private Task Emulate() => _dump == null ? Task.CompletedTask : Flipper.EmulateAsync(_dump, _title, _key, FigureId);
+
+    // What a reader wrote while this tag was emulated.
+    private void OnTagUpdated(string key) => _ = InvokeAsync(() =>
+    {
+        if (key == _key && Tags.Get(key) is { } updated)
+        {
+            _dump = updated;
+            Describe();
+            StateHasChanged();
+        }
+    });
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _startedScan = await Actions.StartBackgroundBluetoothScanAsync();
+            if (_disposed && _startedScan)
+            {
+                _startedScan = false;
+                await Ble.StopScanningAsync();
+            }
+        }
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        await Keys.EnsureLoadedAsync();
+        await LockOns.EnsureLoadedAsync();
+        if (!DatabaseContainer.IsLoaded)
+        {
+            await State.EnsureStartedAsync();
+        }
+
+        if (!string.IsNullOrEmpty(TagKey))
+        {
+            _key = TagKey;
+            _dump = Tags.Get(TagKey);
+            if (_dump != null)
+            {
+                _figure = Lookup.GetFigure(_dump);
+            }
+        }
+        else if (!string.IsNullOrEmpty(FigureId))
+        {
+            await LoadFigureAsync();
+        }
+
+        Describe();
+    }
+
+    private async Task LoadFigureAsync()
+    {
+        _figure = Lookup.GetFigure(FigureId!);
+        if (_figure == null)
+        {
+            _message = "This amiibo isn't in the database.";
+            return;
+        }
+
+        // The figure just emulated: its tag, with whatever the reader wrote, rather than a newly generated one.
+        if (FigureId == Flipper.LastFigureId && Tags.Get(Flipper.LastTagKey) is { } emulated)
+        {
+            _dump = emulated;
+            _key = Flipper.LastTagKey;
+            return;
+        }
+
+        // Likewise a tag changed on this page (a lock-on, a new UID) before going to another screen and back.
+        if (Tags.KeyForFigure(FigureId!) is { } kept && Tags.Get(kept) is { } changed)
+        {
+            _dump = changed;
+            _key = kept;
+            return;
+        }
+
+        try
+        {
+            _dump = await Actions.CreateFromFigureAsync(_figure);
+            _message = _dump == null ? "Load your key_retail.bin in Settings to create this tag." : null;
+            if (_dump != null)
+            {
+                _key = Tags.Add(_dump);
+            }
+        }
+        catch (Exception ex)
+        {
+            _message = ex.Message;
+        }
+    }
+
+    private void Describe()
+    {
+        _validation = _dump != null ? Lookup.Validate(_dump) : null;
+        _amiiboId = _dump != null ? $"0x{_dump.AmiiboIdHex}" : _figure != null ? $"0x{_figure.Id.Id}" : null;
+        _releases = [];
+        if (_figure?.Release is { } release)
+        {
+            AddRelease("North America", release.NorthAmerica);
+            AddRelease("Europe", release.Europe);
+            AddRelease("Japan", release.Japan);
+            AddRelease("Australia", release.Australia);
+            _releases.Sort((a, b) => a.Date.CompareTo(b.Date));
+        }
+
+        if (_dump != null)
+        {
+            _title = Lookup.GetDisplayName(_dump);
+            _nickname = _dump.GetNickname(Keys.DecryptionKeys);
+            _series = Lookup.GetSeriesName(_dump);
+            _type = Lookup.GetTypeName(_dump);
+        }
+        else if (_figure != null)
+        {
+            _title = _figure.Name;
+            _series = _figure.Series;
+            _type = _figure.FigureType;
+        }
+
+        if (_nickname == _title)
+        {
+            // The title already shows the nickname; also show the figure name for context.
+            _nickname = _figure != null ? $"{_nickname} ({_figure.Name})" : _nickname;
+        }
+    }
+
+    private void AddRelease(string region, DateTime? date)
+    {
+        if (date is DateTime value)
+        {
+            _releases.Add((region, value));
+        }
+    }
+
+    private async void OnKeysChanged(object? sender, EventArgs e)
+    {
+        if (_dump == null && !string.IsNullOrEmpty(FigureId))
+        {
+            await InvokeAsync(async () =>
+            {
+                await LoadFigureAsync();
+                Describe();
+                StateHasChanged();
+            });
+        }
+    }
+
+    private async Task Save()
+    {
+        if (_dump != null)
+        {
+            await Actions.SaveTagAsync(_dump);
+            Flipper.MarkSaved(_key);
+        }
+    }
+
+    private Task Write() => _dump == null ? Task.CompletedTask : Actions.WriteTagAsync(_dump);
+
+    private Task ShowQr()
+    {
+        if (_dump == null)
+        {
+            return Task.CompletedTask;
+        }
+
+        _key ??= Tags.Add(_dump);
+        return Navigator.NavigateAsync(AppRoutes.Qr(_key, _title));
+    }
+
+    private async Task LoadLockOn()
+    {
+        if (_dump is not AmiiboV3Dump v3)
+        {
+            return;
+        }
+
+        // The library as a page, with Load from File; the choice comes back through TagStore.Replaced.
+        _key ??= Tags.Add(v3);
+        RememberForFigure();
+        await Navigator.NavigateAsync(AppRoutes.PickLockOn(_key));
+    }
+
+    /// <summary>
+    /// A library figure's tag is kept for when the page comes back (see <see cref="TagStore.RememberForFigure"/>).
+    /// </summary>
+    private void RememberForFigure()
+    {
+        if (!string.IsNullOrEmpty(FigureId) && _key != null)
+        {
+            Tags.RememberForFigure(FigureId, _key);
+        }
+    }
+
+    private void RemoveLockOn()
+    {
+        if (_dump is AmiiboV3Dump v3)
+        {
+            Update(v3.WithoutLockOn());
+        }
+    }
+
+    private void Update(IAmiiboImage updated)
+    {
+        _dump = updated;
+        if (_key != null)
+        {
+            Tags.Replace(_key, updated);
+            RememberForFigure();
+        }
+
+        Describe();
+    }
+
+    private async Task NewUid()
+    {
+        if (_dump == null)
+        {
+            return;
+        }
+
+        var updated = await Actions.RandomizeUidAsync(_dump);
+        if (updated != null)
+        {
+            _dump = updated;
+            if (_key != null)
+            {
+                Tags.Replace(_key, updated);
+                RememberForFigure();
+            }
+
+            Describe();
+        }
+    }
+
+    private Task OpenSettings() => Navigator.NavigateAsync(AppRoutes.Settings());
+
+    public void Dispose()
+    {
+        _disposed = true;
+        Keys.Changed -= OnKeysChanged;
+        Flipper.Changed -= OnFlipperChanged;
+        Flipper.TagUpdated -= OnTagUpdated;
+        LockOns.Changed -= OnLockOnsChanged;
+        Tags.Replaced -= OnTagUpdated;
+        if (_startedScan)
+        {
+            _startedScan = false;
+            _ = Ble.StopScanningAsync();
+        }
+    }
+}

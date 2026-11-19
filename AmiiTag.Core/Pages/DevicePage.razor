@@ -1,0 +1,131 @@
+@page "/device/{DeviceId}"
+@implements IDisposable
+@using AmiiTag.Core.Components.Devices
+@inject BleDeviceManager Manager
+@inject TagActions Actions
+@inject IAppNavigator Navigator
+@inject ScreenEvents Screens
+@inject IDatabaseContainer DatabaseContainer
+
+@switch (_device)
+{
+    case PuckDevice puck when puck.IsConnected:
+        <PuckDeviceControls @key="puck" Device="puck" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    case LegacyPuckDevice legacy when legacy.IsConnected:
+        <LegacyPuckDeviceControls @key="legacy" Device="legacy" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    case PixlDevice pixl when pixl.IsConnected:
+        <PixlDeviceControls @key="pixl" Device="pixl" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    case AmiiboLinkDevice link when link.IsConnected:
+        <AmiiboLinkDeviceControls @key="link" Device="link" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    case FlaskDevice flask when flask.IsConnected:
+        <FlaskDeviceControls @key="flask" Device="flask" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    case FlaskNextGenDevice nextGen when nextGen.IsConnected:
+        <FlaskDeviceControls @key="nextGen" Device="nextGen" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    case AmiLoopDevice loop when loop.IsConnected:
+        <AmiLoopDeviceControls @key="loop" Device="loop" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    default:
+        <AppPage Title="Device">
+            <p class="empty-state">This device isn't connected.</p>
+            <div class="button-stack"><BigButton OnClick="OpenDevices">Connect a Device</BigButton></div>
+        </AppPage>
+        break;
+}
+
+@code {
+    [Parameter] public string? DeviceId { get; set; }
+    private ITagDevice? _device;
+    private bool _leaving;
+    private bool _openingChild;
+
+    protected override void OnInitialized()
+    {
+        Manager.Changed += OnManagerChanged;
+        DatabaseContainer.DataChanged += OnManagerChanged;
+        Screens.Closed += OnScreenClosed;
+    }
+
+    protected override void OnParametersSet() =>
+        _device = DeviceId == null ? null : Manager.GetConnected(DeviceId);
+
+    private void OpeningChild() => _openingChild = true;
+
+    private async Task Disconnect()
+    {
+        _leaving = true;
+        if (_device != null) await Manager.DisconnectAsync(_device);
+        await Navigator.GoBackAsync();
+    }
+
+    /// <summary>
+    /// Leaving the device screen (back to the device list, closing it, going home) disconnects the device.
+    /// </summary>
+    private void OnScreenClosed(object? sender, AppRoute route)
+    {
+        if (route.Component == typeof(DevicePage) &&
+            route.Parameters.TryGetValue(nameof(DeviceId), out var id) && Equals(id, DeviceId))
+        {
+            _ = InvokeAsync(DisconnectOnLeaveAsync);
+        }
+    }
+
+    private async Task DisconnectOnLeaveAsync()
+    {
+        if (_leaving)
+        {
+            return;
+        }
+
+        _leaving = true;
+        var device = DeviceId == null ? null : Manager.GetConnected(DeviceId);
+        if (device != null)
+        {
+            await Manager.DisconnectAsync(device);
+        }
+    }
+
+    private void OnManagerChanged(object? sender, EventArgs e) => InvokeAsync(async () =>
+    {
+        var disconnected = DeviceId != null && _device != null && Manager.GetConnected(DeviceId) is null;
+        if (DeviceId != null && Manager.GetConnected(DeviceId) is null)
+        {
+            _device = null;
+        }
+
+        StateHasChanged();
+
+        // The device went away: go back to the device scanner, closing anything opened from this screen.
+        if (disconnected && !_leaving)
+        {
+            _leaving = true;
+            await Navigator.PopToAsync(Actions.UsesBrowserDevicePicker ? AppRoutes.Home() : AppRoutes.Devices());
+        }
+    });
+
+    private Task OpenDevices() => Actions.OpenBluetoothDevicesAsync();
+
+    public void Dispose()
+    {
+        Manager.Changed -= OnManagerChanged;
+        DatabaseContainer.DataChanged -= OnManagerChanged;
+        Screens.Closed -= OnScreenClosed;
+
+        // The web disposes the screen when leaving it, which is the same as closing it here, unless it was left for
+        // a screen opened from it (a slot's tag).
+        if (!_openingChild && !_leaving)
+        {
+            _leaving = true;
+            var device = DeviceId == null ? null : Manager.GetConnected(DeviceId);
+            if (device != null)
+            {
+                _ = Manager.DisconnectAsync(device);
+            }
+        }
+    }
+}

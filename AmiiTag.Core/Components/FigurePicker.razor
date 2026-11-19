@@ -1,0 +1,82 @@
+@using AmiiTag.AmiiboData
+@inject IDatabaseContainer DatabaseContainer
+
+@* A searchable sheet for choosing a character from the amiibo database. Shown by the host page while Open is true. *@
+@if (Open)
+{
+    <div class="dialog-backdrop" @onclick="Cancel">
+        <div class="dialog picker" role="dialog" aria-modal="true" aria-label="@Title" @onclick:stopPropagation="true">
+            <div class="picker-header">
+                <span class="dialog-title">@Title</span>
+                <button type="button" class="link-button" @onclick="Cancel">Cancel</button>
+            </div>
+            <div class="search picker-search">
+                <input type="search" placeholder="Search characters" @bind="_search" @bind:event="oninput" aria-label="Search characters" />
+            </div>
+            <div class="picker-list">
+                @if (!DatabaseContainer.IsLoaded)
+                {
+                    <p class="empty-state small">Loading the amiibo database...</p>
+                }
+                else if (!Results.Any())
+                {
+                    <p class="empty-state small">No characters match.</p>
+                }
+                else
+                {
+                    <ul class="list">
+                        @foreach (var figure in Results)
+                        {
+                            <li>
+                                <button type="button" class="list-row with-image compact" @onclick="() => Pick(figure)">
+                                    <FigureImage Figure="figure" Class="list-row-image" />
+                                    <span class="list-row-title">
+                                        @figure.Name
+                                        <span class="list-row-subtitle">@figure.Series</span>
+                                    </span>
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private string _search = string.Empty;
+
+    [Parameter] public bool Open { get; set; }
+
+    [Parameter] public string Title { get; set; } = "Choose a Character";
+
+    /// <summary>
+    /// Limits the list, e.g. to NTAG215 figures for devices that emulate NTAG215.
+    /// </summary>
+    [Parameter] public Func<AmiiboFigure, bool>? Filter { get; set; }
+
+    [Parameter] public EventCallback<AmiiboFigure> OnPicked { get; set; }
+
+    [Parameter] public EventCallback OnCancelled { get; set; }
+
+    private IEnumerable<AmiiboFigure> Results => DatabaseContainer.Database.Figures.Values
+        .Where(f => f.IsVisible && (Filter == null || Filter(f)))
+        .Where(f => _search.Length == 0 ||
+                    f.Name.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    f.Character.Contains(_search, StringComparison.OrdinalIgnoreCase) ||
+                    f.Series.Contains(_search, StringComparison.OrdinalIgnoreCase))
+        .OrderBy(f => f.Name, StringComparer.OrdinalIgnoreCase);
+
+    protected override void OnParametersSet()
+    {
+        if (!Open)
+        {
+            _search = string.Empty;
+        }
+    }
+
+    private Task Pick(AmiiboFigure figure) => OnPicked.InvokeAsync(figure);
+
+    private Task Cancel() => OnCancelled.InvokeAsync();
+}

@@ -1,0 +1,100 @@
+@page "/games/{GameKey}"
+@implements IDisposable
+@inject GameCatalog Catalog
+@inject IDatabaseContainer DatabaseContainer
+@inject IAppNavigator Navigator
+@inject AppState State
+
+<AppPage Title="@(_game?.Name ?? "Game")" Wide="true">
+    @if (_game == null)
+    {
+        <p class="empty-state">@(DatabaseContainer.IsLoaded ? "This game isn't in the database." : "Loading the amiibo database...")</p>
+    }
+    else
+    {
+        <p class="device-summary">
+            <span class="system-badge @GameCatalog.SystemToken(_game.System)">@_game.SystemName</span>
+            @_game.Amiibo.Count compatible amiibo
+        </p>
+
+        @if (_game.Amiibo.Count > 8)
+        {
+            <div class="search">
+                <input type="search" placeholder="Search amiibo" @bind="_search" @bind:event="oninput" aria-label="Search amiibo" />
+            </div>
+        }
+
+        <ul class="list grid">
+            @foreach (var entry in Filtered)
+            {
+                <li>
+                    <button type="button" class="list-row with-image" @onclick="() => OpenFigure(entry.Figure)">
+                        <FigureImage Figure="entry.Figure" Class="list-row-image" />
+                        <span class="list-row-title">
+                            @entry.Figure.Name
+                            <span class="list-row-subtitle">@entry.Figure.Series</span>
+                            @foreach (var usage in entry.Usage)
+                            {
+                                <span class="usage-line">
+                                    @usage.Description
+                                    @if (usage.Writable)
+                                    {
+                                        <span class="badge">Saves data</span>
+                                    }
+                                </span>
+                            }
+                        </span>
+                    </button>
+                </li>
+            }
+        </ul>
+
+        @if (_game.TitleIds.Count > 0)
+        {
+            <details class="title-ids">
+                <summary>Title IDs</summary>
+                <ul>
+                    @foreach (var id in _game.TitleIds)
+                    {
+                        <li class="mono">@id</li>
+                    }
+                </ul>
+            </details>
+        }
+    }
+</AppPage>
+
+@code {
+    private GameEntry? _game;
+    private string _search = string.Empty;
+
+    [Parameter] public string? GameKey { get; set; }
+
+    private IEnumerable<GameAmiibo> Filtered => _game == null
+        ? []
+        : _game.Amiibo.Where(a => string.IsNullOrWhiteSpace(_search) ||
+                                  a.Figure.Name.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase) ||
+                                  a.Figure.Series.Contains(_search.Trim(), StringComparison.OrdinalIgnoreCase));
+
+    protected override void OnInitialized() => DatabaseContainer.DataChanged += OnDataChanged;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!DatabaseContainer.IsLoaded)
+        {
+            await State.EnsureStartedAsync();
+        }
+
+        _game = Catalog.Get(GameKey);
+    }
+
+    private void OnDataChanged(object? sender, EventArgs e) => InvokeAsync(() =>
+    {
+        _game = Catalog.Get(GameKey);
+        StateHasChanged();
+    });
+
+    private Task OpenFigure(AmiiboFigure figure) => Navigator.NavigateAsync(AppRoutes.Figure(figure.Id.Id, figure.Name));
+
+    public void Dispose() => DatabaseContainer.DataChanged -= OnDataChanged;
+}

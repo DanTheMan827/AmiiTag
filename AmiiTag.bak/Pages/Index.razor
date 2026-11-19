@@ -1,0 +1,23 @@
+﻿@page "/"
+@inject IJSRuntime JS
+
+<PageTitle>Index</PageTitle>
+
+<MudText Typo="Typo.h3" GutterBottom="true">Hello, world!</MudText>
+<MudText Class="mb-8">Welcome to your new app, powered by MudBlazor!</MudText>
+<MudText Class="mb-8">Data directory: @Data.AppPaths.Shared.UserData</MudText>
+<MudText Class="mb-8"><a href="#" @onclick=OpenPicker @onclick:preventDefault>Test</a></MudText>
+<MudImage Src="_content/images/dark_logo.svg"></MudImage>
+<MudAlert Severity="Severity.Normal">You can find documentation and examples on our website here: <MudLink Href="https://mudblazor.com" Typo="Typo.body2" Color="Color.Inherit"><b>www.mudblazor.com</b></MudLink></MudAlert>
+
+@code {
+    private async void OpenPicker()
+    {
+        var result = await FilePicker.Default.PickAsync();
+
+        if (result != null)
+        {
+            await JS.InvokeAsync<object>("alert", new string[] { result.FullPath });
+        }
+    }
+}

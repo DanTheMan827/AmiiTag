@@ -1,0 +1,214 @@
+<Project Sdk="Microsoft.NET.Sdk.Razor">
+  <PropertyGroup>
+    <TargetFrameworks>net10.0-android;net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
+    <!-- Note for MacCatalyst:
+            The default runtime is maccatalyst-x64, except in Release config, in which case the default is maccatalyst-x64;maccatalyst-arm64.
+            When specifying both architectures, use the plural <RuntimeIdentifiers> instead of the singular <RuntimeIdentifier>.
+            The Mac App Store will NOT accept apps with ONLY maccatalyst-arm64 indicated;
+            either BOTH runtimes must be indicated or ONLY macatalyst-x64. -->
+    <OutputType>Exe</OutputType>
+    <RootNamespace>AmiiTag.Maui</RootNamespace>
+    <UseMaui>true</UseMaui>
+    <SingleProject>true</SingleProject>
+	 
+    <ImplicitUsings>enable</ImplicitUsings>
+    <EnableDefaultCssItems>false</EnableDefaultCssItems>
+    <!--
+      No precompressed (.br/.gz) static web assets: they're for web servers. A publish otherwise maps app.css and the
+      rest to their Brotli copies, which the BlazorWebView serves as is, so the pages load without any styles.
+    -->
+    <CompressionEnabled>false</CompressionEnabled>
+    <Nullable>enable</Nullable>
+    <!-- Display name -->
+    <ApplicationTitle>AmiiTag</ApplicationTitle>
+    <!-- App Identifier -->
+    <ApplicationId>com.dantheman827.amiitag</ApplicationId>
+    <Company>DanTheMan827</Company>
+    <Authors>DanTheMan827</Authors>
+    <!-- Versions -->
+    <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+    <ApplicationVersion>1</ApplicationVersion>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">15.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">17.0</SupportedOSPlatformVersion>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">24.0</SupportedOSPlatformVersion>
+    <TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.19041.0</SupportedOSPlatformVersion>
+  </PropertyGroup>
+  <!--
+    Windows runs unpackaged and self-contained: a plain exe carrying .NET and the Windows App SDK runtime, nothing to
+    install (see Properties\PublishProfiles\win-x64.pubxml for the single file publish). Set here rather than only in the
+    publish profile: the Windows App SDK decides whether to copy its runtime (Microsoft.UI.Xaml.dll...) into the build from
+    WindowsAppSDKSelfContained, and without it a clean build's exe can't start WinUI.
+  -->
+  <PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <WindowsPackageType>None</WindowsPackageType>
+    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+  </PropertyGroup>
+  <!--
+    Publishing this unpackaged, self-contained Windows app doesn't reliably include everything the build output has: after
+    a clean build the Windows App SDK runtime (Microsoft.UI.Xaml.dll and ~280 other native, .winmd, .pri and .mui files)
+    was missing from the single file exe, so it crashed at startup ("ClassFactory cannot supply requested class"), and
+    wwwroot's stylesheets were missing too. The build output runs, so publish whatever it has that the publish doesn't
+    (except symbols and the WebView2 data folder of a build that was run). In a single file publish these go inside the
+    exe (IncludeAllContentForSelfExtract), which extracts them with everything else.
+  -->
+  <Target Name="AmiiTagPublishBuildOutput" AfterTargets="ComputeResolvedFilesToPublishList" Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <ItemGroup>
+      <_AmiiTagBuilt Include="$(OutDir)**\*" Exclude="$(OutDir)**\*.pdb;$(OutDir)*.WebView2\**;$(OutDir)publish\**" Source="%(FullPath)" PublishPath="%(RecursiveDir)%(Filename)%(Extension)" />
+      <_AmiiTagBuiltPaths Include="@(_AmiiTagBuilt->'%(PublishPath)')" />
+      <_AmiiTagPublishedPaths Include="@(ResolvedFileToPublish->'%(RelativePath)')" />
+      <_AmiiTagMissing Include="@(_AmiiTagBuiltPaths)" Exclude="@(_AmiiTagPublishedPaths)" />
+      <ResolvedFileToPublish Include="%(_AmiiTagMissing.Source)" RelativePath="%(_AmiiTagMissing.Identity)" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="false" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_AmiiTagMissingCount>@(_AmiiTagMissing-&gt;Count())</_AmiiTagMissingCount>
+    </PropertyGroup>
+    <Message Importance="high" Text="AmiiTag: added $(_AmiiTagMissingCount) file(s) from the build output that the publish was missing." />
+    <Error Condition="!Exists('$(OutDir)wwwroot\index.html')" Text="wwwroot wasn't found in $(OutDir); the published app would have no pages." />
+    <Error Condition="!Exists('$(OutDir)Microsoft.UI.Xaml.dll')" Text="The Windows App SDK runtime isn't in $(OutDir) (Microsoft.UI.Xaml.dll); the published app wouldn't start." />
+  </Target>
+  <!--
+    Static web assets are published marked ExcludeFromSingleFile (they're meant to be served from disk). Bundle them too,
+    so the single file exe carries wwwroot (it's served from the extraction folder, see Pages\AppBlazorWebView.cs).
+  -->
+  <Target Name="AmiiTagBundleWwwroot" BeforeTargets="_ComputeFilesToBundle;GenerateSingleFileBundle" Condition="'$(PublishSingleFile)' == 'true' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <ItemGroup>
+      <ResolvedFileToPublish Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('/', '\').ToLowerInvariant().StartsWith('wwwroot\'))">
+        <ExcludeFromSingleFile>false</ExcludeFromSingleFile>
+      </ResolvedFileToPublish>
+    </ItemGroup>
+  </Target>
+  <!--
+    iOS signing. Entitlements.plist asks for NFC tag reading (com.apple.developer.nfc.readersession.formats = TAG),
+    which CoreNFC needs; Bluetooth and the camera need only their Info.plist usage strings. A wildcard App ID can't
+    have the NFC Tag Reading capability, so a wildcard provisioning profile ("VS: WildCard Development") never
+    includes it and signing fails or NFC is refused. What's needed:
+
+      1. An explicit App ID for ApplicationId (com.dantheman827.amiitag) with the NFC Tag Reading capability
+         turned on.
+      2. A development (or distribution) provisioning profile for that App ID.
+
+    Automatic provisioning does both from the entitlements: Visual Studio (Tools > Options > Xamarin > Apple
+    Accounts, or the App Store Connect API key it already uses) creates the App ID with the capability and a matching
+    profile. To use a profile made by hand instead, set ProvisioningType to manual and CodesignProvision to its name.
+  -->
+  <PropertyGroup Condition="'$(TargetFramework)'=='net10.0-ios'">
+    <CodesignKey>Apple Development</CodesignKey>
+    <CodesignEntitlements>Platforms\iOS\Entitlements.plist</CodesignEntitlements>
+    <ProvisioningType>automatic</ProvisioningType>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net10.0-ios|AnyCPU'">
+    <MtouchLink>SdkOnly</MtouchLink>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net10.0-ios|AnyCPU'">
+    <!--
+      SdkOnly, as in Debug: only the iOS and .NET SDK assemblies are trimmed, never the app's or the NuGet packages'.
+      Full trimming removed the app's Blazor screens (Blazor finds pages, [Parameter]s, [JSInvokable] methods and the
+      JSON the stores save through reflection, which the trimmer can't see). Don't set TrimMode for iOS either:
+      "partial" also trims every package marked trimmable (MAUI, Microsoft.Extensions...), and the app crashed at start.
+    -->
+    <MtouchLink>SdkOnly</MtouchLink>
+	<UseInterpreter>true</UseInterpreter>
+  </PropertyGroup>
+
+  <!--
+    Android Release trims every assembly marked trimmable (its default), which includes the Blazor ones; they're kept
+    whole, as are the app's own, for the same reflection reasons as above.
+  -->
+  <ItemGroup Condition="'$(Configuration)' == 'Release'">
+    <TrimmerRootAssembly Include="AmiiTag.Core" />
+    <TrimmerRootAssembly Include="AmiiTag.AmiiboData" />
+    <TrimmerRootAssembly Include="AmiiTag.Tags" />
+    <TrimmerRootAssembly Include="AmiiTag.Nfc" />
+    <TrimmerRootAssembly Include="AmiiTag.Nfc.Flipper" />
+    <TrimmerRootAssembly Include="AmiiTag.Nfc.Mfrc522" />
+    <TrimmerRootAssembly Include="AmiiTag.Bluetooth" />
+    <TrimmerRootAssembly Include="DanTheMan827.Helpers" />
+    <TrimmerRootAssembly Include="DanTheMan827.ShaSync" />
+    <TrimmerRootAssembly Include="libamiibo" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.Web" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.WebView" />
+    <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.WebView.Maui" />
+    <TrimmerRootAssembly Include="Microsoft.JSInterop" />
+  </ItemGroup>
+  <ItemGroup>
+    <!--
+      App icon: the AmiiTag mark (appiconfg.svg, from icon-transparent.svg) on black. Scaled to half the icon so it
+      stays inside Android's adaptive icon safe zone (the circle masks crop anything past two thirds).
+    -->
+	<MauiIcon Include="Resources\AppIcon\appicon.svg"
+		ForegroundFile="Resources\AppIcon\appiconfg.svg"
+		Color="#000000">
+		<ForegroundScale>0.8</ForegroundScale>
+		<ForegroundScale Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">0.5</ForegroundScale>
+	</MauiIcon>
+    <!-- Launch screen: the mark on black, as the app's dark theme starts. -->
+    <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#000000" BaseSize="128,128" />
+    <!-- Images -->
+    <MauiImage Include="Resources\Images\*" />
+    <MauiImage Update="Resources\Images\dotnet_bot.svg" BaseSize="168,208" />
+    <!-- Custom Fonts -->
+    <MauiFont Include="Resources\Fonts\*" />
+    <!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
+    <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Maui.Controls" Version="10.0.130" />
+    <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="10.0.130" />
+    <PackageReference Include="Microsoft.AspNetCore.Components.WebView.Maui" Version="10.0.130" />
+    <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
+    <PackageReference Include="Plugin.BLE" Version="3.2.1" />
+    <!-- USB HID for the Flipper Zero bridge (desktop only). -->
+    <PackageReference Include="HidSharp" Version="2.1.0" Condition="$(TargetFramework.Contains('-windows')) Or $(TargetFramework.Contains('-maccatalyst'))" />
+  </ItemGroup>
+  <!-- Camera QR scanning (ZXing.Net.Maui supports Android and iOS cameras). -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' Or $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+    <PackageReference Include="ZXing.Net.Maui.Controls" Version="0.10.4" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\AmiiTag.Core\AmiiTag.Core.csproj" />
+    <ProjectReference Include="..\AmiiTag.Nfc.Mfrc522\AmiiTag.Nfc.Mfrc522.csproj" />
+    <ProjectReference Include="..\AmiiTag.Nfc.Pn532\AmiiTag.Nfc.Pn532.csproj" />
+    <ProjectReference Include="..\DanTheMan827.Helpers\DanTheMan827.Helpers.csproj" />
+    <ProjectReference Include="..\DanTheMan827.ShaSync\DanTheMan827.ShaSync.csproj" />
+  </ItemGroup>
+  <!-- Windows only NFC modules: PC/SC readers and the MFRC522 serial bridge. -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <ProjectReference Include="..\AmiiTag.Nfc.PcSc\AmiiTag.Nfc.PcSc.csproj" />
+    <PackageReference Include="System.IO.Ports" Version="10.0.0" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Update="BlankPage.xaml.cs">
+      <DependentUpon>BlankPage.xaml</DependentUpon>
+    </Compile>
+    <Compile Update="Properties\Resources.Designer.cs">
+      <DesignTime>True</DesignTime>
+      <AutoGen>True</AutoGen>
+      <DependentUpon>Resources.resx</DependentUpon>
+    </Compile>
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Update="Properties\Resources.resx">
+      <Generator>ResXFileCodeGenerator</Generator>
+      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
+    </EmbeddedResource>
+  </ItemGroup>
+  <ItemGroup>
+    <MauiXaml Update="BlankPage.xaml">
+      <Generator>MSBuild:Compile</Generator>
+    </MauiXaml>
+  </ItemGroup>
+
+  <!--
+    The static web assets SDK writes its props file (obj\...\staticwebassets\msbuild.AmiiTag.Maui...props) without
+    creating the folder first. An iOS Release build for a runtime identifier (obj\Release\net10.0-ios\ios-arm64\) can
+    get there before anything else has made it, and fails with DirectoryNotFoundException (MSB4018). Hooked before
+    every target name that task has had (missing ones are ignored).
+  -->
+  <Target Name="AmiiTagEnsureStaticWebAssetsFolder" BeforeTargets="GenerateStaticWebAssetsPackFiles;GenerateStaticWebAssetsPropsFile;_GenerateStaticWebAssetsPropsFile">
+    <MakeDir Directories="$(IntermediateOutputPath)staticwebassets" />
+  </Target>
+</Project>

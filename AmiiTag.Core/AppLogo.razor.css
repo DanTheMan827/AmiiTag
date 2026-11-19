@@ -1,0 +1,4 @@
+﻿/* The wordmark follows the page's text colour (white in dark mode, near black in light mode). */
+.text-color {
+    fill: var(--text, #000);
+}

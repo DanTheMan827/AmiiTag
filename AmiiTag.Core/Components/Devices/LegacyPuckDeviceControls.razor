@@ -1,0 +1,11 @@
+@inherits DeviceControlsBase<LegacyPuckDevice>
+
+<DeviceManagementLayout Device="Device" OnSettings="ShowSettings">
+    <SlotDeviceControls Device="Device" OnOpeningChild="OnOpeningChild" />
+</DeviceManagementLayout>
+
+@code {
+    private Task ShowSettings() => ChooseSettings([
+        ("Change Name", () => Rename(Device)),
+        ("Enable UART", () => EnableUart(Device))]);
+}

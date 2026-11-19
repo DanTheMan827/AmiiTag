@@ -1,0 +1,15 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AmiiTag.AmiiboData\AmiiTag.AmiiboData.csproj" />
+    <ProjectReference Include="..\DanTheMan827.ShaSync\DanTheMan827.ShaSync.csproj" />
+  </ItemGroup>
+
+</Project>

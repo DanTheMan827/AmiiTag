@@ -1,0 +1,622 @@
+@using System.Text
+@inject TagActions Actions
+@inject AmiiboLookup Lookup
+@inject IDialogService Dialogs
+@inject IFileService Files
+@inject IAppNavigator Navigator
+@inject ContextMenus Menus
+@inject KeyStore Keys
+
+@* The Pixl.js screen: its drives and a file manager for the amiibo stored on them. *@
+
+@if (_drives == null)
+{
+    <p class="empty-state small">Reading drives...</p>
+}
+else
+{
+    <div class="pixl-drives">
+        @foreach (var drive in _drives)
+        {
+            var used = drive.TotalBytes > 0 ? (double)drive.UsedBytes / drive.TotalBytes : 0;
+            <button type="button" class="pixl-drive @(drive.Label == _drive?.Label ? "selected" : "") @(drive.IsAvailable ? "" : "dimmed")" @onclick="() => OpenDrive(drive)">
+                <span class="pixl-drive-name">@drive.Label: @drive.Name</span>
+                @if (drive.IsAvailable)
+                {
+                    <span class="pixl-usage" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="@((int)(used * 100))">
+                        <span class="pixl-usage-fill" style="width: @((used * 100).ToString("0.#", System.Globalization.CultureInfo.InvariantCulture))%"></span>
+                    </span>
+                    <span class="pixl-drive-detail">@FormatSize(drive.FreeBytes) free of @FormatSize(drive.TotalBytes)</span>
+                }
+                else
+                {
+                    <span class="pixl-drive-detail">Not mounted</span>
+                }
+            </button>
+        }
+    </div>
+
+    @if (_path != null)
+    {
+        <nav class="pixl-path" aria-label="Folder">
+            @foreach (var (name, path) in Breadcrumbs(_path))
+            {
+                <button type="button" class="link-button" @onclick="() => OpenAncestor(path)">@name</button>
+                <span class="pixl-path-separator" aria-hidden="true">/</span>
+            }
+        </nav>
+
+        @* The folder takes dropped files (uploads); a folder row takes them into that folder. *@
+        <DropZone Class="pixl-folder" OnFiles="files => UploadAsync(_path, files)" Label="@($"Drop files to upload to {_path}")">
+        <div class="pixl-toolbar">
+            <button type="button" class="pill-button" disabled="@(PixlPath.Parent(_path) == null)" @onclick="Up">Up</button>
+            <button type="button" class="pill-button" @onclick="UploadFiles">Upload Files</button>
+            <button type="button" class="pill-button" @onclick="() => _pickerOpen = true">Add Character</button>
+            <button type="button" class="pill-button" @onclick="NewFolder">New Folder</button>
+            <button type="button" class="pill-button" @onclick="Reload">Refresh</button>
+        </div>
+
+        @if (_entries == null)
+        {
+            <p class="empty-state small">Reading folder...</p>
+        }
+        else if (_entries.Count == 0)
+        {
+            <p class="empty-state small">This folder is empty.</p>
+        }
+        else
+        {
+            <ul class="list grid">
+                @foreach (var entry in _entries)
+                {
+                    var figure = FigureFor(entry);
+                    var items = EntryItems(entry);
+                    <DropZone Element="li" Enabled="entry.IsFolder" OnFiles="files => UploadAsync(entry.Path, files)" Label="@($"Drop files to upload to {entry.Name}")">
+                        <button type="button" class="list-row with-image @(entry.Meta.Hidden ? "dimmed" : "")"
+                                @onpointerdown="Menus.TrackPointer"
+                                @onclick="e => Menus.ClickAsync(e, entry.Name, items)"
+                                @oncontextmenu="e => Menus.ShowAsync(e, entry.Name, items)" @oncontextmenu:preventDefault="true">
+                            @if (entry.IsFolder)
+                            {
+                                <span class="list-row-image pixl-icon folder" aria-hidden="true"></span>
+                            }
+                            else if (figure != null)
+                            {
+                                <FigureImage Figure="figure" Class="list-row-image" />
+                            }
+                            else
+                            {
+                                <span class="list-row-image pixl-icon file" aria-hidden="true"></span>
+                            }
+                            <span class="list-row-title">
+                                @entry.Name
+                                <span class="list-row-subtitle">@Subtitle(entry, figure)</span>
+                            </span>
+                        </button>
+                    </DropZone>
+                }
+            </ul>
+        }
+        </DropZone>
+    }
+}
+
+<PageRefreshAction OnRefresh="Reload" />
+
+<FigurePicker Open="_pickerOpen"
+              Title="Add Character"
+              Filter="IsNtag215Figure"
+              OnPicked="AddCharacter"
+              OnCancelled="() => _pickerOpen = false" />
+
+@code {
+    private IReadOnlyList<PixlDrive>? _drives;
+    private PixlDrive? _drive;
+    private string? _path;
+    private IReadOnlyList<PixlEntry>? _entries;
+    private bool _pickerOpen;
+    private bool _isNavigating;
+    private readonly FolderNavigationHistory _history = new();
+    [Parameter] public EventCallback<bool> OnCanGoBackChanged { get; set; }
+    public string? CurrentFolder => _path;
+    public bool CanGoBack => _history.CanGoBack;
+
+    [Parameter, EditorRequired] public PixlDevice Device { get; set; } = default!;
+
+    /// <summary>
+    /// Raised before opening another screen from here (a tag), so the device screen keeps the connection.
+    /// </summary>
+    [Parameter] public EventCallback OnOpeningChild { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadDrives();
+    }
+
+    private async Task LoadDrives()
+    {
+        var drives = await Actions.WithProgressAsync($"Reading {Device.Name}", (_, ct) => Device.GetDrivesAsync(ct));
+        if (drives == null)
+        {
+            _drives = [];
+            return;
+        }
+
+        _drives = drives;
+        var drive = drives.FirstOrDefault(d => d.IsAvailable && d.Label == _drive?.Label) ?? drives.FirstOrDefault(d => d.IsAvailable && d.Label == 'E') ?? drives.FirstOrDefault(d => d.IsAvailable);
+        if (drive != null && _path == null)
+        {
+            _drive = drive;
+            await EnsureAmiiboKeysAsync(drives);
+
+            // Start at external storage's root, not inside its amiibo directory.
+            await OpenFolder(drive.RootPath);
+        }
+    }
+
+    /// <summary>
+    /// The Pixl.js generates and re-encrypts amiibo with E:/key_retail.bin (fw amiibo_helper.c). If it isn't there and
+    /// both keys are loaded here, copy ours over, hidden from the device's amiibo list.
+    /// </summary>
+    private async Task EnsureAmiiboKeysAsync(IReadOnlyList<PixlDrive> drives)
+    {
+        if (drives.FirstOrDefault(d => d.Label == 'E' && d.IsAvailable) is not { } drive)
+        {
+            return;
+        }
+
+        await Keys.EnsureLoadedAsync();
+        if (Keys.RawKeys is not { Length: 160 } keys)
+        {
+            return;
+        }
+
+        IReadOnlyList<PixlEntry> root;
+        try
+        {
+            root = await Device.ReadFolderAsync(drive.RootPath);
+        }
+        catch
+        {
+            return;
+        }
+
+        if (root.Any(e => !e.IsFolder && e.Name.Equals("key_retail.bin", StringComparison.OrdinalIgnoreCase)))
+        {
+            return;
+        }
+
+        var path = PixlPath.Combine(drive.RootPath, "key_retail.bin");
+        await Actions.WithProgressAsync("Copying amiibo keys", async (progress, ct) =>
+        {
+            await Device.WriteFileAsync(path, keys, progress, ct);
+            try
+            {
+                await Device.UpdateMetaAsync(path, new PixlFileMeta(Hidden: true), ct);
+            }
+            catch (PixlException)
+            {
+                // Older firmware: the keys are there, just not hidden.
+            }
+
+            return true;
+        });
+    }
+
+    private async Task OpenDrive(PixlDrive drive)
+    {
+        if (!drive.IsAvailable)
+        {
+            await OfferFormat(drive);
+            return;
+        }
+
+        await OpenFolder(drive.RootPath);
+    }
+
+    private Task OpenFolder(string path) => NavigateFolder(path, () => _history.Visit(path));
+
+    private Task OpenAncestor(string path) => NavigateFolder(path, () => _history.UpTo(path));
+
+    private async Task<bool> NavigateFolder(string path, Action commitHistory)
+    {
+        if (_isNavigating) return false;
+        _isNavigating = true;
+        try
+        {
+            var entries = await Actions.WithProgressAsync("Reading folder", (_, ct) => Device.ReadFolderAsync(path, ct));
+            if (entries == null) return false; // Failed/cancelled reads do not change location or history.
+            commitHistory();
+            _path = path;
+            _drive = _drives?.FirstOrDefault(d => d.RootPath.StartsWith(path[..2], StringComparison.Ordinal)) ?? _drive;
+            _entries = entries;
+            await OnCanGoBackChanged.InvokeAsync(_history.CanGoBack);
+            StateHasChanged();
+            return true;
+        }
+        finally { _isNavigating = false; }
+    }
+
+    public async Task<bool> TryGoBackAsync()
+    {
+        if (_isNavigating) return true;
+        if (_history.Previous is not { } previous) return false;
+        await NavigateFolder(previous, _history.Back);
+        // A failed read consumes Back too: don't leave a device because its folder read failed.
+        return true;
+    }
+
+    private Task Reload() => _path == null ? LoadDrives() : OpenFolder(_path);
+
+    private async Task Up()
+    {
+        if (_path != null && PixlPath.Parent(_path) is { } parent)
+        {
+            await OpenAncestor(parent);
+        }
+    }
+
+    private static IEnumerable<(string Name, string Path)> Breadcrumbs(string path)
+    {
+        var drive = path[..Math.Min(3, path.Length)];
+        yield return (drive.TrimEnd('/'), drive);
+        var current = drive;
+        foreach (var part in path[drive.Length..].Split('/', StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = PixlPath.Combine(current, part);
+            yield return (part, current);
+        }
+    }
+
+    private AmiiboFigure? FigureFor(PixlEntry entry) =>
+        entry.Meta.AmiiboId is { } id && Lookup.GetFigure(id) is { } figure ? figure : null;
+
+    private static string Subtitle(PixlEntry entry, AmiiboFigure? figure)
+    {
+        var parts = new List<string>();
+        if (entry.IsFolder)
+        {
+            parts.Add("Folder");
+        }
+        else
+        {
+            if (figure != null)
+            {
+                parts.Add(figure.Name);
+            }
+
+            if (entry.Size > 0)
+            {
+                parts.Add(FormatSize(entry.Size));
+            }
+        }
+
+        if (!string.IsNullOrEmpty(entry.Meta.Notes))
+        {
+            parts.Add(entry.Meta.Notes!);
+        }
+
+        if (entry.Meta.Hidden)
+        {
+            parts.Add("Hidden");
+        }
+
+        return string.Join(" · ", parts);
+    }
+
+    private static bool IsNtag215Figure(AmiiboFigure figure) => figure.Id.Id.EndsWith("02", StringComparison.Ordinal);
+
+    /// <summary>
+    /// A file's or folder's actions: Open is what a click does on desktop; the rest are in its context menu.
+    /// </summary>
+    private IReadOnlyList<ContextMenuItem> EntryItems(PixlEntry entry)
+    {
+        if (entry.IsFolder)
+        {
+            return
+            [
+                new("Open", () => OpenFolder(entry.Path), IsDefault: true),
+                new("Rename", () => Rename(entry)),
+                new("Delete", () => Delete(entry), IsDestructive: true),
+            ];
+        }
+
+        return
+        [
+            new("Open", () => OpenFile(entry), IsDefault: true),
+            new("Download", () => Download(entry)),
+            new("Rename", () => Rename(entry)),
+            new("Edit notes", () => EditNotes(entry)),
+            new(entry.Meta.Hidden ? "Show on device" : "Hide on device", () => UpdateMeta(entry, entry.Meta with { Hidden = !entry.Meta.Hidden })),
+            new("Delete", () => Delete(entry), IsDestructive: true),
+        ];
+    }
+
+    private Task<byte[]?> ReadFile(PixlEntry entry) =>
+        Actions.WithProgressAsync($"Downloading {entry.Name}", (progress, ct) => Device.ReadFileAsync(entry.Path, entry.Size, progress, ct));
+
+    private async Task OpenFile(PixlEntry entry)
+    {
+        var data = await ReadFile(entry);
+        if (data == null)
+        {
+            return;
+        }
+
+        if (!AmiiboImage.TryParse(data, out var image) || image == null)
+        {
+            await Dialogs.AlertAsync("Not an amiibo", $"{entry.Name} isn't an amiibo dump ({data.Length} bytes). Use Download to save it.");
+            return;
+        }
+
+        await OnOpeningChild.InvokeAsync();
+        await Actions.OpenTagAsync(image, modal: false);
+    }
+
+    private async Task Download(PixlEntry entry)
+    {
+        var data = await ReadFile(entry);
+        if (data != null)
+        {
+            await Files.SaveFileAsync(entry.Name, data);
+        }
+    }
+
+    private async Task UploadFiles()
+    {
+        if (_path == null)
+        {
+            return;
+        }
+
+        var files = await Files.PickFilesAsync("Upload to Pixl.js", []);
+        if (files.Count > 0)
+        {
+            await UploadAsync(_path, files);
+        }
+    }
+
+    /// <summary>
+    /// Writes files (picked or dropped) into a folder, asking for a new name where the Pixl.js can't take the
+    /// original, then shows the current folder again.
+    /// </summary>
+    private async Task UploadAsync(string? folder, IReadOnlyList<PickedFile> files)
+    {
+        if (folder == null)
+        {
+            return;
+        }
+
+        foreach (var file in files)
+        {
+            var name = Path.GetFileName(file.Name);
+            if (PixlPath.ValidateName(name, folder) is { } problem)
+            {
+                name = await Dialogs.PromptAsync("Rename File", $"{file.Name}: {problem}", Shorten(name), PixlDevice.MaxNameBytes);
+                if (string.IsNullOrWhiteSpace(name))
+                {
+                    continue;
+                }
+
+                name = name.Trim();
+                if (PixlPath.ValidateName(name, folder) is { } again)
+                {
+                    await Dialogs.AlertAsync("Invalid name", again);
+                    continue;
+                }
+            }
+
+            var ok = await Actions.WithProgressAsync($"Uploading {name}", async (progress, ct) =>
+            {
+                await Device.WriteFileAsync(PixlPath.Combine(folder, name), file.Data, progress, ct);
+                await TagMetaAsync(PixlPath.Combine(folder, name), file.Data, ct);
+                return true;
+            });
+
+            if (!ok)
+            {
+                break;
+            }
+        }
+
+        // Dropping onto a folder row stays in the folder being shown.
+        await OpenFolder(_path ?? folder);
+    }
+
+    private async Task AddCharacter(AmiiboFigure figure)
+    {
+        _pickerOpen = false;
+        if (_path == null)
+        {
+            return;
+        }
+
+        IAmiiboImage? image;
+        try
+        {
+            image = await Actions.CreateFromFigureAsync(figure);
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.AlertAsync("Couldn't create the tag", ex.Message);
+            return;
+        }
+
+        if (image == null)
+        {
+            if (await Dialogs.ConfirmAsync("Keys needed", "Generating a tag needs both amiibo keys. Load them in Settings?", "Settings", "Cancel"))
+            {
+                await OnOpeningChild.InvokeAsync();
+                await Navigator.NavigateAsync(AppRoutes.Settings());
+            }
+
+            return;
+        }
+
+        if (image is TagDump dump && await Actions.UploadToFileDeviceAsync(Device, dump, _path))
+        {
+            await OpenFolder(_path);
+        }
+    }
+
+    /// <summary>
+    /// Records the amiibo ID with an uploaded amiibo, so lists (here and on the device) can name it without reading it.
+    /// </summary>
+    private async Task TagMetaAsync(string path, byte[] data, CancellationToken ct)
+    {
+        if (!TagDump.TryCreate(data, out var dump) || dump == null || !dump.HasAmiiboId)
+        {
+            return;
+        }
+
+        try
+        {
+            await Device.UpdateMetaAsync(path, new PixlFileMeta(AmiiboId: dump.AmiiboIdHex.ToLowerInvariant()), ct);
+        }
+        catch (PixlException)
+        {
+            // Older firmware: the file is there, just without the ID.
+        }
+    }
+
+    private async Task NewFolder()
+    {
+        if (_path == null)
+        {
+            return;
+        }
+
+        var name = await Dialogs.PromptAsync("New Folder", $"Create a folder in {_path}:", string.Empty, PixlDevice.MaxNameBytes);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            return;
+        }
+
+        name = name.Trim();
+        if (PixlPath.ValidateName(name, _path) is { } problem)
+        {
+            await Dialogs.AlertAsync("Invalid name", problem);
+            return;
+        }
+
+        var folder = _path;
+        if (await Actions.WithProgressAsync("Creating folder", async (_, ct) => { await Device.CreateFolderAsync(PixlPath.Combine(folder, name), ct); return true; }))
+        {
+            await OpenFolder(folder);
+        }
+    }
+
+    private async Task Rename(PixlEntry entry)
+    {
+        var folder = PixlPath.Parent(entry.Path) ?? _path ?? entry.Path;
+        var name = await Dialogs.PromptAsync("Rename", null, entry.Name, PixlDevice.MaxNameBytes);
+        if (string.IsNullOrWhiteSpace(name) || name.Trim() == entry.Name)
+        {
+            return;
+        }
+
+        name = name.Trim();
+        if (PixlPath.ValidateName(name, folder) is { } problem)
+        {
+            await Dialogs.AlertAsync("Invalid name", problem);
+            return;
+        }
+
+        if (await Actions.WithProgressAsync("Renaming", async (_, ct) => { await Device.RenameAsync(entry.Path, PixlPath.Combine(folder, name), ct); return true; }))
+        {
+            await Reload();
+        }
+    }
+
+    private async Task EditNotes(PixlEntry entry)
+    {
+        var notes = await Dialogs.PromptAsync("Notes", $"Shown with {entry.Name} on the Pixl.js (up to {PixlFileMeta.MaxNotesBytes} bytes).", entry.Meta.Notes ?? string.Empty, PixlFileMeta.MaxNotesBytes);
+        if (notes == null)
+        {
+            return;
+        }
+
+        notes = notes.Trim();
+        if (Encoding.UTF8.GetByteCount(notes) > PixlFileMeta.MaxNotesBytes)
+        {
+            await Dialogs.AlertAsync("Notes too long", $"Notes can be up to {PixlFileMeta.MaxNotesBytes} bytes.");
+            return;
+        }
+
+        await UpdateMeta(entry, entry.Meta with { Notes = notes.Length == 0 ? null : notes });
+    }
+
+    private async Task UpdateMeta(PixlEntry entry, PixlFileMeta meta)
+    {
+        if (await Actions.WithProgressAsync("Saving", async (_, ct) => { await Device.UpdateMetaAsync(entry.Path, meta, ct); return true; }))
+        {
+            await Reload();
+        }
+    }
+
+    private async Task Delete(PixlEntry entry)
+    {
+        var message = entry.IsFolder ? $"{entry.Name} and everything in it will be deleted from the Pixl.js." : $"{entry.Name} will be deleted from the Pixl.js.";
+        if (!await Dialogs.ConfirmAsync("Delete?", message, "Delete", "Cancel"))
+        {
+            return;
+        }
+
+        if (await Actions.WithProgressAsync("Deleting", async (_, ct) => { await Device.DeleteAsync(entry.Path, ct); return true; }))
+        {
+            await Reload();
+        }
+    }
+
+    private async Task OfferFormat(PixlDrive drive)
+    {
+        if (!await Dialogs.ConfirmAsync($"Format drive {drive.Label}?", "The drive isn't mounted. Formatting erases everything on it.", "Format", "Cancel"))
+        {
+            return;
+        }
+
+        await FormatDrive(drive);
+    }
+
+    /// <summary>
+    /// Erases a drive (offered from the device's Settings menu too).
+    /// </summary>
+    public async Task FormatDrive(PixlDrive drive)
+    {
+        if (await Actions.WithProgressAsync($"Formatting {drive.Label}:", async (_, ct) => { await Device.FormatDriveAsync(drive.Label, ct); return true; }))
+        {
+            _path = null;
+            _entries = null;
+            _history.Clear();
+            await OnCanGoBackChanged.InvokeAsync(false);
+            await LoadDrives();
+            StateHasChanged();
+        }
+    }
+
+    public IReadOnlyList<PixlDrive> Drives => _drives ?? Array.Empty<PixlDrive>();
+
+    private static string Shorten(string name)
+    {
+        while (Encoding.UTF8.GetByteCount(name) > PixlDevice.MaxNameBytes && name.Length > 1)
+        {
+            var extension = Path.GetExtension(name);
+            var stem = Path.GetFileNameWithoutExtension(name);
+            if (stem.Length == 0)
+            {
+                return name[..PixlDevice.MaxNameBytes];
+            }
+
+            name = stem[..^1] + extension;
+        }
+
+        return name;
+    }
+
+    private static string FormatSize(long bytes) => bytes switch
+    {
+        >= 1024 * 1024 => $"{bytes / (1024.0 * 1024.0):0.#} MB",
+        >= 1024 => $"{bytes / 1024.0:0.#} KB",
+        _ => $"{bytes} B",
+    };
+}
