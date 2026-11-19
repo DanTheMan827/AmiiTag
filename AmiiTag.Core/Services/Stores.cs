@@ -347,8 +347,10 @@ public sealed class AppSettings
 
     /// <summary>
     /// Randomize the UID (using a stored genuine signature if available) when creating tags from the library.
+    /// 
+    /// If this is false, a random UID will be generated.
     /// </summary>
-    public bool RandomizeGeneratedUid { get; set; } = true;
+    public bool RandomizeGeneratedUid { get; set; } = false;
 
     /// <summary>
     /// UART speed for an MFRC522 serial reader (it's switched to this from its power-on 9600).
