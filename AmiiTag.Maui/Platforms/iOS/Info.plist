@@ -42,7 +42,5 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
-	<key>MinimumOSVersion</key>
-	<string>26.0</string>
 </dict>
 </plist>
