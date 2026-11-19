@@ -7,6 +7,7 @@ using AmiiTag.Maui.Data;
 using AmiiTag.Maui.Services;
 using AmiiTag.Nfc;
 using Microsoft.Extensions.Logging;
+using Microsoft.Maui.LifecycleEvents;
 #if ANDROID || IOS
 using ZXing.Net.Maui.Controls;
 #endif
@@ -34,6 +35,13 @@ namespace AmiiTag.Maui
             builder.UseBarcodeReader();
 #endif
 
+#if ANDROID
+            builder.ConfigureMauiHandlers(handlers => handlers.AddHandler<AmiiTag.Maui.Pages.NativePageRefreshView, AmiiTag.Maui.Pages.NativePageRefreshHandler>());
+#endif
+#if WINDOWS
+            builder.ConfigureLifecycleEvents(events => events.AddWindows(windows =>
+                windows.OnWindowCreated(window => WindowsBackdrop.Apply(window))));
+#endif
             builder.Services.AddMauiBlazorWebView();
             builder.Services.AddScoped<HttpClient>(sp => new HttpClient());
 

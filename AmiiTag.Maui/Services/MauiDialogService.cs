@@ -171,7 +171,9 @@ internal sealed class ProgressPage : ContentPage
             StrokeShape = new Microsoft.Maui.Controls.Shapes.RoundRectangle { CornerRadius = 14 },
             Content = stack,
         };
-        card.SetAppThemeColor(BackgroundColorProperty, Color.FromArgb("#F6F6FA"), Color.FromArgb("#1C1C1E"));
+        card.SetAppThemeColor(BackgroundColorProperty,
+            Color.FromArgb("#F6F6FA"),
+            Color.FromArgb("#1C1C1E"));
 
         Content = new Grid { Children = { card } };
     }

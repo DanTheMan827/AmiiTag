@@ -1271,7 +1271,7 @@ h1:focus {
 
     .tag-info > .tag-stage {
         position: sticky;
-        top: 16px;
+        top: calc(var(--native-top, var(--web-header-height, 0px)) + 16px);
         grid-column: 1;
         grid-row: 1 / span 20;
         width: 100%;
@@ -2025,4 +2025,53 @@ img {
 .crc-badge.invalid {
     background: var(--danger-tint);
     color: var(--destructive);
+}
+
+/* Accessible toolbar-sized gear; native hosts place the action in their toolbar. */
+.settings-gear { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 8px; }
+
+/* iOS content and its background extend under the native material. Only the
+   content gets top padding; no native scroll offset or extra safe-top padding. */
+html[data-native-ios="true"] .page-content {
+    padding-top: calc(var(--native-top, 0px) + 16px);
+}
+
+html[data-native-ios="true"] .home .page-content {
+    padding-top: calc(var(--native-top, 0px) + 48px);
+}
+
+/* Native bars stay above the WebView. This is only their blurred background,
+   not a second HTML toolbar; native titles, Back and Settings stay native. */
+:root { --safe-left: env(safe-area-inset-left, 0px); --safe-right: env(safe-area-inset-right, 0px); --native-bar-tint: rgba(248, 249, 252, 0.62); }
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) { --native-bar-tint: rgba(13, 15, 20, 0.62); }
+}
+:root[data-theme="dark"] { --native-bar-tint: rgba(13, 15, 20, 0.62); }
+html[data-native-android="true"] #app::before,
+html[data-native-desktop="true"] #app::before {
+    content: "";
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: var(--native-bar-height, var(--native-top, 0px));
+    z-index: 20;
+    pointer-events: none;
+    background: var(--native-bar-tint);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    backdrop-filter: saturate(180%) blur(20px);
+}
+html[data-native-android="true"] .page-content,
+html[data-native-desktop="true"] .page-content {
+    padding-top: calc(var(--native-top, 0px) + 16px);
+}
+html[data-native-android="true"] .home .page-content,
+html[data-native-desktop="true"] .home .page-content {
+    padding-top: calc(var(--native-top, 0px) + 48px);
+}
+html[data-native-ios="true"] .page-content,
+html[data-native-android="true"] .page-content,
+html[data-native-desktop="true"] .page-content {
+    padding-left: max(var(--gutter), var(--safe-left));
+    padding-right: max(var(--gutter), var(--safe-right));
 }

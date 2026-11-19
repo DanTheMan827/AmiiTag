@@ -41,7 +41,7 @@ else
         <nav class="pixl-path" aria-label="Folder">
             @foreach (var (name, path) in Breadcrumbs(_path))
             {
-                <button type="button" class="link-button" @onclick="() => OpenFolder(path)">@name</button>
+                <button type="button" class="link-button" @onclick="() => OpenAncestor(path)">@name</button>
                 <span class="pixl-path-separator" aria-hidden="true">/</span>
             }
         </nav>
@@ -101,6 +101,8 @@ else
     }
 }
 
+<PageRefreshAction OnRefresh="Reload" />
+
 <FigurePicker Open="_pickerOpen"
               Title="Add Character"
               Filter="IsNtag215Figure"
@@ -113,6 +115,11 @@ else
     private string? _path;
     private IReadOnlyList<PixlEntry>? _entries;
     private bool _pickerOpen;
+    private bool _isNavigating;
+    private readonly FolderNavigationHistory _history = new();
+    [Parameter] public EventCallback<bool> OnCanGoBackChanged { get; set; }
+    public string? CurrentFolder => _path;
+    public bool CanGoBack => _history.CanGoBack;
 
     [Parameter, EditorRequired] public PixlDevice Device { get; set; } = default!;
 
@@ -136,19 +143,14 @@ else
         }
 
         _drives = drives;
-        var drive = drives.FirstOrDefault(d => d.IsAvailable && d.Label == _drive?.Label) ?? drives.FirstOrDefault(d => d.IsAvailable);
+        var drive = drives.FirstOrDefault(d => d.IsAvailable && d.Label == _drive?.Label) ?? drives.FirstOrDefault(d => d.IsAvailable && d.Label == 'E') ?? drives.FirstOrDefault(d => d.IsAvailable);
         if (drive != null && _path == null)
         {
             _drive = drive;
             await EnsureAmiiboKeysAsync(drives);
 
-            // Start where the amiibo are, if that folder exists.
-            var start = PixlPath.Combine(drive.RootPath, "amiibo");
+            // Start at external storage's root, not inside its amiibo directory.
             await OpenFolder(drive.RootPath);
-            if (_entries?.Any(e => e.IsFolder && e.Name.Equals("amiibo", StringComparison.OrdinalIgnoreCase)) == true)
-            {
-                await OpenFolder(start);
-            }
         }
     }
 
@@ -209,16 +211,39 @@ else
             return;
         }
 
-        _drive = drive;
         await OpenFolder(drive.RootPath);
     }
 
-    private async Task OpenFolder(string path)
+    private Task OpenFolder(string path) => NavigateFolder(path, () => _history.Visit(path));
+
+    private Task OpenAncestor(string path) => NavigateFolder(path, () => _history.UpTo(path));
+
+    private async Task<bool> NavigateFolder(string path, Action commitHistory)
     {
-        _path = path;
-        _entries = null;
-        StateHasChanged();
-        _entries = await Actions.WithProgressAsync("Reading folder", (_, ct) => Device.ReadFolderAsync(path, ct)) ?? Array.Empty<PixlEntry>();
+        if (_isNavigating) return false;
+        _isNavigating = true;
+        try
+        {
+            var entries = await Actions.WithProgressAsync("Reading folder", (_, ct) => Device.ReadFolderAsync(path, ct));
+            if (entries == null) return false; // Failed/cancelled reads do not change location or history.
+            commitHistory();
+            _path = path;
+            _drive = _drives?.FirstOrDefault(d => d.RootPath.StartsWith(path[..2], StringComparison.Ordinal)) ?? _drive;
+            _entries = entries;
+            await OnCanGoBackChanged.InvokeAsync(_history.CanGoBack);
+            StateHasChanged();
+            return true;
+        }
+        finally { _isNavigating = false; }
+    }
+
+    public async Task<bool> TryGoBackAsync()
+    {
+        if (_isNavigating) return true;
+        if (_history.Previous is not { } previous) return false;
+        await NavigateFolder(previous, _history.Back);
+        // A failed read consumes Back too: don't leave a device because its folder read failed.
+        return true;
     }
 
     private Task Reload() => _path == null ? LoadDrives() : OpenFolder(_path);
@@ -227,7 +252,7 @@ else
     {
         if (_path != null && PixlPath.Parent(_path) is { } parent)
         {
-            await OpenFolder(parent);
+            await OpenAncestor(parent);
         }
     }
 
@@ -562,6 +587,8 @@ else
         {
             _path = null;
             _entries = null;
+            _history.Clear();
+            await OnCanGoBackChanged.InvokeAsync(false);
             await LoadDrives();
             StateHasChanged();
         }

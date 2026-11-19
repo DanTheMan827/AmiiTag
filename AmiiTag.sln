@@ -39,12 +39,18 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Nfc.Flipper", "Amii
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Nfc.Pn532", "AmiiTag.Nfc.Pn532\AmiiTag.Nfc.Pn532.csproj", "{395C5E91-C386-480D-A1B9-FA460193146A}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AmiiTag.Core.Tests", "AmiiTag.Core.Tests\AmiiTag.Core.Tests.csproj", "{516B979F-2852-4784-9AB8-9C76094B6B4C}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
 		Release|Any CPU = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{516B979F-2852-4784-9AB8-9C76094B6B4C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{516B979F-2852-4784-9AB8-9C76094B6B4C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{516B979F-2852-4784-9AB8-9C76094B6B4C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{516B979F-2852-4784-9AB8-9C76094B6B4C}.Release|Any CPU.Build.0 = Release|Any CPU
 		{395C5E91-C386-480D-A1B9-FA460193146A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{395C5E91-C386-480D-A1B9-FA460193146A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{395C5E91-C386-480D-A1B9-FA460193146A}.Release|Any CPU.ActiveCfg = Release|Any CPU

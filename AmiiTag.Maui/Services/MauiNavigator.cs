@@ -83,12 +83,27 @@ public sealed class MauiNavigator : IAppNavigator
 
         // iOS keeps the system's own navigation bar (translucent, following light/dark, standard back button); the
         // other platforms get colours matching the pages.
-        if (DeviceInfo.Platform != DevicePlatform.iOS)
+        if (DeviceInfo.Platform != DevicePlatform.iOS && DeviceInfo.Platform != DevicePlatform.MacCatalyst && DeviceInfo.Platform != DevicePlatform.WinUI && DeviceInfo.Platform != DevicePlatform.Android)
         {
-            navigationPage.SetAppThemeColor(NavigationPage.BarBackgroundColorProperty, Color.FromArgb("#F8F9FC"), Color.FromArgb("#000000"));
+            navigationPage.SetAppThemeColor(NavigationPage.BarBackgroundColorProperty, Color.FromArgb("#E6F8F9FC"), Color.FromArgb("#E60D0F14"));
             navigationPage.SetAppThemeColor(NavigationPage.BarTextColorProperty, Colors.Black, Colors.White);
         }
 
+        // Let UIKit choose Liquid Glass on iOS 26+, with the system material on older iOS.
+        // Never add an opaque custom background on iOS/Mac Catalyst.
+#if IOS
+        if (!OperatingSystem.IsIOSVersionAtLeast(26))
+            Microsoft.Maui.Controls.PlatformConfiguration.iOSSpecific.NavigationPage.SetIsNavigationBarTranslucent(navigationPage, true);
+#endif
+        if (DeviceInfo.Platform == DevicePlatform.WinUI || DeviceInfo.Platform == DevicePlatform.Android)
+        {
+            if (DeviceInfo.Platform == DevicePlatform.WinUI)
+                navigationPage.SetAppThemeColor(VisualElement.BackgroundColorProperty, Color.FromArgb("#F8F9FC"), Color.FromArgb("#0D0F14"));
+            else navigationPage.BackgroundColor = Colors.Transparent;
+            navigationPage.BarBackgroundColor = Colors.Transparent;
+            navigationPage.SetAppThemeColor(NavigationPage.BarTextColorProperty, Colors.Black, Colors.White);
+        }
+        else navigationPage.SetAppThemeColor(VisualElement.BackgroundColorProperty, Color.FromArgb("#F8F9FC"), Color.FromArgb("#0D0F14"));
         return navigationPage;
     }
 

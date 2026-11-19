@@ -1,0 +1,27 @@
+@inject IDialogService Dialogs
+@inject TagActions Actions
+
+<h2 class="section-title">Commands</h2>
+<div class="button-stack compact">
+    @foreach (var command in Device.Commands)
+    {
+        <BigButton OnClick="() => RunCommand(command)" Class="@(command.IsDestructive ? "destructive" : "secondary")">@command.Title</BigButton>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public ICommandTagDevice Device { get; set; } = default!;
+    private async Task RunCommand(TagDeviceCommand command)
+    {
+        if (command.IsDestructive && !await Dialogs.ConfirmAsync($"{command.Title}?", "This can't be undone.", "Continue", "Cancel"))
+        {
+            return;
+        }
+
+        var result = await Actions.WithProgressAsync(command.Title, async (_, ct) => await Device.RunCommandAsync(command, ct) ?? string.Empty);
+        if (!string.IsNullOrEmpty(result))
+        {
+            await Dialogs.AlertAsync(command.Title, result);
+        }
+    }
+}

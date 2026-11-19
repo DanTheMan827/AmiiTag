@@ -1,0 +1,12 @@
+@inherits DeviceControlsBase<AmiiboLinkDevice>
+
+<DeviceManagementLayout Device="Device" OnSettings="ShowSettings" DropEnabled="true" OnFilesDropped="DropFiles">
+    <SingleTagDeviceControls @ref="_writer" Device="Device" OnOpeningChild="OnOpeningChild" />
+    <DeviceCommandControls Device="Device" />
+</DeviceManagementLayout>
+
+@code {
+    private SingleTagDeviceControls? _writer;
+    private Task DropFiles(IReadOnlyList<PickedFile> files) => _writer!.DropFiles(files);
+    private Task ShowSettings() => ChooseSettings([]);
+}

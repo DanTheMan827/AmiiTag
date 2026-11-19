@@ -48,6 +48,7 @@
 </AppPage>
 
 @code {
+
     protected override void OnInitialized()
     {
         Flipper.Changed += async (_,_) => await InvokeAsync(StateHasChanged);

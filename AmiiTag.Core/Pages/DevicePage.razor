@@ -1,127 +1,41 @@
 @page "/device/{DeviceId}"
 @implements IDisposable
+@using AmiiTag.Core.Components.Devices
 @inject BleDeviceManager Manager
 @inject TagActions Actions
-@inject AmiiboLookup Lookup
-@inject IDatabaseContainer DatabaseContainer
-@inject IDialogService Dialogs
 @inject IAppNavigator Navigator
-@inject IFileService Files
-@inject KeyStore Keys
 @inject ScreenEvents Screens
-@inject ContextMenus Menus
+@inject IDatabaseContainer DatabaseContainer
 
-@* AmiiboLink/AmiiLoop take a dump dropped anywhere on the page; puck slots each take one; Pixl.js folders take files. *@
-<AppPage Title="@(_device?.Name ?? "Device")" Wide="true"
-         OnFilesDropped="files => DroppedOnDevice(files, null)" DropEnabled="WritesWholeDevice"
-         DropLabel="@($"Drop an amiibo to write it to {_device?.Name}")">
-    <HeaderActions>
-        @if (_device != null)
-        {
-            <button type="button" class="link-button" @onclick="ShowSettings">Settings</button>
-        }
-    </HeaderActions>
-    <ChildContent>
-        @if (_device == null || !_device.IsConnected)
-        {
+@switch (_device)
+{
+    case PuckDevice puck when puck.IsConnected:
+        <PuckDeviceControls @key="puck" Device="puck" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    case LegacyPuckDevice legacy when legacy.IsConnected:
+        <LegacyPuckDeviceControls @key="legacy" Device="legacy" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    case PixlDevice pixl when pixl.IsConnected:
+        <PixlDeviceControls @key="pixl" Device="pixl" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    case AmiiboLinkDevice link when link.IsConnected:
+        <AmiiboLinkDeviceControls @key="link" Device="link" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    case AmiLoopDevice loop when loop.IsConnected:
+        <AmiLoopDeviceControls @key="loop" Device="loop" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
+    default:
+        <AppPage Title="Device">
             <p class="empty-state">This device isn't connected.</p>
-            <div class="button-stack">
-                <BigButton OnClick="OpenDevices">Connect a Device</BigButton>
-            </div>
-        }
-        else
-        {
-            <p class="device-summary">
-                @TagDeviceDetector.Describe(_device.Kind)
-                @if (_device.Firmware != null)
-                {
-                    <span> · @_device.Firmware</span>
-                }
-                @if (_device is PixlDevice { Address: { Length: > 0 } address })
-                {
-                    <span> · @address</span>
-                }
-            </p>
-
-            @if (_device is PixlDevice pixl)
-            {
-                <PixlBrowser @ref="_pixl" Device="pixl" OnOpeningChild="() => _openingChild = true" />
-            }
-            else if (_device is ISlotTagDevice)
-            {
-                @if (_slots == null)
-                {
-                    <p class="empty-state small">Reading slots...</p>
-                }
-                else
-                {
-                    <ul class="list grid">
-                        @foreach (var slot in _slots)
-                        {
-                            var figure = Lookup.GetSlotFigure(slot.Dump);
-                            var title = SlotTitle(slot);
-                            var items = SlotItems(slot);
-                            <DropZone Element="li" OnFiles="files => DroppedOnDevice(files, slot.Slot)" Label="@($"Drop an amiibo to write it to slot {slot.Slot + 1}")">
-                                <button type="button" class="list-row with-image @(AmiiboLookup.IsAmiiboSummary(slot.Dump) ? "" : "dimmed")"
-                                        @onpointerdown="Menus.TrackPointer"
-                                        @onclick="e => Menus.ClickAsync(e, title, items)"
-                                        @oncontextmenu="e => Menus.ShowAsync(e, title, items)" @oncontextmenu:preventDefault="true">
-                                    <FigureImage Figure="figure" Class="list-row-image" />
-                                    <span class="list-row-title">
-                                        @Lookup.GetSlotDisplayName(slot.Dump)
-                                        <span class="list-row-subtitle">Slot @(slot.Slot + 1)@(slot.Slot == _activeSlot ? " · Active" : "")</span>
-                                    </span>
-                                </button>
-                            </DropZone>
-                        }
-                    </ul>
-                }
-
-                <div class="button-stack compact">
-                    <BigButton OnClick="RefreshSlots" Class="secondary">Refresh</BigButton>
-                </div>
-            }
-            else
-            {
-                <div class="button-stack">
-                    <BigButton OnClick="WriteFileToDevice">Write Tag File</BigButton>
-                    <BigButton OnClick="() => PickCharacter(null)">Write Character</BigButton>
-                    <BigButton OnClick="WriteBlank" Class="secondary">Write Blank Tag</BigButton>
-                </div>
-            }
-
-            @if (_device is ICommandTagDevice commands)
-            {
-                <h2 class="section-title">Commands</h2>
-                <div class="button-stack compact">
-                    @foreach (var command in commands.Commands)
-                    {
-                        <BigButton OnClick="() => RunCommand(commands, command)" Class="@(command.IsDestructive ? "destructive" : "secondary")">@command.Title</BigButton>
-                    }
-                </div>
-            }
-        }
-    </ChildContent>
-</AppPage>
-
-<FigurePicker Open="_pickerOpen"
-              Title="@(_pickerSlot is int s ? $"Write to Slot {s + 1}" : "Write Character")"
-              Filter="IsNtag215Figure"
-              OnPicked="WriteCharacter"
-              OnCancelled="() => _pickerOpen = false" />
+            <div class="button-stack"><BigButton OnClick="OpenDevices">Connect a Device</BigButton></div>
+        </AppPage>
+        break;
+}
 
 @code {
-    private ITagDevice? _device;
-    private IReadOnlyList<SlotInfo>? _slots;
-    private int _activeSlot = -1;
-    private bool _pickerOpen;
-    private int? _pickerSlot;
-    private bool _leaving;
-    private PixlBrowser? _pixl;
-
     [Parameter] public string? DeviceId { get; set; }
-
-    // Opening a slot or Settings from here keeps the connection: those screens come back to this one.
+    private ITagDevice? _device;
+    private bool _leaving;
     private bool _openingChild;
 
     protected override void OnInitialized()
@@ -129,6 +43,18 @@
         Manager.Changed += OnManagerChanged;
         DatabaseContainer.DataChanged += OnManagerChanged;
         Screens.Closed += OnScreenClosed;
+    }
+
+    protected override void OnParametersSet() =>
+        _device = DeviceId == null ? null : Manager.GetConnected(DeviceId);
+
+    private void OpeningChild() => _openingChild = true;
+
+    private async Task Disconnect()
+    {
+        _leaving = true;
+        if (_device != null) await Manager.DisconnectAsync(_device);
+        await Navigator.GoBackAsync();
     }
 
     /// <summary>
@@ -158,22 +84,12 @@
         }
     }
 
-    protected override async Task OnParametersSetAsync()
-    {
-        _device = DeviceId == null ? null : Manager.GetConnected(DeviceId);
-        if (_device is ISlotTagDevice)
-        {
-            await RefreshSlots();
-        }
-    }
-
     private void OnManagerChanged(object? sender, EventArgs e) => InvokeAsync(async () =>
     {
         var disconnected = DeviceId != null && _device != null && Manager.GetConnected(DeviceId) is null;
         if (DeviceId != null && Manager.GetConnected(DeviceId) is null)
         {
             _device = null;
-            _pickerOpen = false;
         }
 
         StateHasChanged();
@@ -185,334 +101,6 @@
             await Navigator.PopToAsync(Actions.UsesBrowserDevicePicker ? AppRoutes.Home() : AppRoutes.Devices());
         }
     });
-
-    private async Task RefreshSlots()
-    {
-        if (_device is not ISlotTagDevice slots)
-        {
-            return;
-        }
-
-        var result = await Actions.WithProgressAsync($"Reading {_device.Name}", async (progress, ct) =>
-        {
-            var summary = await slots.GetSlotSummaryAsync(ct);
-            var list = await slots.GetSlotsAsync(progress, ct);
-            return (summary, list);
-        });
-
-        if (result.Item2 != null)
-        {
-            _activeSlot = result.Item1.Current;
-            _slots = result.Item2;
-        }
-    }
-
-    private string SlotTitle(SlotInfo slot) => $"Slot {slot.Slot + 1}: {Lookup.GetSlotDisplayName(slot.Dump)}";
-
-    /// <summary>
-    /// A slot's actions: making it the active slot is what a click does on desktop; the rest are in its context menu.
-    /// </summary>
-    private IReadOnlyList<ContextMenuItem> SlotItems(SlotInfo slot)
-    {
-        if (_device is not ISlotTagDevice device)
-        {
-            return [];
-        }
-
-        var items = new List<ContextMenuItem>
-        {
-            new("Make active", async () =>
-            {
-                await Actions.WithProgressAsync("Changing slot", async (_, ct) => { await device.SelectSlotAsync(slot.Slot, ct); return true; });
-                _activeSlot = slot.Slot;
-            }, IsDefault: true),
-            new("Open", async () =>
-            {
-                var dump = await Actions.WithProgressAsync($"Reading slot {slot.Slot + 1}", (progress, ct) => device.ReadSlotAsync(slot.Slot, progress, ct));
-                if (dump != null)
-                {
-                    _openingChild = true;
-                    await Actions.OpenTagAsync(dump, modal: false);
-                }
-            }),
-            new("Write tag file here", () => WriteFile(slot.Slot)),
-            new("Write character here", () => PickCharacter(slot.Slot)),
-        };
-
-        if (device is IAmiitoolTagDevice amiitool && amiitool.CanRandomizeUid)
-        {
-            items.Add(new("Randomize UID", async () =>
-            {
-                var updated = await Actions.WithProgressAsync("Randomizing UID", async (_, ct) =>
-                {
-                    await amiitool.RandomizeUidAsync(slot.Slot, ct);
-                    return await device.GetSlotInformationAsync(slot.Slot, ct);
-                });
-                if (updated != null && ReferenceEquals(_device, device) && _slots != null)
-                    _slots = _slots.Select(existing => existing.Slot == updated.Slot ? updated : existing).ToArray();
-            }));
-        }
-
-        items.Add(new("Clear slot", () => ClearSlot(device, slot), IsDestructive: true));
-        return items;
-    }
-
-    private async Task ClearSlot(ISlotTagDevice device, SlotInfo slot)
-    {
-        if (!await Dialogs.ConfirmAsync("Clear slot?", $"Slot {slot.Slot + 1} will be replaced with a blank tag.", "Clear", "Cancel"))
-        {
-            return;
-        }
-
-        await Actions.WithProgressAsync("Clearing slot", (_, ct) => device.ClearSlotAsync(slot.Slot, ct));
-        await RefreshSlots();
-    }
-
-    private Task WriteFileToDevice() => WriteFile(null);
-
-    private async Task WriteFile(int? slot)
-    {
-        if (_device == null)
-        {
-            return;
-        }
-
-        var file = await Files.PickFileAsync("Write Tag", TagActions.TagFileExtensions);
-        if (file == null)
-        {
-            return;
-        }
-
-        if (!TagDump.TryCreate(file.Data, out var dump) || dump == null)
-        {
-            await Dialogs.AlertAsync("Invalid file", $"{file.Name} isn't an NTAG215 dump.");
-            return;
-        }
-
-        await WriteDump(dump, slot);
-    }
-
-    /// <summary>
-    /// AmiiboLink and AmiiLoop: the page takes a dropped dump (pucks take them per slot, Pixl.js per folder).
-    /// </summary>
-    private bool WritesWholeDevice => _device is { IsConnected: true } and not ISlotTagDevice and not PixlDevice;
-
-    /// <summary>
-    /// A dump dropped on the device (or on a slot) is written there, after a confirmation naming what it is.
-    /// </summary>
-    private async Task DroppedOnDevice(IReadOnlyList<PickedFile> files, int? slot)
-    {
-        if (_device == null)
-        {
-            return;
-        }
-
-        var file = files[0];
-        if (!AmiiboImage.TryParse(file.Data, out var image) || image == null)
-        {
-            await Dialogs.AlertAsync("Not an amiibo", $"{file.Name} isn't an amiibo dump ({file.Data.Length} bytes).");
-            return;
-        }
-
-        if (image is not TagDump dump)
-        {
-            await Dialogs.AlertAsync("Can't write this figure", $"{file.Name} is a v3 amiibo, which {_device.Name} can't hold.");
-            return;
-        }
-
-        var target = slot is int s ? $"slot {s + 1}" : _device.Name;
-        var more = files.Count > 1 ? " Only the first dropped file is written." : string.Empty;
-        if (await Dialogs.ConfirmAsync($"Write to {target}?", $"{Lookup.GetDisplayName(dump)} ({file.Name}) replaces what's there.{more}", "Write", "Cancel"))
-        {
-            await WriteDump(dump, slot);
-        }
-    }
-
-    private Task WriteBlank() => WriteDump(TagDump.Blank(), null);
-
-    // Pucks and emulators hold NTAG215 images, so v3 (NTAG I²C) figures aren't offered.
-    private static bool IsNtag215Figure(AmiiboFigure figure) => figure.Id.Id.EndsWith("02", StringComparison.Ordinal);
-
-    private Task PickCharacter(int? slot)
-    {
-        _pickerSlot = slot;
-        _pickerOpen = true;
-        return Task.CompletedTask;
-    }
-
-    /// <summary>
-    /// Generates a tag for the chosen character (like opening it from the library) and writes it to the device.
-    /// </summary>
-    private async Task WriteCharacter(AmiiboFigure figure)
-    {
-        _pickerOpen = false;
-        var slot = _pickerSlot;
-
-        IAmiiboImage? image;
-        try
-        {
-            image = await Actions.CreateFromFigureAsync(figure);
-        }
-        catch (Exception ex)
-        {
-            await Dialogs.AlertAsync("Couldn't create the tag", ex.Message);
-            return;
-        }
-
-        if (image == null)
-        {
-            if (await Dialogs.ConfirmAsync("Keys needed", "Generating a tag needs both amiibo keys. Load them in Settings?", "Settings", "Cancel"))
-            {
-                _openingChild = true;
-                await Navigator.NavigateAsync(AppRoutes.Settings());
-            }
-
-            return;
-        }
-
-        if (image is not TagDump dump)
-        {
-            await Dialogs.AlertAsync("Can't write this figure", "v3 amiibo can't be written to a puck.");
-            return;
-        }
-
-        await WriteDump(dump, slot);
-    }
-
-    private async Task WriteDump(TagDump dump, int? slot)
-    {
-        var device = _device;
-        if (device == null)
-        {
-            return;
-        }
-
-        var ok = await Actions.WithProgressAsync($"Writing {device.Name}", async (progress, ct) =>
-        {
-            await device.WriteTagAsync(dump, slot, progress, ct);
-            return true;
-        });
-
-        if (ok && device is ISlotTagDevice slots)
-        {
-            var summary = await slots.GetSlotSummaryAsync();
-            var updated = await slots.GetSlotInformationAsync(slot ?? summary.Current);
-
-            if (ReferenceEquals(_device, device) && _slots != null)
-            {
-                _activeSlot = summary.Current;
-                _slots = _slots.Select(existing =>
-                    existing.Slot == updated.Slot ? updated : existing).ToArray();
-            }
-        }
-    }
-
-    private async Task RunCommand(ICommandTagDevice device, TagDeviceCommand command)
-    {
-        if (command.IsDestructive && !await Dialogs.ConfirmAsync($"{command.Title}?", "This can't be undone.", "Continue", "Cancel"))
-        {
-            return;
-        }
-
-        var result = await Actions.WithProgressAsync(command.Title, async (_, ct) => await device.RunCommandAsync(command, ct) ?? string.Empty);
-        if (!string.IsNullOrEmpty(result))
-        {
-            await Dialogs.AlertAsync(command.Title, result);
-        }
-    }
-
-    private async Task ShowSettings()
-    {
-        var device = _device;
-        if (device == null)
-        {
-            return;
-        }
-
-        var options = new List<(string Title, Func<Task> Run)>();
-        if (device is IRenamableTagDevice renamable)
-        {
-            options.Add(("Change Name", () => Rename(renamable)));
-        }
-
-        if (device is IAmiitoolTagDevice { CanUploadKeys: true, AmiitoolKeysLoaded: false } amiitool)
-        {
-            options.Add(("Upload amiitool keys", () => UploadKeys(amiitool)));
-        }
-
-        if (device is PixlDevice pixl)
-        {
-            foreach (var drive in _pixl?.Drives ?? Array.Empty<PixlDrive>())
-            {
-                options.Add(($"Format drive {drive.Label}:", async () =>
-                {
-                    if (await Dialogs.ConfirmAsync($"Format drive {drive.Label}?", "Everything on it will be erased.", "Format", "Cancel") && _pixl != null)
-                    {
-                        await _pixl.FormatDrive(drive);
-                    }
-                }));
-            }
-
-            options.Add(("Firmware update mode (DFU)", async () =>
-            {
-                if (await Dialogs.ConfirmAsync("Enter DFU mode?", "The Pixl.js restarts into its bootloader and disconnects, ready for a firmware update with nRF Connect or the Pixl.js web app.", "Continue", "Cancel"))
-                {
-                    await Actions.WithProgressAsync("Entering DFU mode", async (_, ct) => { await pixl.EnterDfuAsync(ct); return true; });
-                }
-            }));
-        }
-
-        if (device is IUartTagDevice uart)
-        {
-            options.Add(("Enable UART", async () =>
-            {
-                await Actions.WithProgressAsync("Enabling UART", async (_, ct) => { await uart.EnableUartAsync(ct); return true; });
-                await Navigator.GoBackAsync();
-            }));
-        }
-
-        options.Add(("Disconnect", async () =>
-        {
-            // Leaving on purpose: one step back, rather than the "device went away" handling navigating as well.
-            _leaving = true;
-            await Manager.DisconnectAsync(device);
-            await Navigator.GoBackAsync();
-        }));
-
-        var choice = await Dialogs.ChooseAsync(device.Name, options.Select(o => o.Title).ToList());
-        if (choice >= 0)
-        {
-            await options[choice].Run();
-        }
-    }
-
-    private async Task Rename(IRenamableTagDevice device)
-    {
-        var name = await Dialogs.PromptAsync(device.Name, "Enter a new name. The device will disconnect.", device.Name, device.MaxNameBytes);
-        if (string.IsNullOrWhiteSpace(name))
-        {
-            return;
-        }
-
-        var ok = await Actions.WithProgressAsync("Changing Name", async (_, ct) => { await device.RenameAsync(name.Trim(), ct); return true; });
-        if (ok)
-        {
-            await Navigator.GoBackAsync();
-        }
-    }
-
-    private async Task UploadKeys(IAmiitoolTagDevice device)
-    {
-        await Keys.EnsureLoadedAsync();
-        if (Keys.RawKeys is not { } keys)
-        {
-            await Dialogs.AlertAsync("Key file missing", "Load key_retail.bin in Settings first.");
-            return;
-        }
-
-        var ok = await Actions.WithProgressAsync("Uploading keys", (_, ct) => device.UploadKeysAsync(keys, ct));
-        await Dialogs.AlertAsync(ok ? "Keys uploaded" : "The puck rejected the keys");
-    }
 
     private Task OpenDevices() => Actions.OpenBluetoothDevicesAsync();
 

@@ -139,7 +139,12 @@
       App icon: the AmiiTag mark (appiconfg.svg, from icon-transparent.svg) on black. Scaled to half the icon so it
       stays inside Android's adaptive icon safe zone (the circle masks crop anything past two thirds).
     -->
-    <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" ForegroundScale="0.5" Color="#000000" />
+	<MauiIcon Include="Resources\AppIcon\appicon.svg"
+		ForegroundFile="Resources\AppIcon\appiconfg.svg"
+		Color="#000000">
+		<ForegroundScale>0.8</ForegroundScale>
+		<ForegroundScale Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">0.5</ForegroundScale>
+	</MauiIcon>
     <!-- Launch screen: the mark on black, as the app's dark theme starts. -->
     <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#000000" BaseSize="128,128" />
     <!-- Images -->

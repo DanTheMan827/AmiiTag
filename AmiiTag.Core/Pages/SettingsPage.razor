@@ -11,7 +11,7 @@
 @inject AppEnvironment Environment
 @inject TagActions Actions
 
-<AppPage Title="Settings" OnFilesDropped="Actions.ImportKeysAsync" DropLabel="Drop key files to load them">
+<AppPage OnRefresh="RefreshReaders" Title="Settings" OnFilesDropped="Actions.ImportKeysAsync" DropLabel="Drop key files to load them">
     <h2 class="section-title">Keys</h2>
     <div class="card">
         <p>

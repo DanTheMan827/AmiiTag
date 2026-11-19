@@ -1,0 +1,22 @@
+<AppPage CanGoBack="CanGoBack" TryBack="TryBack" OnSettings="OnSettings" Title="@Device.Name" Wide="true" OnFilesDropped="OnFilesDropped"
+         DropEnabled="DropEnabled" DropLabel="@($"Drop an amiibo to write it to {Device.Name}")">
+    <ChildContent>
+        <p class="device-summary">
+            @TagDeviceDetector.Describe(Device.Kind)
+            @if (Device.Firmware != null) { <span> · @Device.Firmware</span> }
+            @SummaryDetail
+        </p>
+        @ChildContent
+    </ChildContent>
+</AppPage>
+
+@code {
+    [Parameter, EditorRequired] public ITagDevice Device { get; set; } = default!;
+    [Parameter] public bool CanGoBack { get; set; }
+    [Parameter] public Func<Task<bool>>? TryBack { get; set; }
+    [Parameter] public EventCallback OnSettings { get; set; }
+    [Parameter] public RenderFragment? SummaryDetail { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool DropEnabled { get; set; }
+    [Parameter] public EventCallback<IReadOnlyList<PickedFile>> OnFilesDropped { get; set; }
+}

@@ -1,0 +1,157 @@
+@implements IDisposable
+@inject TagActions Actions
+@inject AmiiboLookup Lookup
+@inject IDialogService Dialogs
+@inject ContextMenus Menus
+
+@if (_slots == null)
+{
+    <p class="empty-state small">Reading slots...</p>
+}
+else
+{
+    <ul class="list grid">
+        @foreach (var slot in _slots)
+        {
+            var figure = Lookup.GetSlotFigure(slot.Dump);
+            var title = SlotTitle(slot);
+            var items = SlotItems(slot);
+            <DropZone Element="li" OnFiles="files => _writer!.DroppedOnDevice(files, slot.Slot)" Label="@($"Drop an amiibo to write it to slot {slot.Slot + 1}")">
+                <button type="button" class="list-row with-image @(AmiiboLookup.IsAmiiboSummary(slot.Dump) ? "" : "dimmed")"
+                        @onpointerdown="Menus.TrackPointer"
+                        @onclick="e => Menus.ClickAsync(e, title, items)"
+                        @oncontextmenu="e => Menus.ShowAsync(e, title, items)" @oncontextmenu:preventDefault="true">
+                    <FigureImage Figure="figure" Class="list-row-image" />
+                    <span class="list-row-title">
+                        @Lookup.GetSlotDisplayName(slot.Dump)
+                        <span class="list-row-subtitle">Slot @(slot.Slot + 1)@(slot.Slot == _activeSlot ? " · Active" : "")</span>
+                    </span>
+                </button>
+            </DropZone>
+        }
+    </ul>
+}
+
+<div class="button-stack compact">
+    <BigButton OnClick="RefreshSlots" Class="secondary">Refresh</BigButton>
+</div>
+
+<PageRefreshAction OnRefresh="RefreshSlots" />
+
+<TagDeviceWriter @ref="_writer" Device="Device" OnOpeningChild="OnOpeningChild" OnWritten="RefreshWrittenSlot" />
+
+@code {
+    [Parameter, EditorRequired] public ISlotTagDevice Device { get; set; } = default!;
+    [Parameter] public EventCallback OnOpeningChild { get; set; }
+    [Parameter] public Func<SlotInfo, IReadOnlyList<ContextMenuItem>>? AdditionalActions { get; set; }
+    private IReadOnlyList<SlotInfo>? _slots;
+    private int _activeSlot = -1;
+    private TagDeviceWriter? _writer;
+    private ISlotTagDevice? _loadedDevice;
+    private bool _disposed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!ReferenceEquals(_loadedDevice, Device))
+        {
+            _loadedDevice = Device;
+            _slots = null;
+            await RefreshSlots();
+        }
+    }
+    public void Dispose()
+    {
+        _disposed = true;
+    }
+
+    public async Task RefreshSlotAsync(int slot)
+    {
+        if (_disposed) return;
+        var device = Device;
+        var updated = await Actions.WithProgressAsync("Reading slot", (_, ct) => device.GetSlotInformationAsync(slot, ct));
+        if (!_disposed && ReferenceEquals(Device, device) && updated != null && _slots != null)
+            _slots = _slots.Select(existing => existing.Slot == updated.Slot ? updated : existing).ToArray();
+        if (!_disposed) StateHasChanged();
+    }
+
+    private async Task RefreshWrittenSlot(int? slot)
+    {
+        if (_disposed) return;
+        var device = Device;
+        var result = await Actions.WithProgressAsync("Reading slot", async (_, ct) =>
+        {
+            var summary = await device.GetSlotSummaryAsync(ct);
+            var updated = await device.GetSlotInformationAsync(slot ?? summary.Current, ct);
+            return (summary, updated);
+        });
+        if (!_disposed && ReferenceEquals(Device, device) && result.updated != null && _slots != null)
+        {
+            _activeSlot = result.summary.Current;
+            _slots = _slots.Select(existing => existing.Slot == result.updated.Slot ? result.updated : existing).ToArray();
+        }
+    }
+
+    private async Task RefreshSlots()
+    {
+        var slots = Device;
+
+        var result = await Actions.WithProgressAsync($"Reading {Device.Name}", async (progress, ct) =>
+        {
+            var summary = await slots.GetSlotSummaryAsync(ct);
+            var list = await slots.GetSlotsAsync(progress, ct);
+            return (summary, list);
+        });
+
+        if (!_disposed && ReferenceEquals(Device, slots) && result.Item2 != null)
+        {
+            _activeSlot = result.Item1.Current;
+            _slots = result.Item2;
+        }
+    }
+
+    private string SlotTitle(SlotInfo slot) => $"Slot {slot.Slot + 1}: {Lookup.GetSlotDisplayName(slot.Dump)}";
+
+    /// <summary>
+    /// A slot's actions: making it the active slot is what a click does on desktop; the rest are in its context menu.
+    /// </summary>
+    private IReadOnlyList<ContextMenuItem> SlotItems(SlotInfo slot)
+    {
+        var device = Device;
+
+        var items = new List<ContextMenuItem>
+        {
+            new("Make active", async () =>
+            {
+                await Actions.WithProgressAsync("Changing slot", async (_, ct) => { await device.SelectSlotAsync(slot.Slot, ct); return true; });
+                _activeSlot = slot.Slot;
+            }, IsDefault: true),
+            new("Open", async () =>
+            {
+                var dump = await Actions.WithProgressAsync($"Reading slot {slot.Slot + 1}", (progress, ct) => device.ReadSlotAsync(slot.Slot, progress, ct));
+                if (dump != null)
+                {
+                    await OnOpeningChild.InvokeAsync();
+                    await Actions.OpenTagAsync(dump, modal: false);
+                }
+            }),
+            new("Write tag file here", () => _writer!.WriteFile(slot.Slot)),
+            new("Write character here", () => _writer!.PickCharacter(slot.Slot)),
+        };
+
+        if (AdditionalActions != null) items.AddRange(AdditionalActions(slot));
+
+        items.Add(new("Clear slot", () => ClearSlot(device, slot), IsDestructive: true));
+        return items;
+    }
+
+    private async Task ClearSlot(ISlotTagDevice device, SlotInfo slot)
+    {
+        if (!await Dialogs.ConfirmAsync("Clear slot?", $"Slot {slot.Slot + 1} will be replaced with a blank tag.", "Clear", "Cancel"))
+        {
+            return;
+        }
+
+        await Actions.WithProgressAsync("Clearing slot", (_, ct) => device.ClearSlotAsync(slot.Slot, ct));
+        await RefreshSlots();
+    }
+}

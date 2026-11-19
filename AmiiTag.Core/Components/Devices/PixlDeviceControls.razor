@@ -1,0 +1,33 @@
+@inherits DeviceControlsBase<PixlDevice>
+
+<DeviceManagementLayout Device="Device" OnSettings="ShowSettings" CanGoBack="_canGoBack" TryBack="TryBack">
+    <SummaryDetail>
+        @if (Device.Address is { Length: > 0 } address) { <span> · @address</span> }
+    </SummaryDetail>
+    <ChildContent><PixlBrowser @ref="_browser" Device="Device" OnOpeningChild="OnOpeningChild" OnCanGoBackChanged="CanGoBackChanged" /></ChildContent>
+</DeviceManagementLayout>
+
+@code {
+    private PixlBrowser? _browser;
+    private bool _canGoBack;
+    private void CanGoBackChanged(bool value) => _canGoBack = value;
+    private Task<bool> TryBack() => _browser?.TryGoBackAsync() ?? Task.FromResult(false);
+    private Task ShowSettings()
+    {
+        var options = new List<(string Title, Func<Task> Run)>();
+        foreach (var drive in _browser?.Drives ?? Array.Empty<PixlDrive>())
+        {
+            options.Add(($"Format drive {drive.Label}:", async () =>
+            {
+                if (await Dialogs.ConfirmAsync($"Format drive {drive.Label}?", "Everything on it will be erased.", "Format", "Cancel") && _browser != null)
+                    await _browser.FormatDrive(drive);
+            }));
+        }
+        options.Add(("Firmware update mode (DFU)", async () =>
+        {
+            if (await Dialogs.ConfirmAsync("Enter DFU mode?", "The Pixl.js restarts into its bootloader and disconnects, ready for a firmware update with nRF Connect or the Pixl.js web app.", "Continue", "Cancel"))
+                await Actions.WithProgressAsync("Entering DFU mode", async (_, ct) => { await Device.EnterDfuAsync(ct); return true; });
+        }));
+        return ChooseSettings(options);
+    }
+}

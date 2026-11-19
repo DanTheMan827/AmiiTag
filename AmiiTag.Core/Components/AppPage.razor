@@ -3,6 +3,7 @@
 @inject AppEnvironment Environment
 @inject IAppNavigator Navigator
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 @implements IAsyncDisposable
 
 @if (IsWeb)
@@ -13,9 +14,9 @@
 @* The page itself is a drop zone when the screen takes dropped files (OnFilesDropped). *@
 <DropZone Class="@($"app-page {(Sheet ? "sheet" : "")} {(Wide ? "wide" : "")} {Class}")"
           Enabled="DropEnabled" Label="@DropLabel" OnFiles="OnFilesDropped">
-    @if (DrawsHeader && ShowHeader)
+    @if (DrawsHeader && (ShowHeader || OnSettings.HasDelegate))
     {
-        <header class="page-header">
+        <header class="page-header" @ref="_headerElement">
             <div class="page-header-side">
                 @if (BackVisible)
                 {
@@ -25,6 +26,7 @@
             <h1 class="page-title">@Title</h1>
             <div class="page-header-side end">
                 @HeaderActions
+                @if (OnSettings.HasDelegate) { <SettingsGear OnClick="OnSettings" /> }
             </div>
         </header>
     }
@@ -35,14 +37,34 @@
 
     <main class="page-content">
         @ChildContent
+        @if (!IsWeb && Chrome == null && OnSettings.HasDelegate)
+        {
+            <div class="page-actions"><SettingsGear OnClick="OnSettings" /></div>
+        }
     </main>
 </DropZone>
 
 <ContextMenuOverlay />
+@if (OnRefresh.HasDelegate) { <PageRefreshAction OnRefresh="OnRefresh" /> }
 
 @code {
     // Whether the web app runs as an installed app on iOS. Evaluated once per session.
     private static bool? s_iosStandalone;
+
+    [CascadingParameter] public PageChromeState? Chrome { get; set; }
+    [Parameter] public EventCallback OnSettings { get; set; }
+    [Parameter] public Func<Task<bool>>? TryBack { get; set; }
+    [Parameter] public bool CanGoBack { get; set; }
+    [Parameter] public EventCallback OnRefresh { get; set; }
+    private PageChromeState? _registeredChrome;
+
+    protected override void OnParametersSet()
+    {
+        if (!ReferenceEquals(_registeredChrome, Chrome)) _registeredChrome?.Remove(this);
+        _registeredChrome = Chrome;
+        Chrome?.SetBack(this, CanGoBack && TryBack != null ? TryBackOnRenderer : null);
+        Chrome?.SetSettings(this, OnSettings.HasDelegate ? () => InvokeAsync(() => OnSettings.InvokeAsync()) : null);
+    }
 
     [Parameter] public string? Title { get; set; }
     [Parameter] public RenderFragment? ChildContent { get; set; }
@@ -94,14 +116,58 @@
     /// </summary>
     private bool DrawsHeader => IsWeb;
 
-    private bool BackVisible => IsWeb && (ForceBack || (ShowBack && s_iosStandalone == true));
+    private bool BackVisible => IsWeb && (CanGoBack || ForceBack || (ShowBack && s_iosStandalone == true));
 
     // Desktop app: the mouse's back button goes back (the web has the browser's own handling).
     private IJSObjectReference? _mouseBack;
+    private IJSObjectReference? _historyBack;
+    private IDisposable? _navigationGuard;
+    private int _tryingBack;
+    private IJSObjectReference? _headerSize;
+    private ElementReference _headerElement;
+    private bool _measuringHeader;
+    private bool _disposed;
+    private IJSObjectReference? _pullGuard;
     private DotNetObjectReference<AppPage>? _self;
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender) Chrome?.NotifyContentReady();
+        if (IsWeb && (ShowHeader || OnSettings.HasDelegate) && _headerSize == null && !_measuringHeader)
+        {
+            _measuringHeader = true;
+            try
+            {
+                await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AmiiTag.Core/js/header-size.js");
+                if (_disposed) return;
+                var measurement = await module.InvokeAsync<IJSObjectReference>("register", _headerElement);
+                if (_disposed && measurement != null)
+                {
+                    await measurement.InvokeVoidAsync("dispose");
+                    await measurement.DisposeAsync();
+                }
+                else _headerSize = measurement;
+            }
+            catch (JSException) { }
+            finally { _measuringHeader = false; }
+        }
+        if (firstRender && IsWeb && TryBack != null)
+        {
+            try
+            {
+                await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AmiiTag.Core/js/history-back.js");
+                if (_disposed) return;
+                var guard = await module.InvokeAsync<IJSObjectReference>("register");
+                if (_disposed)
+                {
+                    if (guard != null) { await guard.InvokeVoidAsync("dispose"); await guard.DisposeAsync(); }
+                    return;
+                }
+                _historyBack = guard;
+                _navigationGuard = Navigation.RegisterLocationChangingHandler(BeforeHistoryNavigation);
+            }
+            catch (JSException) { }
+        }
         if (firstRender && !IsWeb)
         {
             try
@@ -109,6 +175,11 @@
                 _self = DotNetObjectReference.Create(this);
                 await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AmiiTag.Core/js/mouse-back.js");
                 _mouseBack = await module.InvokeAsync<IJSObjectReference>("register", _self);
+                if (Chrome?.SupportsPullToRefresh == true)
+                {
+                    await using var guard = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AmiiTag.Core/js/native-pull-guard.js");
+                    _pullGuard = await guard.InvokeAsync<IJSObjectReference>("register", _self);
+                }
             }
             catch (JSException)
             {
@@ -135,12 +206,33 @@
     }
 
     [JSInvokable]
+    public Task SetPullBlocked(bool blocked) => InvokeAsync(() => Chrome?.SetPullBlocked(blocked));
+
+    [JSInvokable]
     public Task MouseBack() => InvokeAsync(GoBack);
 
     public async ValueTask DisposeAsync()
     {
+        _disposed = true;
+        _registeredChrome?.Remove(this);
+        _navigationGuard?.Dispose();
         try
         {
+            if (_historyBack != null)
+            {
+                await _historyBack.InvokeVoidAsync("dispose");
+                await _historyBack.DisposeAsync();
+            }
+            if (_headerSize != null)
+            {
+                await _headerSize.InvokeVoidAsync("dispose");
+                await _headerSize.DisposeAsync();
+            }
+            if (_pullGuard != null)
+            {
+                await _pullGuard.InvokeVoidAsync("dispose");
+                await _pullGuard.DisposeAsync();
+            }
             if (_mouseBack != null)
             {
                 await _mouseBack.InvokeVoidAsync("dispose");
@@ -158,5 +250,33 @@
         _self?.Dispose();
     }
 
-    private Task GoBack() => OnBack.HasDelegate ? OnBack.InvokeAsync() : Navigator.GoBackAsync();
+    private async ValueTask BeforeHistoryNavigation(LocationChangingContext context)
+    {
+        if (_historyBack == null || _disposed) return;
+        var traversing = await _historyBack.InvokeAsync<bool>("takeTraversal", context.TargetLocation);
+        if (!traversing || !CanGoBack || context.CancellationToken.IsCancellationRequested) return;
+        // Cancel the route change before BLE I/O, so a failed/cancelled folder
+        // read cannot dispose this page and disconnect the device.
+        context.PreventNavigation();
+        await TryBackOnRenderer();
+    }
+
+    private async Task<bool> TryBackOnRenderer()
+    {
+        if (Interlocked.CompareExchange(ref _tryingBack, 1, 0) != 0) return true;
+        try
+        {
+            var handled = false;
+            await InvokeAsync(async () => handled = TryBack != null && await TryBack());
+            return handled;
+        }
+        finally { Interlocked.Exchange(ref _tryingBack, 0); }
+    }
+
+    private async Task GoBack()
+    {
+        if (await TryBackOnRenderer()) return;
+        if (OnBack.HasDelegate) await OnBack.InvokeAsync();
+        else await Navigator.GoBackAsync();
+    }
 }
