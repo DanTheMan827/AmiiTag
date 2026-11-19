@@ -38,7 +38,7 @@ jobs:
 
       - name: Build
         shell: pwsh
-        run: ./scripts/build-web.ps1 -Configuration Release -BasePath / -Target Cloudflare
+        run: ./scripts/build-web.ps1 -Configuration Debug -BasePath / -Target Cloudflare
 
       - name: No Cloudflare token yet
         if: env.CLOUDFLARE_API_TOKEN == '' || env.CLOUDFLARE_ACCOUNT_ID == ''
@@ -59,7 +59,7 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
-          command: pages deploy artifacts/web/Release --project-name=${{ env.PROJECT_NAME }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
+          command: pages deploy artifacts/web/Debug --project-name=${{ env.PROJECT_NAME }} --branch=${{ github.ref_name }} --commit-hash=${{ github.sha }}
 
       - name: Summary
         if: steps.deploy.outcome == 'success'
