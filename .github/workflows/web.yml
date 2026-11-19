@@ -45,7 +45,7 @@ jobs:
 
       - name: Upload for GitHub Pages
         if: matrix.configuration == 'Release'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: artifacts/web/Release
 
@@ -66,4 +66,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
