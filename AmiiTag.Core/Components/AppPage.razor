@@ -36,7 +36,7 @@
         <div class="page-actions">@HeaderActions</div>
     }
 
-    <main class="page-content">
+    <main class="page-content" id="@(IsWindows ? _scrollContentId : null)" @ref="_scrollContent">
         @ChildContent
         @if (!IsWeb && Chrome == null && OnSettings.HasDelegate)
         {
@@ -44,6 +44,15 @@
         }
     </main>
 </DropZone>
+
+@if (IsWindows)
+{
+    <div class="windows-scrollbar" @ref="_scrollTrack" hidden tabindex="-1"
+         role="scrollbar" aria-label="Page scroll" aria-orientation="vertical"
+         aria-controls="@_scrollContentId" aria-valuemin="0" aria-valuemax="0" aria-valuenow="0">
+        <div class="windows-scrollbar-thumb" @ref="_scrollThumb"></div>
+    </div>
+}
 
 <ContextMenuOverlay />
 @if (OnRefresh.HasDelegate) { <PageRefreshAction OnRefresh="OnRefresh" /> }
@@ -112,6 +121,8 @@
     /// </summary>
     [Parameter] public bool DropEnabled { get; set; } = true;
 
+    private bool IsWindows => Environment.Platform == AppEnvironment.PlatformType.Windows;
+
     private bool IsWeb => Environment.Platform == AppEnvironment.PlatformType.WebAssembly;
 
     /// <summary>
@@ -122,6 +133,12 @@
     private bool BackVisible => IsWeb && (CanGoBack || ForceBack || (ShowBack && s_iosStandalone == true));
 
     // Desktop app: the mouse's back button goes back (the web has the browser's own handling).
+    private readonly string _scrollContentId = "page-content-" + Guid.NewGuid().ToString("N");
+    private ElementReference _scrollContent;
+    private ElementReference _scrollTrack;
+    private ElementReference _scrollThumb;
+    private IJSObjectReference? _scrollbar;
+    private bool _registeringScrollbar;
     private IJSObjectReference? _mouseBack;
     private IDisposable? _navigationGuard;
     private int _tryingBack;
@@ -135,6 +152,24 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender) Chrome?.NotifyContentReady();
+        if (IsWindows && _scrollbar == null && !_registeringScrollbar)
+        {
+            _registeringScrollbar = true;
+            try
+            {
+                await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AmiiTag.Core/js/windows-scrollbar.js");
+                if (_disposed) return;
+                var registration = await module.InvokeAsync<IJSObjectReference>("register", _scrollTrack, _scrollThumb, _scrollContent);
+                if (_disposed && registration != null)
+                {
+                    await registration.InvokeVoidAsync("dispose");
+                    await registration.DisposeAsync();
+                }
+                else _scrollbar = registration;
+            }
+            catch (JSException) { } // Native scrollbar remains available if registration fails.
+            finally { _registeringScrollbar = false; }
+        }
         if (IsWeb && (ShowHeader || OnSettings.HasDelegate) && _headerSize == null && !_measuringHeader)
         {
             _measuringHeader = true;
@@ -203,6 +238,11 @@
         _navigationGuard?.Dispose();
         try
         {
+            if (_scrollbar != null)
+            {
+                await _scrollbar.InvokeVoidAsync("dispose");
+                await _scrollbar.DisposeAsync();
+            }
             if (_headerSize != null)
             {
                 await _headerSize.InvokeVoidAsync("dispose");

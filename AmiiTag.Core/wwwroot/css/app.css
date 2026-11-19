@@ -2069,9 +2069,88 @@ html[data-native-android="true"] .home .page-content,
 html[data-native-desktop="true"] .home .page-content {
     padding-top: calc(var(--native-top, 0px) + 48px);
 }
+
+/* WebView2's document still fills the window under the native chrome. Shorten
+   only its vertical scrollbar track by the measured caption + navbar overlap.
+   Keep the document as the scroll owner so sticky content and refresh work. */
+html[data-native-desktop="true"]::-webkit-scrollbar {
+    width: 12px;
+    background: transparent;
+}
+html[data-native-desktop="true"]::-webkit-scrollbar-track:vertical {
+    margin-top: var(--native-top, 0px);
+    background: transparent;
+}
+html[data-native-desktop="true"]::-webkit-scrollbar-thumb:vertical {
+    background: var(--text-tertiary);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+}
+html[data-native-desktop="true"]::-webkit-scrollbar-thumb:vertical:hover {
+    background-color: var(--text-secondary);
+}
+html[data-native-desktop="true"]::-webkit-scrollbar-button:vertical {
+    display: none;
+}
 html[data-native-ios="true"] .page-content,
 html[data-native-android="true"] .page-content,
 html[data-native-desktop="true"] .page-content {
     padding-left: max(var(--gutter), var(--safe-left));
     padding-right: max(var(--gutter), var(--safe-right));
+}
+
+/* Windows retains document scrolling beneath the native blurred bars. Hide
+   only the document's built-in scrollbar after its replacement is ready. */
+html.windows-custom-scrollbar-active {
+    --windows-scrollbar-width: 14px;
+    scrollbar-width: none;
+}
+html.windows-custom-scrollbar-active::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+}
+/* Reserve the scrollbar width only within page content. The navbar/background
+   remain full width, including the area above the custom scrollbar. */
+html.windows-custom-scrollbar-active .page-content {
+    padding-right: calc(max(var(--gutter), var(--safe-right)) + var(--windows-scrollbar-width));
+}
+html.windows-custom-scrollbar-active .app-page > .page-actions {
+    padding-right: calc(var(--gutter) + var(--windows-scrollbar-width));
+}
+.windows-scrollbar {
+    position: fixed;
+    top: calc(var(--native-top, 0px) + 3px);
+    bottom: 3px;
+    right: 0;
+    width: var(--windows-scrollbar-width, 14px);
+    z-index: 21;
+    touch-action: none;
+    user-select: none;
+}
+.windows-scrollbar[hidden] { display: none; }
+/* Programmatic focus during a pointer drag can inherit :focus-visible from
+   the previous keyboard-focused control. Keep that ring keyboard-only. */
+.windows-scrollbar.pointer-focus:focus {
+    outline: none;
+}
+.windows-scrollbar:focus-visible {
+    outline-offset: -2px;
+}
+.windows-scrollbar-thumb {
+    position: absolute;
+    top: 0;
+    left: 3px;
+    right: 3px;
+    border-radius: 999px;
+    background: var(--text-tertiary);
+}
+.windows-scrollbar:hover .windows-scrollbar-thumb,
+.windows-scrollbar.dragging .windows-scrollbar-thumb,
+.windows-scrollbar:focus-visible .windows-scrollbar-thumb {
+    background: var(--text-secondary);
+}
+@media (forced-colors: active) {
+    .windows-scrollbar-thumb { background: ButtonText; }
 }

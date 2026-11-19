@@ -166,7 +166,7 @@ public class DeviceControlsTests : BunitContext
         cut.WaitForAssertion(() => Assert.Equal(3, cut.FindAll("li").Count));
         Assert.Empty(cut.FindComponents<SingleTagDeviceControls>());
         cut.Find("button[aria-label=Settings]").Click();
-        Assert.Equal(new[] { "Change Name", "Enable UART", "Disconnect" }, _dialogs.Choices);
+        cut.WaitForAssertion(() => Assert.Equal(new[] { "Change Name", "Enable UART", "Disconnect" }, _dialogs.Choices));
         var slots = cut.FindComponent<SlotDeviceControls>();
         var actions = slots.Instance.AdditionalActions!(new SlotInfo(1, new TagDump(new byte[572])));
         if (amiitool)
@@ -214,7 +214,7 @@ public class DeviceControlsTests : BunitContext
         Assert.Equal(3, cut.FindAll("li").Count);
         Assert.Null(cut.FindComponent<SlotDeviceControls>().Instance.AdditionalActions);
         cut.Find("button[aria-label=Settings]").Click();
-        Assert.Equal(new[] { "Change Name", "Enable UART", "Disconnect" }, _dialogs.Choices);
+        cut.WaitForAssertion(() => Assert.Equal(new[] { "Change Name", "Enable UART", "Disconnect" }, _dialogs.Choices));
         Assert.Empty(_dialogs.Errors);
     }
 
@@ -432,6 +432,33 @@ public class DeviceControlsTests : BunitContext
         cut.WaitForAssertion(() => Assert.Equal(NavigationState.Succeeded, navigation.History.First().State));
         Assert.Equal("E:/amiibo", cut.FindComponent<PixlBrowser>().Instance.CurrentFolder);
         Assert.Empty(_dialogs.Errors);
+    }
+
+    [Theory]
+    [InlineData(AppEnvironment.PlatformType.Windows, true)]
+    [InlineData(AppEnvironment.PlatformType.iOS, false)]
+    [InlineData(AppEnvironment.PlatformType.Android, false)]
+    [InlineData(AppEnvironment.PlatformType.MacCatalyst, false)]
+    [InlineData(AppEnvironment.PlatformType.WebAssembly, false)]
+    [InlineData(AppEnvironment.PlatformType.Unknown, false)]
+    public void CustomDocumentScrollbarIsWindowsOnly(AppEnvironment.PlatformType platform, bool usesPane)
+    {
+        Services.AddSingleton(new AppEnvironment { Platform = platform });
+        var cut = Render<AppPage>(p => p.Add(c => c.Title, "Test")
+            .Add(c => c.HeaderActions, "<button id='header-action'>Header action</button>")
+            .AddChildContent("<button id='content-action'>Content action</button>"));
+        Assert.Single(cut.FindAll(".app-page > main.page-content"));
+        Assert.Single(cut.FindAll("#content-action"));
+        Assert.Empty(cut.FindAll(".windows-scroll-layout, .windows-nav-spacer, .windows-page-scroll"));
+        if (usesPane)
+        {
+            var scrollbar = cut.Find(".windows-scrollbar[role=scrollbar]");
+            Assert.Equal("vertical", scrollbar.GetAttribute("aria-orientation"));
+            Assert.Equal(cut.Find("main.page-content").Id, scrollbar.GetAttribute("aria-controls"));
+            Assert.False(string.IsNullOrWhiteSpace(scrollbar.GetAttribute("aria-controls")));
+            Assert.Single(cut.FindAll(".app-page > .page-actions #header-action"));
+        }
+        else Assert.Empty(cut.FindAll(".windows-scrollbar"));
     }
 
     public class EmptyProxy : DispatchProxy
