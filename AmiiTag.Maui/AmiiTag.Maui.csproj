@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Razor">
+﻿<Project Sdk="Microsoft.NET.Sdk.Razor">
   <PropertyGroup>
     <TargetFrameworks>net10.0-android;net10.0-ios;net10.0-maccatalyst</TargetFrameworks>
     <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net10.0-windows10.0.19041.0</TargetFrameworks>
@@ -23,7 +23,7 @@
     <!-- Display name -->
     <ApplicationTitle>AmiiTag</ApplicationTitle>
     <!-- App Identifier -->
-    <ApplicationId>com.dantheman827.amiitag</ApplicationId>
+    <ApplicationId>com.dantheman827.amiitag-net</ApplicationId>
     <Company>DanTheMan827</Company>
     <Authors>DanTheMan827</Authors>
     <!-- Versions -->
@@ -95,9 +95,10 @@
     profile. To use a profile made by hand instead, set ProvisioningType to manual and CodesignProvision to its name.
   -->
   <PropertyGroup Condition="'$(TargetFramework)'=='net10.0-ios'">
-    <CodesignKey>Apple Development</CodesignKey>
+    <CodesignKey>Apple Development: Created via API (TS6T446TZK)</CodesignKey>
     <CodesignEntitlements>Platforms\iOS\Entitlements.plist</CodesignEntitlements>
     <ProvisioningType>automatic</ProvisioningType>
+    <CodesignProvision>VS: com.dantheman827.amiitag-net Development</CodesignProvision>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net10.0-ios|AnyCPU'">
     <MtouchLink>SdkOnly</MtouchLink>
