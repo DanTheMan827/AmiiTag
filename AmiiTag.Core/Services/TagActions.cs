@@ -631,7 +631,7 @@ public sealed class TagActions
     /// </summary>
     public async Task<AmiiboV3Dump?> LoadLockOnFromFileAsync(AmiiboV3Dump dump)
     {
-        var file = await _files.PickFileAsync("Load Lock-on Response", [".lockon", ".bin"]);
+        var file = await _files.PickFileAsync("Load Lock-on Response", LockOnFileExtensions);
         return file == null ? null : await UseLockOnFileAsync(dump, file);
     }
 
@@ -700,12 +700,18 @@ public sealed class TagActions
     }
 
     /// <summary>
-    /// Adds lock-on files to the library: .lockon responses, or v3 .bin images that include one. One file is named by
-    /// the user; several keep a name from the figure or the file, which can be changed later.
+    /// Files that can hold a lock-on: .lockon responses, library entries saved as .json, and v3 .bin images.
+    /// </summary>
+    public static readonly IReadOnlyList<string> LockOnFileExtensions = [".lockon", ".json", ".bin"];
+
+    /// <summary>
+    /// Adds lock-on files to the library: .lockon responses, library entries (.json), or v3 .bin images that include
+    /// one. One file is named by
+    /// the user; several keep the file's name (or a library entry's own), which can be changed later.
     /// </summary>
     public async Task ImportLockOnsAsync()
     {
-        var files = await _files.PickFilesAsync("Import Lock-ons", [".lockon", ".bin"]);
+        var files = await _files.PickFilesAsync("Import Lock-ons", LockOnFileExtensions);
         if (files.Count > 0)
         {
             await AddLockOnsAsync(files);
@@ -714,7 +720,7 @@ public sealed class TagActions
 
     /// <summary>
     /// Adds lock-on files (picked or dropped) to the library. Each is named by the user when <paramref name="askNames"/>
-    /// (by default, when there's only one); otherwise it keeps a name from the figure or the file.
+    /// (by default, when there's only one); otherwise it keeps the file's name (or a library entry's own).
     /// </summary>
     public async Task AddLockOnsAsync(IReadOnlyList<PickedFile> files, bool? askNames = null)
     {
@@ -801,6 +807,26 @@ public sealed class TagActions
     private (byte[] Response, string Name, string? AmiiboId, string? Uid)? ReadLockOnFile(PickedFile file, out string problem)
     {
         problem = "";
+
+        // A library entry saved as JSON keeps its name, figure and source UID.
+        if (LockOnLibrary.TryReadEntryJson(file.Data) is { } entry)
+        {
+            var entryCheck = LockOnResponse.Check(LockOnResponse.Normalize(entry.Response));
+            if (!LockOnResponse.IsUsable(entryCheck))
+            {
+                problem = $"{file.Name} is a lock-on library entry, but its lock-on isn't valid: {LockOnResponse.Describe(entryCheck)}.";
+                return null;
+            }
+
+            var entryName = string.IsNullOrWhiteSpace(entry.Name) ? Path.GetFileNameWithoutExtension(file.Name) : entry.Name;
+            return (entry.Response, entryName, entry.AmiiboId, entry.SourceUid);
+        }
+
+        if (Path.GetExtension(file.Name).Equals(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            problem = $"{file.Name} isn't a lock-on library entry (a JSON object with a base 64 Response of up to {LockOnResponse.Length} bytes).";
+            return null;
+        }
         if (file.Data.Length == AmiiboV3Dump.ImageLength && AmiiboImage.TryParse(file.Data, out var image) && image is AmiiboV3Dump v3)
         {
             if (v3.LockOn is not { } response)
@@ -816,7 +842,8 @@ public sealed class TagActions
                 return null;
             }
 
-            return (response, _lookup.GetDisplayName(v3), v3.HasAmiiboId ? v3.AmiiboIdHex : null, v3.UidHex);
+            // Named after the file (the user named it), not the figure: several dumps of one character stay apart.
+            return (response, Path.GetFileNameWithoutExtension(file.Name), v3.HasAmiiboId ? v3.AmiiboIdHex : null, v3.UidHex);
         }
 
         if (AmiiboImage.TryParse(file.Data, out var other) && other is TagDump)
@@ -884,7 +911,8 @@ public sealed class TagActions
         var unknown = new List<string>();
         foreach (var file in files)
         {
-            var isLockOnFile = Path.GetExtension(file.Name).Equals(".lockon", StringComparison.OrdinalIgnoreCase);
+            var isLockOnFile = Path.GetExtension(file.Name).Equals(".lockon", StringComparison.OrdinalIgnoreCase) ||
+                LockOnLibrary.TryReadEntryJson(file.Data) != null;
             if (AmiiboKeyFiles.Identify(file.Data) != AmiiboKeyFileKind.Unknown)
             {
                 keys.Add(file);
@@ -938,7 +966,7 @@ public sealed class TagActions
         if (unknown.Count > 0)
         {
             await _dialogs.AlertAsync("Not recognised",
-                $"{string.Join(", ", unknown)}: not an amiibo, a key file, a lock-on (.lockon or {LockOnResponse.Length} bytes) or a UID/signature pair ({SignatureStore.RecordLength} bytes).");
+                $"{string.Join(", ", unknown)}: not an amiibo, a key file, a lock-on (.lockon, a library .json, or {LockOnResponse.Length} bytes) or a UID/signature pair ({SignatureStore.RecordLength} bytes).");
         }
 
         if (amiibo.Count > 1)

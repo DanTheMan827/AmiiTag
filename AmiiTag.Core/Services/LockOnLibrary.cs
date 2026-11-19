@@ -130,6 +130,40 @@ public sealed class LockOnLibrary
         }
     }
 
+    private static readonly JsonSerializerOptions ImportOptions = new() { PropertyNameCaseInsensitive = true };
+
+    /// <summary>
+    /// Reads a library entry saved as JSON (the lockons/{id}.json files, copied out of the app's storage or from another
+    /// device). Property names are matched in any case; the response is base 64, as the library writes it. Null if the
+    /// data isn't such an entry or its response isn't 1-64 bytes.
+    /// </summary>
+    public static LockOnEntry? TryReadEntryJson(ReadOnlySpan<byte> data)
+    {
+        // A UTF-8 byte order mark, then whitespace, then the object.
+        var text = data.StartsWith("\uFEFF"u8) ? data[3..] : data;
+        var start = 0;
+        while (start < text.Length && text[start] is (byte)' ' or (byte)'\t' or (byte)'\r' or (byte)'\n')
+        {
+            start++;
+        }
+
+        if (start >= text.Length || text[start] != (byte)'{')
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<LockOnEntry>(text[start..], ImportOptions) is { Response.Length: > 0 and <= LockOnResponse.Length } entry
+                ? entry
+                : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// A lock-on's ID: the first 16 hex digits (64 bits) of the SHA-256 of its 64 bytes.
     /// </summary>
