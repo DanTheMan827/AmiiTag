@@ -30,6 +30,11 @@ jobs:
 
       - name: Build
         shell: pwsh
+        # Workloads pinned to the .NET for iOS / Mac Catalyst release for Xcode 27.1 (the newest on the image); the
+        # latest release wants Xcode 27.2. Move this up when the image gets a newer Xcode:
+        # https://github.com/dotnet/macios/releases lists each release's workload set and the Xcode it needs.
+        env:
+          DOTNET_WORKLOAD_SET: 10.0.402.1
         run: ./scripts/build-${{ matrix.platform }}.ps1 -Configuration ${{ matrix.configuration }} -BuildNumber ${{ github.run_number }} -InstallWorkloads
 
       - uses: actions/upload-artifact@v4

@@ -18,9 +18,19 @@ function Invoke-Dotnet {
     if ($LASTEXITCODE -ne 0) { throw "dotnet $($arguments[0]) failed with exit code $LASTEXITCODE." }
 }
 
-# The workloads the MAUI project needs on this OS (MAUI, Android, iOS/Mac Catalyst...).
+# The workloads the MAUI project needs on this OS (MAUI, Android, iOS/Mac Catalyst...). With $env:DOTNET_WORKLOAD_SET
+# (a workload set version such as 10.0.402.1) they're pinned to that release instead of the newest, which matters on
+# macOS: each .NET for iOS / Mac Catalyst release requires the Xcode it was built against (or newer).
 function Install-MauiWorkloads {
-    Invoke-Dotnet workload restore $MauiProject
+    if ($env:DOTNET_WORKLOAD_SET) {
+        $workloads = @('maui-android')
+        if ($IsMacOS) { $workloads += 'maui-ios', 'maui-maccatalyst' }
+        if ($IsWindows) { $workloads += 'maui-windows' }
+        Invoke-Dotnet workload install @workloads --version $env:DOTNET_WORKLOAD_SET
+    }
+    else {
+        Invoke-Dotnet workload restore $MauiProject
+    }
 }
 
 function New-CleanDirectory([string] $Path) {
@@ -58,9 +68,11 @@ function Get-VersionArguments([int] $BuildNumber) {
 # The newest .app bundle the MAUI project built for a target framework and configuration.
 function Find-BuiltApp([string] $TargetFramework, [string] $Configuration) {
     $bin = Join-Path $RepoRoot "AmiiTag.Maui/bin/$Configuration/$TargetFramework"
+    # The shallowest wins: a universal Mac build's final app sits above the per-architecture ones.
     $app = Get-ChildItem $bin -Filter '*.app' -Directory -Recurse -ErrorAction SilentlyContinue |
         Where-Object { $_.FullName -notmatch '[\\/]publish[\\/]' } |
-        Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        Sort-Object @{ Expression = { ($_.FullName -split '[\\/]').Count } }, @{ Expression = 'LastWriteTime'; Descending = $true } |
+        Select-Object -First 1
     if (-not $app) { throw "No .app under $bin." }
     return $app
 }

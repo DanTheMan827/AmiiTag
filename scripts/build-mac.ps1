@@ -22,9 +22,10 @@ if (-not $IsMacOS) { throw 'The Mac app can only be built on macOS.' }
 if ($InstallWorkloads) { Install-MauiWorkloads }
 
 $output = New-CleanDirectory (Join-Path $ArtifactsRoot "obj/mac-$Configuration")
-# %3B: a ";" inside -p:Name=value would end the property; MSBuild turns %3B back into ";".
-$rids = if ($Configuration -eq 'Release') { 'maccatalyst-x64%3Bmaccatalyst-arm64' } else { "maccatalyst-$(if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' })" }
-Invoke-Dotnet build $MauiProject -f net10.0-maccatalyst -c $Configuration "-p:RuntimeIdentifiers=$rids" `
+# Release already builds both architectures (the project's default). Debug builds only this Mac's. A RuntimeIdentifiers
+# value on the command line would be a global property and reach the class libraries too, which reject it.
+$ridArgs = if ($Configuration -eq 'Release') { @() } else { @('-r', "maccatalyst-$(if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' })") }
+Invoke-Dotnet build $MauiProject -f net10.0-maccatalyst -c $Configuration @ridArgs `
     '-p:EnableCodeSigning=false' '-p:CreatePackage=false' @(Get-VersionArguments $BuildNumber)
 
 $app = Find-BuiltApp 'net10.0-maccatalyst' $Configuration
