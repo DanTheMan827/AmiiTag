@@ -4,6 +4,7 @@
 @inject IAppNavigator Navigator
 @inject IJSRuntime JS
 @inject NavigationManager Navigation
+@inject IDialogService Dialogs
 @implements IAsyncDisposable
 
 @if (IsWeb)
@@ -62,6 +63,8 @@
     {
         if (!ReferenceEquals(_registeredChrome, Chrome)) _registeredChrome?.Remove(this);
         _registeredChrome = Chrome;
+        if (IsWeb && TryBack != null && _navigationGuard == null)
+            _navigationGuard = Navigation.RegisterLocationChangingHandler(BeforeHistoryNavigation);
         Chrome?.SetBack(this, CanGoBack && TryBack != null ? TryBackOnRenderer : null);
         Chrome?.SetSettings(this, OnSettings.HasDelegate ? () => InvokeAsync(() => OnSettings.InvokeAsync()) : null);
     }
@@ -120,7 +123,6 @@
 
     // Desktop app: the mouse's back button goes back (the web has the browser's own handling).
     private IJSObjectReference? _mouseBack;
-    private IJSObjectReference? _historyBack;
     private IDisposable? _navigationGuard;
     private int _tryingBack;
     private IJSObjectReference? _headerSize;
@@ -150,23 +152,6 @@
             }
             catch (JSException) { }
             finally { _measuringHeader = false; }
-        }
-        if (firstRender && IsWeb && TryBack != null)
-        {
-            try
-            {
-                await using var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/AmiiTag.Core/js/history-back.js");
-                if (_disposed) return;
-                var guard = await module.InvokeAsync<IJSObjectReference>("register");
-                if (_disposed)
-                {
-                    if (guard != null) { await guard.InvokeVoidAsync("dispose"); await guard.DisposeAsync(); }
-                    return;
-                }
-                _historyBack = guard;
-                _navigationGuard = Navigation.RegisterLocationChangingHandler(BeforeHistoryNavigation);
-            }
-            catch (JSException) { }
         }
         if (firstRender && !IsWeb)
         {
@@ -218,11 +203,6 @@
         _navigationGuard?.Dispose();
         try
         {
-            if (_historyBack != null)
-            {
-                await _historyBack.InvokeVoidAsync("dispose");
-                await _historyBack.DisposeAsync();
-            }
             if (_headerSize != null)
             {
                 await _headerSize.InvokeVoidAsync("dispose");
@@ -250,15 +230,23 @@
         _self?.Dispose();
     }
 
-    private async ValueTask BeforeHistoryNavigation(LocationChangingContext context)
+    private ValueTask BeforeHistoryNavigation(LocationChangingContext context)
     {
-        if (_historyBack == null || _disposed) return;
-        var traversing = await _historyBack.InvokeAsync<bool>("takeTraversal", context.TargetLocation);
-        if (!traversing || !CanGoBack || context.CancellationToken.IsCancellationRequested) return;
-        // Cancel the route change before BLE I/O, so a failed/cancelled folder
-        // read cannot dispose this page and disconnect the device.
+        if (_disposed || !CanGoBack || context.IsNavigationIntercepted ||
+            context.CancellationToken.IsCancellationRequested ||
+            Navigator is AmiiTag.Core.Services.Web.BrowserNavigator browser && browser.IsAppNavigation(context))
+            return ValueTask.CompletedTask;
         context.PreventNavigation();
-        await TryBackOnRenderer();
+        // Finish the navigation decision immediately. BLE reads must not keep
+        // Blazor's browser-history rollback pending across another Back press.
+        _ = InvokeAsync(BackFromHistoryAsync);
+        return ValueTask.CompletedTask;
+    }
+
+    private async Task BackFromHistoryAsync()
+    {
+        try { await TryBackOnRenderer(); }
+        catch (Exception ex) { await Dialogs.AlertAsync("Couldn't open folder", ex.Message); }
     }
 
     private async Task<bool> TryBackOnRenderer()

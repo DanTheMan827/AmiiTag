@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.Components;
 using AmiiTag.Core.Data;
 using AmiiTag.Core.Interfaces;
 using AmiiTag.Core.Services;
+using AmiiTag.Core.Services.Web;
 using AmiiTag.Tags;
 using Bunit;
 using Bunit.TestDoubles;
@@ -385,9 +386,7 @@ public class DeviceControlsTests : BunitContext
     public async Task BrowserBackStaysOnDevice_AndConsumesOneFolder(bool failRead)
     {
         Services.AddSingleton(new AppEnvironment { Platform = AppEnvironment.PlatformType.WebAssembly });
-        var module = JSInterop.SetupModule("./_content/AmiiTag.Core/js/history-back.js");
-        var guard = module.SetupModule("register", _ => true);
-        guard.Setup<bool>("takeTraversal", _ => true).SetResult(true);
+        Services.AddSingleton<IAppNavigator, BrowserNavigator>();
         var navigation = (BunitNavigationManager)Services.GetRequiredService<NavigationManager>();
         navigation.NavigateTo("/device/pixl");
         var sim = new PixlSimulator();
@@ -403,7 +402,7 @@ public class DeviceControlsTests : BunitContext
         await cut.InvokeAsync(() => navigation.NavigateTo("/")); // Browser traversal to the prior app route.
         cut.WaitForAssertion(() => Assert.Equal(NavigationState.Prevented, navigation.History.First().State));
         Assert.EndsWith("/device/pixl", navigation.Uri);
-        Assert.Equal(failRead ? "E:/amiibo/child" : "E:/amiibo", browser.CurrentFolder);
+        cut.WaitForAssertion(() => Assert.Equal(failRead ? "E:/amiibo/child" : "E:/amiibo", browser.CurrentFolder));
         Assert.Same(browser, cut.FindComponent<PixlBrowser>().Instance);
         Assert.True(device.IsConnected);
         if (failRead) Assert.Single(_dialogs.Errors);
@@ -420,9 +419,7 @@ public class DeviceControlsTests : BunitContext
     public async Task SettingsNavigationFromFolderIsNotMistakenForBrowserBack()
     {
         Services.AddSingleton(new AppEnvironment { Platform = AppEnvironment.PlatformType.WebAssembly });
-        var module = JSInterop.SetupModule("./_content/AmiiTag.Core/js/history-back.js");
-        var guard = module.SetupModule("register", _ => true);
-        guard.Setup<bool>("takeTraversal", _ => true).SetResult(false);
+        Services.AddSingleton<IAppNavigator, BrowserNavigator>();
         var navigation = (BunitNavigationManager)Services.GetRequiredService<NavigationManager>();
         navigation.NavigateTo("/device/pixl");
         var sim = new PixlSimulator();
@@ -431,7 +428,7 @@ public class DeviceControlsTests : BunitContext
         Assert.True(await device.InitializeAsync());
         var cut = Render<PixlDeviceControls>(p => p.Add(c => c.Device, device));
         cut.FindAll("button.list-row").Single(b => b.TextContent.Contains("amiibo")).Click();
-        await cut.InvokeAsync(() => navigation.NavigateTo("/settings"));
+        await cut.InvokeAsync(() => Services.GetRequiredService<IAppNavigator>().NavigateAsync(AppRoutes.Settings()));
         cut.WaitForAssertion(() => Assert.Equal(NavigationState.Succeeded, navigation.History.First().State));
         Assert.Equal("E:/amiibo", cut.FindComponent<PixlBrowser>().Instance.CurrentFolder);
         Assert.Empty(_dialogs.Errors);

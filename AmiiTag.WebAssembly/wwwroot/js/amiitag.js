@@ -7,6 +7,10 @@
 
     // ------------------------------------------------------------------ Navigation
 
+    amiitag.goHistory = function (delta) {
+        window.history.go(delta);
+    };
+
     amiitag.goBack = function () {
         if (window.history.length > 1) {
             window.history.back();

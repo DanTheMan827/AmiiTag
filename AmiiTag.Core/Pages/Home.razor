@@ -48,6 +48,8 @@
 </AppPage>
 
 @code {
+    private CancellationTokenSource? _monitorCallbacks;
+    private bool _disposed;
 
     protected override void OnInitialized()
     {
@@ -75,18 +77,30 @@
     /// </summary>
     private void UpdateMonitoring()
     {
-        if (Screen.IsVisible && Capabilities.HasNfc)
+        if (!_disposed && Screen.IsVisible && Capabilities.HasNfc)
         {
-            Nfc.StartMonitoring(image => InvokeAsync(() => Actions.ShowScannedTagAsync(image, automatic: true)));
+            _monitorCallbacks ??= new CancellationTokenSource();
+            var token = _monitorCallbacks.Token;
+            Nfc.StartMonitoring(image => InvokeAsync(() => Actions.ShowScannedTagAsync(image, automatic: true, cancellationToken: token)));
         }
         else
         {
+            CancelMonitorCallbacks();
             _ = Nfc.StopMonitoringAsync();
         }
     }
 
+    private void CancelMonitorCallbacks()
+    {
+        _monitorCallbacks?.Cancel();
+        _monitorCallbacks?.Dispose();
+        _monitorCallbacks = null;
+    }
+
     public void Dispose()
     {
+        _disposed = true;
+        CancelMonitorCallbacks();
         Capabilities.Changed -= OnCapabilitiesChanged;
         Screen.Changed -= OnScreenChanged;
         Screen.SetVisible(false);

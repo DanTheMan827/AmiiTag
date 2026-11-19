@@ -133,8 +133,9 @@ public sealed class TagActions
     /// What happens with any tag read over NFC (Scan Tag, or the main menu's background monitoring): its originality
     /// signature is saved if genuine, then it's opened.
     /// </summary>
-    public async Task ShowScannedTagAsync(IAmiiboImage dump, bool automatic = false)
+    public async Task ShowScannedTagAsync(IAmiiboImage dump, bool automatic = false, CancellationToken cancellationToken = default)
     {
+        if (cancellationToken.IsCancellationRequested) return;
         try
         {
             if (dump is TagDump ntag215)
@@ -147,6 +148,7 @@ public sealed class TagActions
             // Saving the signature is a nice-to-have.
         }
 
+        if (cancellationToken.IsCancellationRequested) return;
         if (dump is AmiiboV3Dump { HasLockOn: false })
         {
             await _dialogs.AlertAsync(
@@ -154,7 +156,10 @@ public sealed class TagActions
                 "The figure's data was read, but its lock-on response didn't become available. Keep the figure on the reader and scan again to include it.");
         }
 
-        await OpenTagAsync(dump, automatic: automatic);
+        // The Home page may have been left while saving the signature or
+        // showing a warning. A stale polling result must not open a new route.
+        if (!cancellationToken.IsCancellationRequested)
+            await OpenTagAsync(dump, automatic: automatic);
     }
 
     public async Task ReadFromDeviceAsync(ISlotTagDevice device)

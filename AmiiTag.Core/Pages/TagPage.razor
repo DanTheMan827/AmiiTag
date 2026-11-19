@@ -13,7 +13,7 @@
 @inject FlipperEmulationService Flipper
 @inject LockOnLibrary LockOns
 
-<AppPage Title="@_title" Wide="true" ForceBack="OpenedAutomatically" OnBack="BackToMenuAsync"
+<AppPage Title="@_title" Wide="true" ForceBack="OpenedAutomatically" OnBack="Navigator.GoBackAsync"
          OnFilesDropped="DroppedLockOnAsync" DropEnabled="@(_dump is AmiiboV3Dump)" DropLabel="Drop a lock-on to put it in this tag">
     @if (_dump == null && _figure == null)
     {
@@ -237,22 +237,6 @@
     public string? Auto { get; set; }
 
     private bool OpenedAutomatically => Auto is "1" || string.Equals(Auto, "true", StringComparison.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// Back for an automatically opened tag: back to the main menu, replacing this history entry so the browser's own
-    /// Back doesn't return to the tag.
-    /// </summary>
-    private async Task BackToMenuAsync()
-    {
-        if (OpenedAutomatically)
-        {
-            await Navigator.PopToAsync(AppRoutes.Home());
-        }
-        else
-        {
-            await Navigator.GoBackAsync();
-        }
-    }
 
     /// <summary>
     /// A figure ID from the library; a tag is generated for it.
