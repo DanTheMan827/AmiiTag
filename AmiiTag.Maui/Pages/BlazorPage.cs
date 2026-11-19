@@ -121,6 +121,8 @@ public sealed partial class BlazorPage : ContentPage
         base.OnAppearing();
         if (Application.Current != null) Application.Current.RequestedThemeChanged += OnThemeChanged;
         Dispatcher.Dispatch(() => UpdateNativeChrome());
+        // Again once the push/pop animation has finished and the navigation bar has settled for this page.
+        Dispatcher.DispatchDelayed(TimeSpan.FromMilliseconds(400), () => { if (!_closed) UpdateNativeChrome(); });
         if (IsHome)
         {
             HomeState?.SetVisible(true);

@@ -88,6 +88,7 @@ public sealed partial class BlazorPage
         while (responder != null && responder is not UIViewController) responder = responder.NextResponder;
         if ((responder as UIViewController)?.NavigationController is { } controller)
         {
+            ExtendUnderBars(responder as UIViewController, controller);
             UpdateFolderBackGesture(controller);
             var bar = controller.NavigationBar;
             var appearance = new UINavigationBarAppearance();
@@ -96,9 +97,41 @@ public sealed partial class BlazorPage
             bar.ScrollEdgeAppearance = appearance;
             bar.CompactAppearance = appearance;
             bar.Translucent = true;
-            var overlap = bar.Hidden ? (double)_nativeWebView.SafeAreaInsets.Top
-                : Math.Max(0, _nativeWebView.ConvertRectFromView(bar.Bounds, bar).Bottom);
+            // The bar is shared by every page on the stack, so mid-transition (popping back to home, say) it still
+            // shows the outgoing page's state. A page without a bar goes by its own setting instead: only the status
+            // bar, from the window, whose safe area never includes the navigation bar.
+            double overlap;
+            if (!NavigationPage.GetHasNavigationBar(this))
+            {
+                if (_nativeWebView.Window is not { } window) return;
+                overlap = window.SafeAreaInsets.Top;
+            }
+            else if (!ReferenceEquals(MauiNavigator.CurrentPage, this))
+            {
+                // Covered by another page: keep what this page had rather than follow that page's bar.
+                return;
+            }
+            else
+            {
+                overlap = bar.Hidden ? (double)_nativeWebView.SafeAreaInsets.Top
+                    : Math.Max(0, _nativeWebView.ConvertRectFromView(bar.Bounds, bar).Bottom);
+            }
             ApplyHtmlTopInset(overlap);
+        }
+    }
+
+    /// <summary>
+    /// Lays this page out under the navigation bar whether or not the bar is translucent at that moment. Otherwise UIKit
+    /// starts the page below an opaque bar, and a page without one (home) only grows to the top of the screen once the
+    /// bar has finished hiding, so its background appears late above the safe area when going back to it.
+    /// </summary>
+    private static void ExtendUnderBars(UIViewController? page, UINavigationController controller)
+    {
+        // The stack's child is MAUI's container around the page's own controller: set it on each level up to it.
+        for (var vc = page; vc != null && !ReferenceEquals(vc, controller); vc = vc.ParentViewController)
+        {
+            if (!vc.ExtendedLayoutIncludesOpaqueBars) vc.ExtendedLayoutIncludesOpaqueBars = true;
+            if (vc.EdgesForExtendedLayout != UIRectEdge.All) vc.EdgesForExtendedLayout = UIRectEdge.All;
         }
     }
 
