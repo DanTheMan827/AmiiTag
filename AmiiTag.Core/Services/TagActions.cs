@@ -373,6 +373,18 @@ public sealed class TagActions
             return await UploadToFileDeviceAsync(files, dump, null) ? $"Uploaded to {files.Name}." : null;
         }
 
+        if (device is ITagListDevice list)
+        {
+            // Added as a new tag, named after the figure.
+            var name = _lookup.GetDisplayName(dump);
+            var added = await WithProgressAsync($"Uploading to {list.Name}", async (progress, ct) =>
+            {
+                await list.UploadTagsAsync([(name, dump)], progress, ct);
+                return true;
+            });
+            return added ? $"Added {name} to {list.Name}." : null;
+        }
+
         int? slot = null;
         if (device is ISlotTagDevice slotDevice)
         {

@@ -619,43 +619,194 @@ public sealed class AmiiboLinkSimulator : SimulatedUartDevice
 }
 
 /// <summary>
-/// A puck running Espruino with the DTM puck firmware, enough for detection: the banner Espruino prints when a central
-/// subscribes, the fast mode switch, and a few info commands.
+/// An Espruino console: collects what's typed into lines and answers <c>\x10Bluetooth.println(JSON.stringify(expr))</c>
+/// lines with <see cref="Evaluate"/>'s JSON, as the console prints it (with a prompt).
 /// </summary>
-public sealed class EspruinoPuckSimulator : SimulatedUartDevice
+public abstract class EspruinoConsoleSimulator : SimulatedUartDevice
 {
-    public const string Banner = "\r\n ____                 _\r\n|  __|___ ___ ___ _ _|_|___ ___\r\n|  __|_ -| . |  _| | | |   | . |\r\n|____|___|  _|_| |___|_|_|_|___|\r\n         |_| espruino.com\r\n 2v19 (c) 2021 G.Williams\r\n>";
+    private readonly StringBuilder _line = new();
 
-    private bool _fastMode;
-
-    public EspruinoPuckSimulator(string name = "Puck.js 1234", bool sendBanner = true) : base(name)
+    protected EspruinoConsoleSimulator(string name) : base(name)
     {
-        SendBanner = sendBanner;
     }
 
-    public bool SendBanner { get; }
+    /// <summary>
+    /// Every expression evaluated, in order.
+    /// </summary>
+    public List<string> Expressions { get; } = [];
 
-    protected override void OnNotificationsStarted()
+    /// <summary>
+    /// Feeds console input; returns false once the console no longer reads lines (the puck's binary fast mode).
+    /// </summary>
+    protected bool TypeIntoConsole(byte[] data)
     {
-        if (SendBanner)
+        foreach (var c in Encoding.Latin1.GetString(data))
         {
-            foreach (var chunk in Encoding.ASCII.GetBytes(Banner).Chunk(20))
+            if (c == '\u0003')
             {
-                Notify(chunk);
+                _line.Clear();
+            }
+            else if (c == '\n')
+            {
+                var line = _line.ToString();
+                _line.Clear();
+                if (!OnLine(line))
+                {
+                    return false;
+                }
+            }
+            else
+            {
+                _line.Append(c);
             }
         }
+
+        return true;
+    }
+
+    protected virtual bool OnLine(string line)
+    {
+        const string start = "Bluetooth.println(JSON.stringify(";
+        var at = line.IndexOf(start, StringComparison.Ordinal);
+        if (at < 0 || !line.EndsWith("));", StringComparison.Ordinal))
+        {
+            return true;
+        }
+
+        var expression = line[(at + start.Length)..^3];
+        Expressions.Add(expression);
+        var reply = Evaluate(expression) ?? "undefined";
+        foreach (var chunk in Encoding.Latin1.GetBytes(reply + "\r\n>").Chunk(20))
+        {
+            Notify(chunk);
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// The JSON an expression evaluates to, or null for undefined.
+    /// </summary>
+    protected abstract string? Evaluate(string expression);
+}
+
+/// <summary>
+/// A Flask (or Slide) running the Flask app: answers the calls the driver makes from an in-memory tag list.
+/// </summary>
+public sealed class FlaskSimulator : EspruinoConsoleSimulator
+{
+    public FlaskSimulator(bool slide = false, string name = "") : base(name)
+    {
+        IsSlide = slide;
+    }
+
+    public bool IsSlide { get; }
+
+    public List<string> Tags { get; } = ["Mario|3zfkle|0"];
+
+    public Dictionary<string, byte[]> Uploaded { get; } = [];
+
+    public int Current { get; set; }
+
+    protected override void OnWrite(byte[] data) => TypeIntoConsole(data);
+
+    protected override string? Evaluate(string expression)
+    {
+        if (expression.Contains("typeof fastMode", StringComparison.Ordinal))
+        {
+            return "{\"flask\":true,\"puck\":false}";
+        }
+
+        if (expression.StartsWith("typeof tag", StringComparison.Ordinal) || expression == "tag.getList()")
+        {
+            return System.Text.Json.JsonSerializer.Serialize(Tags);
+        }
+
+        if (expression == "screen.getVersion()")
+        {
+            return IsSlide ? "{\"v\":\"6.5\",\"d\":\"1\"}" : "{\"v\":\"8.2\",\"k\":false}";
+        }
+
+        if (expression == "process.version")
+        {
+            return "\"2v08.56\"";
+        }
+
+        if (expression == "tag.get()")
+        {
+            return CurrentTag();
+        }
+
+        if (expression.StartsWith("tag.setTag(", StringComparison.Ordinal))
+        {
+            var name = System.Text.Json.JsonSerializer.Deserialize<string>(expression["tag.setTag(".Length..expression.IndexOf(')')])!;
+            Current = Tags.IndexOf(name);
+            return CurrentTag();
+        }
+
+        if (expression.StartsWith("tag.upload(", StringComparison.Ordinal))
+        {
+            // tag.upload("name",i,total,"base64")
+            var arguments = expression["tag.upload(".Length..^1];
+            var name = System.Text.Json.JsonSerializer.Deserialize<string>(arguments[..(arguments.IndexOf("\",", StringComparison.Ordinal) + 1)])!;
+            var data = arguments[(arguments.LastIndexOf(",\"", StringComparison.Ordinal) + 2)..^1];
+            Tags.Add(name);
+            Uploaded[name] = Convert.FromBase64String(data);
+            return "true";
+        }
+
+        if (expression.StartsWith("tag.download(", StringComparison.Ordinal))
+        {
+            var name = System.Text.Json.JsonSerializer.Deserialize<string>(expression["tag.download(".Length..^1])!;
+            var bytes = Uploaded.TryGetValue(name, out var stored) ? stored : new byte[540];
+            return System.Text.Json.JsonSerializer.Serialize(bytes.Select(b => (int)b));
+        }
+
+        if (expression.StartsWith("tag.remove(", StringComparison.Ordinal))
+        {
+            Tags.Remove(System.Text.Json.JsonSerializer.Deserialize<string>(expression["tag.remove(".Length..^1])!);
+            return System.Text.Json.JsonSerializer.Serialize(Tags);
+        }
+
+        return null;
+    }
+
+    private string CurrentTag() =>
+        System.Text.Json.JsonSerializer.Serialize(new { index = Current, name = Current >= 0 && Current < Tags.Count ? Tags[Current] : "", v = false });
+}
+
+/// <summary>
+/// A puck running Espruino with the DTM puck firmware, enough for detection: a console that reports <c>fastMode</c>,
+/// the fast mode switch, and a few info commands. Like a real one, it sends nothing until something is written.
+/// </summary>
+public sealed class EspruinoPuckSimulator : EspruinoConsoleSimulator
+{
+    private bool _fastMode;
+
+    public EspruinoPuckSimulator(string name = "Puck.js 1234") : base(name)
+    {
+    }
+
+    protected override string? Evaluate(string expression) =>
+        expression.Contains("typeof fastMode", StringComparison.Ordinal) ? "{\"flask\":false,\"puck\":true}" : null;
+
+    protected override bool OnLine(string line)
+    {
+        if (line.EndsWith("fastMode()", StringComparison.Ordinal))
+        {
+            _fastMode = true;
+            Notify(Encoding.ASCII.GetBytes("DTM_PUCK_FAST\r\n"));
+            return false;
+        }
+
+        return base.OnLine(line);
     }
 
     protected override void OnWrite(byte[] data)
     {
         if (!_fastMode)
         {
-            if (Encoding.ASCII.GetString(data).Contains("fastMode()", StringComparison.Ordinal))
-            {
-                _fastMode = true;
-                Notify(Encoding.ASCII.GetBytes("DTM_PUCK_FAST\r\n"));
-            }
-
+            TypeIntoConsole(data);
             return;
         }
 

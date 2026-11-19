@@ -21,6 +21,9 @@
     case AmiiboLinkDevice link when link.IsConnected:
         <AmiiboLinkDeviceControls @key="link" Device="link" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
         break;
+    case FlaskDevice flask when flask.IsConnected:
+        <FlaskDeviceControls @key="flask" Device="flask" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
     case AmiLoopDevice loop when loop.IsConnected:
         <AmiLoopDeviceControls @key="loop" Device="loop" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
         break;

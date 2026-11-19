@@ -17,6 +17,12 @@ public enum TagDeviceKind
 
     /// <summary>A Pixl.js (solosky/pixl.js) managed through its BLE file system protocol.</summary>
     Pixl,
+
+    /// <summary>A Flask: Espruino running the Flask app, driven through its JavaScript console.</summary>
+    Flask,
+
+    /// <summary>The Flask's sibling, the Slide (same protocol, fewer commands).</summary>
+    Slide,
 }
 
 public readonly record struct TransferProgress(int Current, int Total, string? Message = null)
@@ -82,6 +88,56 @@ public interface ISlotTagDevice : ITagDevice
     /// Replaces the slot with a blank NTAG215. Returns the new UID.
     /// </summary>
     Task<byte[]> ClearSlotAsync(int slot, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// A tag stored on a device that keeps a list of named tags (a Flask). <see cref="DisplayName"/>, the amiibo
+/// <see cref="AmiiboTail"/> (8 hex digits, when the name carries one) and <see cref="SetKey"/> are parsed from
+/// <see cref="Name"/>, the name the device stores it under.
+/// </summary>
+public sealed record StoredTag(int Index, string Name, string DisplayName, string? AmiiboTail, string? SetKey)
+{
+    /// <summary>
+    /// The device is emulating it in virtual tag mode.
+    /// </summary>
+    public bool IsVirtual { get; init; }
+}
+
+/// <summary>
+/// A device holding a list of named tags rather than fixed slots: tags are added and removed, one is selected for
+/// emulation, and the list can be reordered.
+/// </summary>
+public interface ITagListDevice : ITagDevice
+{
+    /// <summary>
+    /// Raised when the device changes its tags itself (a button press selects another, a tag is deleted on the device,
+    /// a game renames one).
+    /// </summary>
+    event EventHandler? TagsChanged;
+
+    Task<IReadOnlyList<StoredTag>> GetTagsAsync(CancellationToken cancellationToken = default);
+
+    Task<StoredTag?> GetCurrentTagAsync(CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Makes the tag the one emulated. Returns the selected tag as the device reports it.
+    /// </summary>
+    Task<StoredTag?> SelectTagAsync(StoredTag tag, CancellationToken cancellationToken = default);
+
+    Task<TagDump> DownloadTagAsync(StoredTag tag, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Adds tags, each named after <c>DisplayName</c> (shortened and de-duplicated as the device needs).
+    /// </summary>
+    Task UploadTagsAsync(IReadOnlyList<(string DisplayName, TagDump Dump)> tags, IProgress<TransferProgress>? progress = null, CancellationToken cancellationToken = default);
+
+    Task<StoredTag?> RenameTagAsync(StoredTag tag, string displayName, CancellationToken cancellationToken = default);
+
+    Task DeleteTagAsync(StoredTag tag, CancellationToken cancellationToken = default);
+
+    Task MoveTagAsync(StoredTag tag, int newIndex, CancellationToken cancellationToken = default);
+
+    Task CreateBlankTagAsync(CancellationToken cancellationToken = default);
 }
 
 public interface IRenamableTagDevice : ITagDevice

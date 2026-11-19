@@ -297,7 +297,7 @@ public class PixlTests
 
     // ---------------------------------------------------------------- Detection
 
-    private static TagDeviceDetector Detector() => new() { BannerTimeout = TimeSpan.FromMilliseconds(300), AmiiboLinkProbeTimeout = TimeSpan.FromMilliseconds(500) };
+    private static TagDeviceDetector Detector() => new() { EspruinoProbeTimeout = TimeSpan.FromMilliseconds(500), AmiiboLinkProbeTimeout = TimeSpan.FromMilliseconds(500) };
 
     private sealed class Adapter(IBleConnection connection) : IBleAdapter
     {
@@ -338,15 +338,54 @@ public class PixlTests
     }
 
     [Fact]
-    public async Task Detection_IdentifiesAPuckByItsEspruinoBanner()
+    public async Task Detection_IdentifiesAPuckThroughItsConsole()
     {
         var sim = new EspruinoPuckSimulator(name: "");
         var device = await Detector().ConnectAsync(new Adapter(sim), sim.Device);
 
         Assert.IsType<PuckDevice>(device);
 
-        // The Pixl.js probe (binary) never reached the puck's console.
-        Assert.DoesNotContain(sim.Received, w => w.Length == 4 && w[0] == 0x01 && w[1] == 0 && w[2] == 0 && w[3] == 0);
+        // Asked whether fastMode exists, without calling into the Flask app's tag.getList.
+        var probe = Assert.Single(sim.Expressions);
+        Assert.Contains("typeof fastMode", probe);
+        Assert.DoesNotContain("tag.getList()", probe);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task Detection_IdentifiesAFlaskOrSlideByTagGetList(bool slide)
+    {
+        var sim = new FlaskSimulator(slide);
+        var device = Assert.IsType<FlaskDevice>(await Detector().ConnectAsync(new Adapter(sim), sim.Device));
+
+        Assert.Equal(slide ? TagDeviceKind.Slide : TagDeviceKind.Flask, device.Kind);
+        Assert.Equal(slide ? "6.5" : "8.2", device.ScriptVersion);
+        Assert.Contains("typeof tag.getList", sim.Expressions[0]);
+    }
+
+    [Fact]
+    public async Task Flask_ListsUploadsAndDownloadsTags()
+    {
+        var sim = new FlaskSimulator();
+        var device = Assert.IsType<FlaskDevice>(await Detector().ConnectAsync(new Adapter(sim), sim.Device));
+
+        var tags = await device.GetTagsAsync();
+        Assert.Equal("Mario", Assert.Single(tags).DisplayName);
+        Assert.Equal("0e5c0502", tags[0].AmiiboTail);
+
+        var dump = TestData.Amiibo();
+        await device.UploadTagsAsync([("Link", dump)]);
+        var added = (await device.GetTagsAsync())[1];
+        Assert.Equal("Link", added.DisplayName);
+        Assert.Equal(dump.ToArray(TagDump.DataLength), sim.Uploaded[added.Name]);
+        Assert.Equal(dump.ToArray(TagDump.DataLength), (await device.DownloadTagAsync(added)).ToArray(TagDump.DataLength));
+
+        var selected = await device.SelectTagAsync(added);
+        Assert.Equal(added.Name, selected?.Name);
+
+        await device.DeleteTagAsync(added);
+        Assert.Single(sim.Tags);
     }
 
     [Fact]
@@ -402,15 +441,6 @@ public class PixlTests
         Assert.Equal(new byte[] { 0x00, 0x03 }, data[3][^2..]);
         Assert.Equal(0x5A, data[3][3]);
         Assert.Equal(new byte[] { 0xAC, 0xAC, 0x00, 0x04, 0x00, 0x00, 0x02, 0x1C }, packets[1]);
-    }
-
-    [Fact]
-    public async Task Detection_StillFindsAPuckWhoseBannerWasMissed()
-    {
-        var sim = new EspruinoPuckSimulator(name: "", sendBanner: false);
-        var device = await Detector().ConnectAsync(new Adapter(sim), sim.Device);
-
-        Assert.IsType<PuckDevice>(device);
     }
 
     /// <summary>

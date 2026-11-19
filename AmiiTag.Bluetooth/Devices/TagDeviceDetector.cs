@@ -56,6 +56,8 @@ public sealed class TagDeviceDetector
         TagDeviceKind.AmiiboLink => "AmiiboLink",
         TagDeviceKind.AmiLoop => "AmiLoop",
         TagDeviceKind.Pixl => "Pixl.js",
+        TagDeviceKind.Flask => "Flask",
+        TagDeviceKind.Slide => "Slide",
         _ => "Unknown device",
     };
 
@@ -74,7 +76,8 @@ public sealed class TagDeviceDetector
         CancellationToken cancellationToken = default)
     {
         status?.Report($"Connecting to {device.DisplayName}...");
-        var connection = await adapter.ConnectAsync(device, cancellationToken);
+        // Debug builds log the device's BLE traffic.
+        var connection = BleTrace.Wrap(await adapter.ConnectAsync(device, cancellationToken));
         try
         {
             var driver = await DetectAsync(connection, forcedKind ?? GuessKind(device), status, cancellationToken);
@@ -90,7 +93,7 @@ public sealed class TagDeviceDetector
         }
 
         await SafeDisconnectAsync(connection);
-        throw new BleException($"{device.DisplayName} didn't respond like a puck, Pixl.js, AmiiboLink or AmiLoop.");
+        throw new BleException($"{device.DisplayName} didn't respond like a puck, Flask, Slide, Pixl.js, AmiiboLink or AmiLoop.");
     }
 
     private async Task<TagDeviceBase?> DetectAsync(IBleConnection connection, TagDeviceKind hint, IProgress<string>? status, CancellationToken cancellationToken)
@@ -125,26 +128,12 @@ public sealed class TagDeviceDetector
             return null;
         }
 
-        // A puck (Espruino) prints its banner as soon as the console moves to Bluetooth, so listen before sending
-        // anything: that tells it apart from the other Nordic UART devices without typing into anyone's console.
-        status?.Report("Identifying device...");
-        if (await HeardEspruinoBannerAsync(connection, cancellationToken))
-        {
-            status?.Report("Setting up puck...");
-            var banner = new PuckDevice(connection, _amiitoolKeys);
-            if (await banner.InitializeAsync(cancellationToken))
-            {
-                return banner;
-            }
-
-            banner.Detach();
-            throw new BleException($"{connection.Device.DisplayName} runs Espruino but didn't respond like the puck firmware.");
-        }
-
+        // The devices with binary protocols first, each probe answered only by its own kind; the Espruino ones (puck,
+        // Flask, Slide) last, through their JavaScript console.
         // Pixl.js before AmiLoop: the AmiLoop handshake starts with 02, which is the Pixl.js's "enter DFU" command,
         // whereas the Pixl.js version request (01 00 00 00) is ignored by the others.
         status?.Report("Checking for Pixl.js...");
-        var pixl = new PixlDevice(connection);
+        var pixl = new PixlDevice(connection) { ProbeTimeout = PixlProbeTimeout };
         if (await pixl.InitializeAsync(cancellationToken))
         {
             return pixl;
@@ -172,17 +161,79 @@ public sealed class TagDeviceDetector
 
         amiibolink.Detach();
 
-        // A puck whose banner was missed (it can arrive before notifications are on): ask it directly, last, so the
-        // text isn't sent to devices that would misread it.
-        status?.Report("Checking for puck firmware...");
-        var puck = new PuckDevice(connection, _amiitoolKeys) { FastModeTimeout = TimeSpan.FromSeconds(4), ClearInputLine = true };
-        if (await puck.InitializeAsync(cancellationToken))
+        status?.Report("Checking for Espruino...");
+        return await DetectEspruinoAsync(connection, status, cancellationToken);
+    }
+
+    /// <summary>
+    /// Asks the Espruino console which app it runs, without calling into it: the Flask app defines <c>tag.getList</c>
+    /// (a Flask or a Slide, told apart by <c>screen.getVersion()</c>), the puck firmware (modern protocol) defines
+    /// <c>fastMode</c>. Null if the device doesn't answer like an Espruino console.
+    /// </summary>
+    private async Task<TagDeviceBase?> DetectEspruinoAsync(IBleConnection connection, IProgress<string>? status, CancellationToken cancellationToken)
+    {
+        bool flask, puck, slide = false;
+        using (var repl = await EspruinoRepl.OpenAsync(connection, cancellationToken))
         {
-            return puck;
+            if (repl == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                // Clears what the other probes left on the input line.
+                await repl.ClearInputLineAsync(cancellationToken);
+                var found = await repl.EvaluateAsync(
+                    "{flask:typeof tag!==\"undefined\"&&typeof tag.getList===\"function\",puck:typeof fastMode===\"function\"}",
+                    EspruinoProbeTimeout, cancellationToken);
+                if (found is not { ValueKind: System.Text.Json.JsonValueKind.Object } apps)
+                {
+                    return null;
+                }
+
+                flask = apps.TryGetProperty("flask", out var f) && f.ValueKind == System.Text.Json.JsonValueKind.True;
+                puck = apps.TryGetProperty("puck", out var p) && p.ValueKind == System.Text.Json.JsonValueKind.True;
+                if (flask && await repl.EvaluateAsync("screen.getVersion()", EspruinoProbeTimeout, cancellationToken) is { ValueKind: System.Text.Json.JsonValueKind.Object } version)
+                {
+                    // A Slide reports d:"1".
+                    slide = version.TryGetProperty("d", out var d) && d.ToString() == "1";
+                }
+            }
+            catch (TimeoutException)
+            {
+                return null;
+            }
         }
 
-        puck.Detach();
-        return null;
+        if (flask)
+        {
+            var kind = slide ? TagDeviceKind.Slide : TagDeviceKind.Flask;
+            status?.Report($"Setting up {Describe(kind)}...");
+            var device = new FlaskDevice(connection, kind);
+            if (await device.InitializeAsync(cancellationToken))
+            {
+                return device;
+            }
+
+            device.Detach();
+            throw new BleException($"{connection.Device.DisplayName} runs the Flask app but didn't respond to it.");
+        }
+
+        if (puck)
+        {
+            status?.Report("Setting up puck...");
+            var device = new PuckDevice(connection, _amiitoolKeys);
+            if (await device.InitializeAsync(cancellationToken))
+            {
+                return device;
+            }
+
+            device.Detach();
+            throw new BleException($"{connection.Device.DisplayName} runs Espruino but didn't respond like the puck firmware.");
+        }
+
+        throw new BleException($"{connection.Device.DisplayName} runs Espruino, but neither the puck firmware nor the Flask app.");
     }
 
     private TagDeviceBase Create(IBleConnection connection, TagDeviceKind kind) => kind switch
@@ -192,51 +243,25 @@ public sealed class TagDeviceDetector
         TagDeviceKind.AmiiboLink => new AmiiboLinkDevice(connection),
         TagDeviceKind.AmiLoop => new AmiLoopDevice(connection),
         TagDeviceKind.Pixl => new PixlDevice(connection),
+        TagDeviceKind.Flask or TagDeviceKind.Slide => new FlaskDevice(connection, kind),
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
 
     /// <summary>
-    /// How long to listen for the Espruino banner after connecting.
+    /// How long to wait for a Pixl.js to answer its version request while probing an unknown device. A Pixl.js answers
+    /// within a connection interval or two; anything else never does, so a short wait keeps detecting the others quick.
     /// </summary>
-    public TimeSpan BannerTimeout { get; init; } = TimeSpan.FromSeconds(1.5);
+    public TimeSpan PixlProbeTimeout { get; init; } = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
+    /// How long to wait for the Espruino console to answer during detection.
+    /// </summary>
+    public TimeSpan EspruinoProbeTimeout { get; init; } = TimeSpan.FromSeconds(3);
 
     /// <summary>
     /// How long to wait for an AmiiboLink to answer its info command.
     /// </summary>
     public TimeSpan AmiiboLinkProbeTimeout { get; init; } = TimeSpan.FromSeconds(2);
-
-    /// <summary>
-    /// Listens on the UART for the text Espruino sends when a central connects (its banner, which names espruino.com).
-    /// </summary>
-    private async Task<bool> HeardEspruinoBannerAsync(IBleConnection connection, CancellationToken cancellationToken)
-    {
-        IBleCharacteristic? notify;
-        try
-        {
-            notify = await connection.GetCharacteristicAsync(BleUuids.NordicUartService, BleUuids.NordicUartNotify, cancellationToken);
-        }
-        catch (Exception ex) when (ex is not OperationCanceledException)
-        {
-            return false;
-        }
-
-        if (notify == null)
-        {
-            return false;
-        }
-
-        using var queue = new BleNotificationQueue(notify);
-        await notify.StartNotificationsAsync(cancellationToken);
-        try
-        {
-            await queue.WaitForTextAsync("spruino", BannerTimeout, cancellationToken);
-            return true;
-        }
-        catch (TimeoutException)
-        {
-            return false;
-        }
-    }
 
     private static async Task SafeDisconnectAsync(IBleConnection connection)
     {

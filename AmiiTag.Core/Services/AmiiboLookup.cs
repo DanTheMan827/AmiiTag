@@ -16,6 +16,9 @@ public sealed class AmiiboLookup
     {
         _database = database;
         _keys = keys;
+
+        // The tail index is rebuilt after the database is (re)loaded.
+        _database.DataChanged += (_, _) => _byTail = null;
     }
 
     public AmiiboDatabase Database => _database.Database;
@@ -31,6 +34,34 @@ public sealed class AmiiboLookup
     /// </summary>
     public AmiiboFigure? GetFigure(IAmiiboImage dump) =>
         Validate(dump).IsAmiibo && _database.Database.Figures.TryGetValue(dump.AmiiboIdHex, out var figure) ? figure : null;
+
+    /// <summary>
+    /// The figure whose ID ends with these 8 hex digits (the amiibo tail, which a Flask keeps in each tag's name).
+    /// Tails are matched the way the Flask app matches them against AmiiboAPI.
+    /// </summary>
+    public AmiiboFigure? GetFigureByTail(string? tail)
+    {
+        if (string.IsNullOrEmpty(tail))
+        {
+            return null;
+        }
+
+        var index = _byTail;
+        if (index == null)
+        {
+            index = new Dictionary<string, AmiiboFigure>(StringComparer.OrdinalIgnoreCase);
+            foreach (var figure in _database.Database.Figures.Values)
+            {
+                index.TryAdd(figure.Id.Tail, figure);
+            }
+
+            _byTail = index;
+        }
+
+        return index.TryGetValue(tail, out var found) ? found : null;
+    }
+
+    private Dictionary<string, AmiiboFigure>? _byTail;
 
     public AmiiboFigure? GetFigure(string id) =>
         _database.Database.Figures.TryGetValue(id.Trim().ToLowerInvariant().Replace("0x", string.Empty), out var figure) ? figure : null;

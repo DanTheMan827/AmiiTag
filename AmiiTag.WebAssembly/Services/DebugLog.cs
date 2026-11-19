@@ -7,8 +7,10 @@ namespace AmiiTag.WebAssembly.Services;
 
 /// <summary>
 /// Debug builds in the browser can't write a file, so everything written with Debug.WriteLine/Trace (Web Serial
-/// MFRC522 traffic, NFC errors, ILogger output) is kept in memory for this page load. Run
+/// MFRC522 traffic, BLE traffic, NFC errors, ILogger output) is kept in memory for this page load. Run
 /// <c>amiitag.downloadDebugLog()</c> in the browser console to save it as AmiiTag.log. Reloading clears it.
+/// It's also written to the browser console as it happens (without a debugger attached, Debug.WriteLine output
+/// otherwise goes nowhere in the browser).
 /// </summary>
 public static class DebugLog
 {
@@ -39,7 +41,12 @@ public static class DebugLog
         }
     }
 
-    private static void WriteLine(string level, string? message) => Append($"{DateTime.Now:HH:mm:ss.fff} [{level}] {message}{Environment.NewLine}");
+    private static void WriteLine(string level, string? message)
+    {
+        var line = $"{DateTime.Now:HH:mm:ss.fff} [{level}] {message}";
+        Console.WriteLine(line);
+        Append(line + Environment.NewLine);
+    }
 
     private static void Append(string text)
     {
@@ -55,7 +62,11 @@ public static class DebugLog
 
     private sealed class BufferListener : TraceListener
     {
-        public override void Write(string? message) => Append(message ?? string.Empty);
+        public override void Write(string? message)
+        {
+            Console.Write(message);
+            Append(message ?? string.Empty);
+        }
 
         public override void WriteLine(string? message) => DebugLog.WriteLine("DEBUG", message);
     }

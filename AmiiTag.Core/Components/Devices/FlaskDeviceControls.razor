@@ -1,0 +1,250 @@
+@inherits DeviceControlsBase<FlaskDevice>
+@implements IDisposable
+@inject AmiiboLookup Lookup
+@inject IFileService Files
+@inject ContextMenus Menus
+
+@* A Flask or Slide: a list of named tags. Tapping one makes it the emulated tag; its menu opens, renames, moves or
+   deletes it. Tags are added from files, the library, or by dropping dumps on the page. *@
+
+<DeviceManagementLayout Device="Device" OnSettings="ShowSettings" DropEnabled="true" OnFilesDropped="AddFiles">
+    <SummaryDetail>
+        @if (_tags != null) { <span> · @_tags.Count @(_tags.Count == 1 ? "tag" : "tags")</span> }
+    </SummaryDetail>
+    <ChildContent>
+        @if (_tags == null)
+        {
+            <p class="empty-state small">Reading tags...</p>
+        }
+        else if (_tags.Count == 0)
+        {
+            <p class="empty-state">No tags yet. Add a tag file or a character, or drop amiibo dumps here.</p>
+        }
+        else
+        {
+            <ul class="list grid">
+                @foreach (var tag in _tags)
+                {
+                    var figure = Lookup.GetFigureByTail(tag.AmiiboTail);
+                    var active = _current?.Name == tag.Name;
+                    var items = TagItems(tag);
+                    <li>
+                        <button type="button" class="list-row with-image @(tag.AmiiboTail == null ? "dimmed" : "")"
+                                @onpointerdown="Menus.TrackPointer"
+                                @onclick="e => Menus.ClickAsync(e, tag.DisplayName, items, tapShowsMenu: false)"
+                                @oncontextmenu="e => Menus.ShowAsync(e, tag.DisplayName, items)" @oncontextmenu:preventDefault="true">
+                            <FigureImage Figure="figure" Class="list-row-image" />
+                            <span class="list-row-title">
+                                @tag.DisplayName
+                                <span class="list-row-subtitle">
+                                    @(figure?.Name ?? (tag.AmiiboTail == null ? "Other NFC tag" : "Unknown amiibo"))@(active ? " · Active" : "")@(active && _current!.IsVirtual ? " (virtual)" : "")
+                                </span>
+                            </span>
+                        </button>
+                    </li>
+                }
+            </ul>
+        }
+
+        <div class="button-stack compact">
+            <BigButton OnClick="PickFiles">Add Tag Files</BigButton>
+            <BigButton OnClick="() => _pickerOpen = true">Add Character</BigButton>
+            <BigButton OnClick="AddBlank" Class="secondary">Add Blank Tag</BigButton>
+            <BigButton OnClick="Refresh" Class="secondary">Refresh</BigButton>
+        </div>
+
+        <PageRefreshAction OnRefresh="Refresh" />
+        <DeviceCommandControls Device="Device" />
+    </ChildContent>
+</DeviceManagementLayout>
+
+<FigurePicker Open="_pickerOpen" Title="Add Character" Filter="IsNtag215Figure" OnPicked="AddCharacter" OnCancelled="() => _pickerOpen = false" />
+
+@code {
+    private IReadOnlyList<StoredTag>? _tags;
+    private StoredTag? _current;
+    private bool _pickerOpen;
+    private FlaskDevice? _loaded;
+    private bool _disposed;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!ReferenceEquals(_loaded, Device))
+        {
+            if (_loaded != null) _loaded.TagsChanged -= OnTagsChanged;
+            _loaded = Device;
+            Device.TagsChanged += OnTagsChanged;
+            _tags = null;
+            await Refresh();
+        }
+    }
+
+    // The device changed its tags itself (a button press, a deletion on the device, a game renaming one).
+    private void OnTagsChanged(object? sender, EventArgs e) => _ = InvokeAsync(async () =>
+    {
+        if (!_disposed) await LoadQuietly();
+    });
+
+    private async Task Refresh()
+    {
+        var device = Device;
+        var result = await Actions.WithProgressAsync($"Reading {device.Name}", async (_, ct) =>
+            (Tags: await device.GetTagsAsync(ct), Current: await device.GetCurrentTagAsync(ct)));
+        if (!_disposed && ReferenceEquals(Device, device) && result.Tags != null)
+        {
+            (_tags, _current) = result;
+        }
+    }
+
+    private async Task LoadQuietly()
+    {
+        try
+        {
+            _tags = await Device.GetTagsAsync();
+            _current = await Device.GetCurrentTagAsync();
+            StateHasChanged();
+        }
+        catch (Exception ex) when (ex is TimeoutException or BleException)
+        {
+        }
+    }
+
+    private IReadOnlyList<ContextMenuItem> TagItems(StoredTag tag)
+    {
+        var device = Device;
+        var items = new List<ContextMenuItem>
+        {
+            new("Make active", async () =>
+            {
+                var current = await Actions.WithProgressAsync("Changing tag", (_, ct) => device.SelectTagAsync(tag, ct));
+                if (current != null) _current = current;
+            }, IsDefault: true),
+            new("Open", async () =>
+            {
+                var dump = await Actions.WithProgressAsync($"Reading {tag.DisplayName}", (progress, ct) => device.DownloadTagAsync(tag, progress, ct));
+                if (dump != null)
+                {
+                    await OnOpeningChild.InvokeAsync();
+                    await Actions.OpenTagAsync(dump, modal: false);
+                }
+            }),
+            new("Rename", () => Rename(tag)),
+        };
+
+        if (_tags != null && tag.Index > 0) items.Add(new("Move up", () => Move(tag, tag.Index - 1)));
+        if (_tags != null && tag.Index < _tags.Count - 1) items.Add(new("Move down", () => Move(tag, tag.Index + 1)));
+        items.Add(new("Delete", () => Delete(tag), IsDestructive: true));
+        return items;
+    }
+
+    private async Task Rename(StoredTag tag)
+    {
+        var name = await Dialogs.PromptAsync("Rename Tag", "Letters, numbers, spaces and hyphens.", tag.DisplayName, 20);
+        if (string.IsNullOrWhiteSpace(name)) return;
+        await Actions.WithProgressAsync("Renaming", async (_, ct) => { await Device.RenameTagAsync(tag, name, ct); return true; });
+        await Refresh();
+    }
+
+    private async Task Move(StoredTag tag, int index)
+    {
+        await Actions.WithProgressAsync("Moving", async (_, ct) => { await Device.MoveTagAsync(tag, index, ct); return true; });
+        await Refresh();
+    }
+
+    private async Task Delete(StoredTag tag)
+    {
+        if (!await Dialogs.ConfirmAsync($"Delete {tag.DisplayName}?", $"It's removed from {Device.Name}.", "Delete", "Cancel")) return;
+        await Actions.WithProgressAsync("Deleting", async (_, ct) => { await Device.DeleteTagAsync(tag, ct); return true; });
+        await Refresh();
+    }
+
+    private async Task AddBlank()
+    {
+        await Actions.WithProgressAsync("Adding a blank tag", async (_, ct) => { await Device.CreateBlankTagAsync(ct); return true; });
+        await Refresh();
+    }
+
+    private async Task PickFiles()
+    {
+        var files = await Files.PickFilesAsync("Add Tags", TagActions.TagFileExtensions);
+        if (files.Count > 0) await AddFiles(files);
+    }
+
+    /// <summary>
+    /// Uploads every NTAG215 dump among the files (picked or dropped), each named after its figure.
+    /// </summary>
+    private async Task AddFiles(IReadOnlyList<PickedFile> files)
+    {
+        var tags = new List<(string DisplayName, TagDump Dump)>();
+        var skipped = new List<string>();
+        foreach (var file in files)
+        {
+            if (AmiiboImage.TryParse(file.Data, out var image) && image is TagDump dump)
+            {
+                var name = Lookup.Validate(dump).IsAmiibo ? Lookup.GetDisplayName(dump) : Path.GetFileNameWithoutExtension(file.Name);
+                tags.Add((name, dump));
+            }
+            else
+            {
+                skipped.Add(file.Name);
+            }
+        }
+
+        if (skipped.Count > 0)
+        {
+            await Dialogs.AlertAsync("Not added", $"Not NTAG215 amiibo dumps (v3 figures can't go on {Device.Name}): {string.Join(", ", skipped)}.");
+        }
+
+        await Upload(tags);
+    }
+
+    // Pucks and emulators hold NTAG215 images, so v3 (NTAG I²C) figures aren't offered.
+    private static bool IsNtag215Figure(AmiiboFigure figure) => figure.Id.Id.EndsWith("02", StringComparison.Ordinal);
+
+    private async Task AddCharacter(AmiiboFigure figure)
+    {
+        _pickerOpen = false;
+        IAmiiboImage? image;
+        try
+        {
+            image = await Actions.CreateFromFigureAsync(figure);
+        }
+        catch (Exception ex)
+        {
+            await Dialogs.AlertAsync("Couldn't create the tag", ex.Message);
+            return;
+        }
+
+        if (image == null)
+        {
+            if (await Dialogs.ConfirmAsync("Keys needed", "Generating a tag needs both amiibo keys. Load them in Settings?", "Settings", "Cancel"))
+            {
+                await OnOpeningChild.InvokeAsync();
+                await Navigator.NavigateAsync(AppRoutes.Settings());
+            }
+
+            return;
+        }
+
+        if (image is TagDump dump)
+        {
+            await Upload([(figure.Name, dump)]);
+        }
+    }
+
+    private async Task Upload(IReadOnlyList<(string DisplayName, TagDump Dump)> tags)
+    {
+        if (tags.Count == 0) return;
+        var title = tags.Count == 1 ? $"Adding {tags[0].DisplayName}" : $"Adding {tags.Count} tags";
+        await Actions.WithProgressAsync(title, async (progress, ct) => { await Device.UploadTagsAsync(tags, progress, ct); return true; });
+        await Refresh();
+    }
+
+    private Task ShowSettings() => ChooseSettings([]);
+
+    public void Dispose()
+    {
+        _disposed = true;
+        if (_loaded != null) _loaded.TagsChanged -= OnTagsChanged;
+    }
+}
