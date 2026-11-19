@@ -22,7 +22,8 @@ if (-not $IsMacOS) { throw 'The Mac app can only be built on macOS.' }
 if ($InstallWorkloads) { Install-MauiWorkloads }
 
 $output = New-CleanDirectory (Join-Path $ArtifactsRoot "obj/mac-$Configuration")
-$rids = if ($Configuration -eq 'Release') { 'maccatalyst-x64;maccatalyst-arm64' } else { "maccatalyst-$(if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' })" }
+# %3B: a ";" inside -p:Name=value would end the property; MSBuild turns %3B back into ";".
+$rids = if ($Configuration -eq 'Release') { 'maccatalyst-x64%3Bmaccatalyst-arm64' } else { "maccatalyst-$(if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' })" }
 Invoke-Dotnet build $MauiProject -f net10.0-maccatalyst -c $Configuration "-p:RuntimeIdentifiers=$rids" `
     '-p:EnableCodeSigning=false' '-p:CreatePackage=false' @(Get-VersionArguments $BuildNumber)
 
