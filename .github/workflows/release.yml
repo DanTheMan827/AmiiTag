@@ -1,0 +1,167 @@
+# Release builds of every platform, attached to a draft GitHub release:
+#   - the Android APK (signed with the keystore secrets, see android.yml)
+#   - the Windows exes (x64 and ARM64)
+#   - the unsigned iOS .ipa
+#   - the Mac app, zipped
+#
+# GitHub doesn't start workflows when a draft release is created, so this runs in either of two ways:
+#   - push a version tag (git tag v1.2.0 && git push origin v1.2.0): a draft release for it is created with the files;
+#   - run it by hand (Actions > Release > Run workflow) with the tag of a draft you already made: the files are added
+#     to that draft (replacing any with the same names), or a draft is created if there's none.
+# Every file gets a build provenance attestation (verify with: gh attestation verify <file> --repo <owner>/<repo>).
+# Publishing the draft stays a manual step.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (an existing draft's, or a new one)
+        required: true
+
+permissions:
+  contents: read
+
+env:
+  RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+jobs:
+  android:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: microsoft
+          java-version: '21'
+
+      - name: Build
+        shell: pwsh
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: ./scripts/build-android.ps1 -Configuration Release -BuildNumber ${{ github.run_number }} -InstallWorkloads -InstallAndroidDependencies
+
+      - name: Name for the release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          Copy-Item artifacts/android/AmiiTag-android-Release.apk "release/AmiiTag-$env:RELEASE_TAG-android.apk"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-android
+          path: release/*
+          if-no-files-found: error
+
+  windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        runtime: [win-x64, win-arm64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        shell: pwsh
+        run: ./scripts/build-windows.ps1 -Configuration Release -Runtime ${{ matrix.runtime }} -InstallWorkloads
+
+      - name: Name for the release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          $arch = '${{ matrix.runtime }}'.Replace('win-', '')
+          Copy-Item artifacts/windows/AmiiTag-windows-${{ matrix.runtime }}-Release.exe "release/AmiiTag-$env:RELEASE_TAG-windows-$arch.exe"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-${{ matrix.runtime }}
+          path: release/*
+          if-no-files-found: error
+
+  apple:
+    runs-on: xcode-27
+    strategy:
+      fail-fast: true
+      matrix:
+        platform: [mac, ios]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Build
+        shell: pwsh
+        # The same workload pin as apple.yml (the .NET for iOS / Mac Catalyst release for the image's Xcode).
+        env:
+          DOTNET_WORKLOAD_SET: 10.0.402.1
+        run: ./scripts/build-${{ matrix.platform }}.ps1 -Configuration Release -BuildNumber ${{ github.run_number }} -InstallWorkloads
+
+      - name: Name for the release
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Path release -Force | Out-Null
+          if ('${{ matrix.platform }}' -eq 'mac') {
+            Copy-Item artifacts/mac/AmiiTag-mac-Release.zip "release/AmiiTag-$env:RELEASE_TAG-mac.zip"
+          } else {
+            Copy-Item artifacts/ios/AmiiTag-ios-Release-unsigned.ipa "release/AmiiTag-$env:RELEASE_TAG-ios-unsigned.ipa"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.platform }}
+          path: release/*
+          if-no-files-found: error
+
+  release:
+    needs: [android, windows, apple]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: release-*
+          path: release
+          merge-multiple: true
+
+      # Signed build provenance for every file (Sigstore, recorded on GitHub): anyone can check a download came from
+      # this workflow and commit with `gh attestation verify <file> --repo ${{ github.repository }}`.
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: release/*
+
+      - name: Attach to the draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          ls -l release
+          if ! gh release view "$RELEASE_TAG" > /dev/null 2>&1; then
+            gh release create "$RELEASE_TAG" --draft --title "$RELEASE_TAG" --generate-notes --target "$GITHUB_SHA"
+          fi
+          gh release upload "$RELEASE_TAG" release/* --clobber
