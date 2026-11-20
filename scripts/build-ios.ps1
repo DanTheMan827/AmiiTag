@@ -14,6 +14,7 @@
 param(
     [ValidateSet('Release', 'Debug')] [string] $Configuration = 'Release',
     [int] $BuildNumber = 0,
+    [string] $Version,
     [switch] $InstallWorkloads
 )
 
@@ -24,7 +25,7 @@ if ($InstallWorkloads) { Install-MauiWorkloads }
 $output = New-CleanDirectory (Join-Path $ArtifactsRoot "obj/ios-$Configuration")
 Invoke-Dotnet build $MauiProject -f net10.0-ios -c $Configuration -r ios-arm64 `
     '-p:EnableCodeSigning=false' '-p:ProvisioningType=manual' '-p:CodesignKey=' '-p:CodesignProvision=' '-p:BuildIpa=false' `
-    @(Get-VersionArguments $BuildNumber)
+    @(Get-VersionArguments $BuildNumber $Version)
 
 $app = Find-BuiltApp 'net10.0-ios' $Configuration
 

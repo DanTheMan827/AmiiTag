@@ -14,6 +14,7 @@
 param(
     [ValidateSet('Release', 'Debug')] [string] $Configuration = 'Release',
     [int] $BuildNumber = 0,
+    [string] $Version,
     [switch] $InstallWorkloads
 )
 
@@ -26,7 +27,7 @@ $output = New-CleanDirectory (Join-Path $ArtifactsRoot "obj/mac-$Configuration")
 # value on the command line would be a global property and reach the class libraries too, which reject it.
 $ridArgs = if ($Configuration -eq 'Release') { @() } else { @('-r', "maccatalyst-$(if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq 'Arm64') { 'arm64' } else { 'x64' })") }
 Invoke-Dotnet build $MauiProject -f net10.0-maccatalyst -c $Configuration @ridArgs `
-    '-p:EnableCodeSigning=false' '-p:CreatePackage=false' @(Get-VersionArguments $BuildNumber)
+    '-p:EnableCodeSigning=false' '-p:CreatePackage=false' @(Get-VersionArguments $BuildNumber $Version)
 
 $app = Find-BuiltApp 'net10.0-maccatalyst' $Configuration
 $staged = Join-Path $output 'AmiiTag.app'

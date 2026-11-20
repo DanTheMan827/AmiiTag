@@ -9,6 +9,8 @@
 #   - run it by hand (Actions > Release > Run workflow) with the tag of a draft you already made: the files are added
 #     to that draft (replacing any with the same names), or a draft is created if there's none.
 # Every file gets a build provenance attestation (verify with: gh attestation verify <file> --repo <owner>/<repo>).
+# The tag is also the app's version: v1.2.0 shows as 1.2.0 on every platform (see Get-VersionArguments in
+# scripts/common.ps1); the run number is the build number. A tag that isn't a version fails the builds.
 # Publishing the draft stays a manual step.
 name: Release
 
@@ -18,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Release tag (an existing draft's, or a new one)
+        description: Release tag, which is also the app version (e.g. v1.2.0; an existing draft's, or a new one)
         required: true
 
 permissions:
@@ -51,7 +53,7 @@ jobs:
           ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
           ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: ./scripts/build-android.ps1 -Configuration Release -BuildNumber ${{ github.run_number }} -InstallWorkloads -InstallAndroidDependencies
+        run: ./scripts/build-android.ps1 -Configuration Release -BuildNumber ${{ github.run_number }} -Version "$env:RELEASE_TAG" -InstallWorkloads -InstallAndroidDependencies
 
       - name: Name for the release
         shell: pwsh
@@ -82,7 +84,7 @@ jobs:
 
       - name: Build
         shell: pwsh
-        run: ./scripts/build-windows.ps1 -Configuration Release -Runtime ${{ matrix.runtime }} -InstallWorkloads
+        run: ./scripts/build-windows.ps1 -Configuration Release -Runtime ${{ matrix.runtime }} -BuildNumber ${{ github.run_number }} -Version "$env:RELEASE_TAG" -InstallWorkloads
 
       - name: Name for the release
         shell: pwsh
@@ -117,7 +119,7 @@ jobs:
         # The same workload pin as apple.yml (the .NET for iOS / Mac Catalyst release for the image's Xcode).
         env:
           DOTNET_WORKLOAD_SET: 10.0.402.1
-        run: ./scripts/build-${{ matrix.platform }}.ps1 -Configuration Release -BuildNumber ${{ github.run_number }} -InstallWorkloads
+        run: ./scripts/build-${{ matrix.platform }}.ps1 -Configuration Release -BuildNumber ${{ github.run_number }} -Version "$env:RELEASE_TAG" -InstallWorkloads
 
       - name: Name for the release
         shell: pwsh

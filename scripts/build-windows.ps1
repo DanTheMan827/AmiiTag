@@ -9,6 +9,8 @@
 param(
     [ValidateSet('Release', 'Debug')] [string] $Configuration = 'Release',
     [ValidateSet('win-x64', 'win-arm64')] [string] $Runtime = 'win-x64',
+    [int] $BuildNumber = 0,
+    [string] $Version,
     [switch] $InstallWorkloads
 )
 
@@ -17,7 +19,8 @@ if (-not $IsWindows) { throw 'The Windows app can only be built on Windows.' }
 if ($InstallWorkloads) { Install-MauiWorkloads }
 
 $publish = New-CleanDirectory (Join-Path $ArtifactsRoot "obj/windows-$Runtime-$Configuration")
-Invoke-Dotnet publish $MauiProject -f net10.0-windows10.0.19041.0 -c $Configuration "-p:PublishProfile=$Runtime" "-p:PublishDir=$publish/"
+Invoke-Dotnet publish $MauiProject -f net10.0-windows10.0.19041.0 -c $Configuration "-p:PublishProfile=$Runtime" "-p:PublishDir=$publish/" `
+    @(Get-VersionArguments $BuildNumber $Version)
 
 $out = Join-Path $ArtifactsRoot 'windows'
 New-Item -ItemType Directory -Path $out -Force | Out-Null

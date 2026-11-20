@@ -18,6 +18,7 @@ param(
     [string] $KeystorePath,
     [string] $KeyAlias = $env:ANDROID_KEY_ALIAS,
     [int] $BuildNumber = 0,
+    [string] $Version,
     [switch] $InstallWorkloads,
     [switch] $InstallAndroidDependencies,
     [switch] $Install
@@ -66,7 +67,7 @@ try {
     $publish = New-CleanDirectory (Join-Path $ArtifactsRoot "obj/android-$Configuration")
     $common = @('-f', 'net10.0-android', '-c', $Configuration, "-p:PublishDir=$publish/", '-p:AndroidPackageFormat=apk', '-p:AndroidPackageFormats=apk')
     if ($Configuration -eq 'Debug') { $common += '-p:PublishProfile=android-debug-apk' }
-    Invoke-Dotnet publish $MauiProject @common @signing @(Get-VersionArguments $BuildNumber)
+    Invoke-Dotnet publish $MauiProject @common @signing @(Get-VersionArguments $BuildNumber $Version)
 }
 finally {
     if ($temporaryKeystore) { Remove-Item $temporaryKeystore -Force -ErrorAction SilentlyContinue }

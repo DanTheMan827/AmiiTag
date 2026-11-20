@@ -59,10 +59,24 @@ function Compress-Folder([string] $Folder, [string] $Destination, [switch] $Incl
     Write-Host "Created $Destination" -ForegroundColor Green
 }
 
-# The application version (Android versionCode, iOS/Mac CFBundleVersion) for CI builds, so each one upgrades the last.
-function Get-VersionArguments([int] $BuildNumber) {
-    if ($BuildNumber -gt 0) { return @("-p:ApplicationVersion=$BuildNumber") }
-    return @()
+# MSBuild arguments for the app's version. BuildNumber is the integer build number (Android versionCode, iOS/Mac
+# CFBundleVersion). Version is the user-facing version, such as a release tag ("v1.2.0", "1.2", "v1.2.0-beta.1"): the
+# numbers become the displayed version (Android versionName, iOS/Mac CFBundleShortVersionString, which allow only
+# numbers, and the Windows file and product versions); the whole tag without its "v" is the informational version.
+function Get-VersionArguments([int] $BuildNumber, [string] $Version) {
+    $result = @()
+    if ($BuildNumber -gt 0) { $result += "-p:ApplicationVersion=$BuildNumber" }
+    if ($Version) {
+        $full = $Version.Trim() -replace '^[vV]', ''
+        if ($full -notmatch '^(\d+(\.\d+){0,2})([-+][0-9A-Za-z.+-]+)?$') {
+            throw "'$Version' isn't a version like v1.2.0 (up to three numbers, optionally with a -suffix)."
+        }
+
+        $numbers = $Matches[1]
+        $result += "-p:ApplicationDisplayVersion=$numbers", "-p:Version=$numbers", "-p:InformationalVersion=$full"
+    }
+
+    return $result
 }
 
 # The newest .app bundle the MAUI project built for a target framework and configuration.
