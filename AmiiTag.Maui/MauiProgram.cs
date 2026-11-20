@@ -8,7 +8,7 @@ using AmiiTag.Maui.Services;
 using AmiiTag.Nfc;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.LifecycleEvents;
-#if ANDROID || IOS
+#if ANDROID
 using ZXing.Net.Maui.Controls;
 #endif
 
@@ -31,7 +31,8 @@ namespace AmiiTag.Maui
                     fonts.AddFont("OpenSans-Regular.ttf", "OpenSansRegular");
                 });
 
-#if ANDROID || IOS
+#if ANDROID
+            // ZXing is the fallback scanner where Google's code scanner isn't available.
             builder.UseBarcodeReader();
 #endif
 
@@ -102,8 +103,11 @@ namespace AmiiTag.Maui
 #elif WINDOWS
             builder.Services.AddSingleton<INfcProvider, AmiiTag.Nfc.PcSc.PcscNfcProvider>();
             builder.Services.AddSingleton<AmiiTag.Nfc.ISerialPortFactory, AmiiTag.Maui.NfcProviders.SystemSerialPortFactory>();
-            builder.Services.AddSingleton<INfcProvider, AmiiTag.Nfc.Mfrc522.Mfrc522NfcProvider>();
-            builder.Services.AddSingleton<INfcProvider, AmiiTag.Nfc.Pn532.Pn532NfcProvider>();
+            // Serial readers: one choice in Settings, with the chip detected on connection (PN532, else MFRC522).
+            builder.Services.AddSingleton<AmiiTag.Nfc.Mfrc522.Mfrc522NfcProvider>();
+            builder.Services.AddSingleton<AmiiTag.Nfc.Pn532.Pn532NfcProvider>();
+            builder.Services.AddSingleton<INfcProvider>(sp => new AmiiTag.Nfc.AutoDetectSerialNfcProvider(
+                sp.GetRequiredService<AmiiTag.Nfc.Mfrc522.Mfrc522NfcProvider>(), sp.GetRequiredService<AmiiTag.Nfc.Pn532.Pn532NfcProvider>()));
 #endif
 
             builder.Services.AddAmiiTagCore();

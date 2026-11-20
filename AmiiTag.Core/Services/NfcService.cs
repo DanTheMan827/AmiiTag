@@ -12,12 +12,14 @@ public sealed class NfcService
     private readonly IReadOnlyList<INfcProvider> _providers;
     private readonly SettingsStore _settings;
     private readonly IDialogService _dialogs;
+    private readonly PlatformMessages _messages;
 
-    public NfcService(IEnumerable<INfcProvider> providers, SettingsStore settings, IDialogService dialogs)
+    public NfcService(IEnumerable<INfcProvider> providers, SettingsStore settings, IDialogService dialogs, PlatformMessages? messages = null)
     {
         _providers = providers.ToList();
         _settings = settings;
         _dialogs = dialogs;
+        _messages = messages ?? new PlatformMessages();
     }
 
     /// <summary>
@@ -29,9 +31,20 @@ public sealed class NfcService
 
     public bool IsAvailable => SupportedProviders.Count > 0;
 
+    // The separate MFRC522 and PN532 choices of earlier versions, now one detected serial reader.
+    private static readonly string[] LegacySerialProviderIds = ["mfrc522-serial", "pn532-serial"];
+    private const string SerialProviderId = "serial-auto";
+
     public async Task<INfcProvider?> GetSelectedProviderAsync()
     {
         var settings = await _settings.GetAsync();
+        if (LegacySerialProviderIds.Contains(settings.NfcProviderId) && _providers.Any(p => p.Id == SerialProviderId))
+        {
+            // Keeps the chosen port, which belongs to the provider ID.
+            settings.NfcProviderId = SerialProviderId;
+            await _settings.SaveAsync();
+        }
+
         ApplySerialSettings(settings);
         var supported = SupportedProviders;
         return supported.FirstOrDefault(p => p.Id == settings.NfcProviderId) ?? supported.FirstOrDefault();
@@ -466,11 +479,10 @@ public sealed class NfcService
     /// <summary>
     /// Explains why no NFC provider can be used here.
     /// </summary>
-    public string NoReaderMessage => _providers.Count == 0
-        ? "This version of AmiiTag has no NFC support."
-        : $"No NFC reader is available ({string.Join(", ", _providers.Select(p => p.DisplayName))}). " +
-          "In a browser, NFC needs an MFRC522 or PN532 reader on a USB serial adapter (Web Serial), which works in Chrome or Edge on desktop. " +
-          "On Windows, connect a USB NFC reader or an MFRC522 or PN532 serial reader.";
+    /// <summary>
+    /// Why there's no NFC here, worded for this platform (see <see cref="PlatformMessages.NoNfc"/>).
+    /// </summary>
+    public string NoReaderMessage => _messages.NoNfc;
 
     private static bool SafeIsSupported(INfcProvider provider)
     {

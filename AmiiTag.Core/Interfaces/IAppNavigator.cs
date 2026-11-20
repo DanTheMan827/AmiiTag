@@ -27,6 +27,11 @@ public sealed record AppRoute(
 
 public interface IAppNavigator
 {
+    /// <summary>
+    /// Opens a web page (or App Store link) outside the app.
+    /// </summary>
+    Task OpenExternalAsync(string url);
+
     Task NavigateAsync(AppRoute route);
 
     /// <summary>

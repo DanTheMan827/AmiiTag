@@ -81,9 +81,9 @@
                 </div>
             }
 
-            @if (_selectedProvider?.Id == "pn532-serial")
+            @if (_selectedProvider?.Id == "serial-auto")
             {
-                <p class="footnote">Set the PN532 module to HSU / UART mode and connect through a USB serial adapter at 115,200 baud. Choose the reader type here; USB serial adapters do not identify the attached NFC chip.</p>
+                <p class="footnote">MFRC522 and PN532 readers on a USB serial adapter are detected when AmiiTag connects. Set a PN532 module to HSU / UART mode.</p>
             }
 
             @if (_selectedProvider is INfcBaudRateSetting serial)
@@ -97,7 +97,7 @@
                         }
                     </select>
                 </div>
-                <p class="footnote">If the reader stops answering at a high speed (some USB serial adapters can't keep up), pick a lower one.</p>
+                <p class="footnote">For MFRC522 readers (a PN532 always runs at 115,200 baud). If the reader stops answering at a high speed (some USB serial adapters can't keep up), pick a lower one.</p>
             }
     </div>
     }

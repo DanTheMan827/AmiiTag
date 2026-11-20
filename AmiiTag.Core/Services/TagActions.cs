@@ -549,7 +549,18 @@ public sealed class TagActions
 
         if (!_ble.Adapter.IsAvailable)
         {
-            await _dialogs.AlertAsync("Bluetooth unavailable", "Bluetooth isn't available in this browser. Use Chrome or Edge on desktop or Android.");
+            if (_capabilities.Messages.SuggestsBeacio)
+            {
+                if (await _dialogs.ConfirmAsync("Bluetooth unavailable", _capabilities.Messages.NoBluetooth, "Get Beacio", "OK"))
+                {
+                    await _navigator.OpenExternalAsync(PlatformMessages.BeacioUrl);
+                }
+            }
+            else
+            {
+                await _dialogs.AlertAsync("Bluetooth unavailable", _capabilities.Messages.NoBluetooth);
+            }
+
             return;
         }
 

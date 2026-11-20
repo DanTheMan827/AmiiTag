@@ -224,7 +224,8 @@
     /// <summary>
     /// Whether Write is offered: writable data, and a way to write it here (v3 app data needs an NFC reader).
     /// </summary>
-    private bool ShowsWrite => _dump != null && CanWrite && (_dump is AmiiboV3Dump ? Capabilities.HasNfc : Capabilities.CanUseTags);
+    // Writing needs NFC here (the phone's own, or a reader over Web Serial); Bluetooth devices are written from their pages.
+    private bool ShowsWrite => _dump != null && CanWrite && Capabilities.HasNfc;
 
     /// <summary>
     /// A tag stored in <see cref="TagStore"/>.

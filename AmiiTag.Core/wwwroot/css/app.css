@@ -284,6 +284,10 @@ h1:focus {
     text-align: center;
 }
 
+.notice a {
+    color: var(--accent);
+}
+
 .footnote {
     margin: 32px 4px 0;
     font-size: 12px;

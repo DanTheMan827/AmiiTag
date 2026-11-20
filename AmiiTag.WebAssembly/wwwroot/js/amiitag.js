@@ -20,6 +20,22 @@
         return false;
     };
 
+    // True in a browser on an iPhone or iPad (iPadOS reports itself as a Mac, but has touch).
+    amiitag.isIosDevice = function () {
+        return /iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+            (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
+    };
+
+    // Opens a link outside the app: a new tab, or this one when the browser blocks it (it's not always a tap away).
+    amiitag.openExternal = function (url) {
+        const opened = window.open(url, "_blank");
+        if (opened) {
+            opened.opener = null;
+        } else {
+            window.location.href = url;
+        }
+    };
+
     // True when running as an installed app (home screen PWA) on iPhone/iPad. That's the only place with no back
     // control at all: browsers have a back button and Android has the system back gesture.
     amiitag.isIosStandalone = function () {

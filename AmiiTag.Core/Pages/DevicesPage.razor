@@ -5,6 +5,7 @@
 @inject IDialogService Dialogs
 @inject TagActions Actions
 @inject ContextMenus Menus
+@inject DeviceCapabilities Capabilities
 
 @* The apps' Bluetooth device list. Browsers have their own device picker, which Manage Puck opens directly, so the
    web only lands here from a bookmark. *@
@@ -12,7 +13,13 @@
 <AppPage Title="Devices">
     @if (!Manager.Adapter.IsAvailable)
     {
-        <p class="empty-state">Bluetooth isn't available here. In a browser, use Chrome or Edge (WebBluetooth) on desktop or Android.</p>
+        <p class="empty-state">@Capabilities.Messages.NoBluetooth</p>
+        @if (Capabilities.Messages.SuggestsBeacio)
+        {
+            <div class="button-stack compact">
+                <BigButton OnClick="@(() => Navigator.OpenExternalAsync(PlatformMessages.BeacioUrl))">Get Beacio</BigButton>
+            </div>
+        }
     }
     else
     {

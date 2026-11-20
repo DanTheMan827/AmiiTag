@@ -29,7 +29,9 @@ builder.Services.AddSingleton<IDatabaseContainer, AmiiboDatabaseContainer>();
 builder.Services.AddSingleton<IAppPaths>(sp => new AppPaths() { BaseAddress = builder.HostEnvironment.BaseAddress });
 builder.Services.AddSingleton(sp => new AppEnvironment()
 {
-    Platform = AppEnvironment.PlatformType.WebAssembly
+    Platform = AppEnvironment.PlatformType.WebAssembly,
+    IsIosBrowser = InvokeCheck(sp, "amiitag.isIosDevice"),
+    HasWebBluetooth = InvokeCheck(sp, "amiitag.bluetooth.isSupported"),
 });
 builder.Services.AddSingleton<BlazorDialogService>();
 builder.Services.AddSingleton<IDialogService>(sp => sp.GetRequiredService<BlazorDialogService>());
@@ -42,12 +44,28 @@ builder.Services.AddSingleton<IBleAdapter, WebBluetoothAdapter>();
 
 // NFC: browsers can't send raw NFC commands, but an MFRC522 on a USB serial adapter can be driven over Web Serial.
 builder.Services.AddSingleton<ISerialPortFactory, WebSerialPortFactory>();
-builder.Services.AddSingleton<INfcProvider, Mfrc522NfcProvider>();
-builder.Services.AddSingleton<INfcProvider, AmiiTag.Nfc.Pn532.Pn532NfcProvider>();
+// One choice in Settings, with the chip detected on connection (PN532, else MFRC522).
+builder.Services.AddSingleton<Mfrc522NfcProvider>();
+builder.Services.AddSingleton<AmiiTag.Nfc.Pn532.Pn532NfcProvider>();
+builder.Services.AddSingleton<INfcProvider>(sp => new AutoDetectSerialNfcProvider(
+    sp.GetRequiredService<Mfrc522NfcProvider>(), sp.GetRequiredService<AmiiTag.Nfc.Pn532.Pn532NfcProvider>()));
 
 builder.Services.AddAmiiTagCore();
 
 var host = builder.Build();
+
+// Browser feature checks for wording messages (amiitag.js loads before Blazor starts).
+static bool InvokeCheck(IServiceProvider services, string function)
+{
+    try
+    {
+        return services.GetRequiredService<Microsoft.JSInterop.IJSRuntime>() is Microsoft.JSInterop.IJSInProcessRuntime js && js.Invoke<bool>(function);
+    }
+    catch
+    {
+        return false;
+    }
+}
 
 AmiiTagEnvironment.ServiceProvider = host.Services;
 AmiiTagEnvironment.Type = AmiiTagEnvironment.EnvironmentType.WebAssembly;

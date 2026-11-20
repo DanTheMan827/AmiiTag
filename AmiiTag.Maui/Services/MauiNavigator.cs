@@ -159,6 +159,8 @@ public sealed class MauiNavigator : IAppNavigator
         }
     });
 
+    public Task OpenExternalAsync(string url) => MainThread.InvokeOnMainThreadAsync(() => Launcher.Default.OpenAsync(new Uri(url)));
+
     public Task GoHomeAsync() => MainThread.InvokeOnMainThreadAsync(async () =>
     {
         var root = RootPage;

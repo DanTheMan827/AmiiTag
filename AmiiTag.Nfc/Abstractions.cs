@@ -259,6 +259,26 @@ public class NfcCommandNotSupportedException : NfcException
     }
 }
 
+/// <summary>
+/// The reader chip didn't answer on the port at all (none of the rates tried), as opposed to a tag or protocol error:
+/// whatever is on the port isn't that kind of reader. <see cref="AutoDetectSerialNfcProvider"/> then tries the next kind.
+/// </summary>
+public class NfcReaderNotFoundException : NfcException
+{
+    public NfcReaderNotFoundException(string message, string portId) : base(message)
+    {
+        PortId = portId;
+    }
+
+    /// <summary>
+    /// The port that was tried.
+    /// </summary>
+    public string PortId
+    {
+        get;
+    }
+}
+
 /// <summary>The transport session was lost; silence must not be treated as a passive ACK in this case.</summary>
 public class NfcConnectionLostException : NfcException
 {
@@ -269,4 +289,17 @@ public class NfcConnectionLostException : NfcException
 public class NfcTagResponseException : NfcException
 {
     public NfcTagResponseException(string message, Exception innerException) : base(message, innerException) { }
+}
+
+/// <summary>
+/// A serial reader that can tell quickly whether it's the one on a port, before any full setup is tried.
+/// <see cref="AutoDetectSerialNfcProvider"/> probes with it first.
+/// </summary>
+public interface INfcSerialProbe
+{
+    /// <summary>
+    /// True if this kind of reader answered on the port; it then stays open for the next ConnectAsync. False (and the
+    /// port closed again) if nothing answered as expected within the probe's short time limit.
+    /// </summary>
+    Task<bool> ProbeAsync(string portId, CancellationToken cancellationToken = default);
 }

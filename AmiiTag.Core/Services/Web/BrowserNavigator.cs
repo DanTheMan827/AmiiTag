@@ -55,6 +55,8 @@ public sealed class BrowserNavigator : IAppNavigator, IDisposable
 
     public Task GoHomeAsync() => PopToAsync(AppRoutes.Home());
 
+    public async Task OpenExternalAsync(string url) => await _js.InvokeVoidAsync("amiitag.openExternal", url);
+
     public async Task PopToAsync(AppRoute route)
     {
         if (_movement is { } pending) await pending.Task;

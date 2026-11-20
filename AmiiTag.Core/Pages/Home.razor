@@ -20,7 +20,9 @@
     <div class="button-stack">
         <BigButton OnClick="OpenLibrary">Amiibo Library</BigButton>
         <BigButton OnClick="OpenGames">Game Info</BigButton>
-        @if (Capabilities.CanUseTags)
+        @* Scanning and writing need NFC here: the phone's own, or (web) a reader over Web Serial. Bluetooth devices
+           are read and written from their own pages. *@
+        @if (Capabilities.HasNfc)
         {
             <BigButton OnClick="Actions.ScanTagAsync">Scan Tag</BigButton>
         }
@@ -31,7 +33,7 @@
         {
             <BigButton OnClick="Actions.ScanQrAsync">Scan QR Code</BigButton>
         }
-        @if (Capabilities.CanUseTags)
+        @if (Capabilities.HasNfc)
         {
             <BigButton OnClick="OpenN2Elite">Manage N2 Elite</BigButton>
         }

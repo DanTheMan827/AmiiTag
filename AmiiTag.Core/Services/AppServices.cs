@@ -183,12 +183,18 @@ public sealed class DeviceCapabilities
     private bool? _bluetooth;
     private bool? _camera;
 
-    public DeviceCapabilities(IBleAdapter ble, NfcService nfc, IQrScanner qr)
+    public DeviceCapabilities(IBleAdapter ble, NfcService nfc, IQrScanner qr, PlatformMessages? messages = null)
     {
         _ble = ble;
         _nfc = nfc;
         _qr = qr;
+        Messages = messages ?? new PlatformMessages();
     }
+
+    /// <summary>
+    /// What to tell the user when NFC or Bluetooth isn't available here.
+    /// </summary>
+    public PlatformMessages Messages { get; }
 
     /// <summary>
     /// A camera is present and QR scanning works here. False until <see cref="RefreshAsync"/> has checked, so the
@@ -230,9 +236,11 @@ public sealed class DeviceCapabilities
         try
         {
             _camera = _qr.IsSupported && await _qr.HasCameraAsync();
+            System.Diagnostics.Debug.WriteLine($"Capabilities: QR supported {_qr.IsSupported}, camera {_camera}.");
         }
-        catch
+        catch (Exception ex)
         {
+            System.Diagnostics.Debug.WriteLine($"Capabilities: camera check failed: {ex}");
             _camera = false;
         }
 
@@ -261,6 +269,7 @@ public static class ServiceCollectionExtensions
     /// </summary>
     public static IServiceCollection AddAmiiTagCore(this IServiceCollection services)
     {
+        services.AddSingleton<PlatformMessages>();
         services.AddSingleton<KeyStore>();
         services.AddSingleton<SignatureStore>();
         services.AddSingleton<LockOnLibrary>();

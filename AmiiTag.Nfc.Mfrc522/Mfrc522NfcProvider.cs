@@ -283,9 +283,9 @@ public sealed class Mfrc522NfcProvider : INfcProvider, INfcReaderRequester, INfc
             }
         }
 
-        throw new NfcException(
+        throw new NfcReaderNotFoundException(
             $"No MFRC522 answered on {portId} (tried {string.Join(", ", rates)} baud). " +
-            "Check the reader is plugged in and nothing else is using the port.");
+            "Check the reader is plugged in and nothing else is using the port.", portId);
     }
 
     private async Task<Mfrc522Reader?> SwitchBaudRateAsync(Mfrc522Reader reader, string portId, byte speed, CancellationToken cancellationToken)

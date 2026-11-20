@@ -199,9 +199,21 @@
     <!-- USB HID for the Flipper Zero bridge (desktop only). -->
     <PackageReference Include="HidSharp" Version="2.1.0" Condition="$(TargetFramework.Contains('-windows')) Or $(TargetFramework.Contains('-maccatalyst'))" />
   </ItemGroup>
-  <!-- Camera QR scanning (ZXing.Net.Maui supports Android and iOS cameras). -->
-  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' Or $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">
+  <!-- Camera QR scanning: Google's code scanner on Android (ZXing.Net.Maui without Play Services), AVFoundation on iOS (no package), ZXing.Net decoding webcam frames on Windows. -->
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">
+    <PackageReference Include="Xamarin.GooglePlayServices.Code.Scanner" Version="116.1.0.17" />
+    <!-- The code scanner pulls in newer AndroidX libraries than MAUI does; their -ktx companions must match, or the old
+         Fragment.Ktx (whose classes Fragment 1.9 now contains) gives "Type androidx.fragment.app.FragmentKt is defined
+         multiple times" and the rest give NU1608 warnings. -->
+    <PackageReference Include="Xamarin.AndroidX.Fragment.Ktx" Version="1.9.0" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Lifecycle.LiveData.Core.Ktx" Version="2.11.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Collection.Ktx" Version="1.6.0.1" />
+    <PackageReference Include="Xamarin.AndroidX.Tracing.Tracing.Ktx" Version="2.0.0" />
     <PackageReference Include="ZXing.Net.Maui.Controls" Version="0.10.4" />
+  </ItemGroup>
+  <ItemGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <PackageReference Include="ZXing.Net" Version="0.16.9" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\AmiiTag.Core\AmiiTag.Core.csproj" />

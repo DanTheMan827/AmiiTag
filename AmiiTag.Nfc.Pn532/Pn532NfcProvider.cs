@@ -1,9 +1,14 @@
 namespace AmiiTag.Nfc.Pn532;
 
 /// <summary>PN532 in HSU/UART mode, at its power-on 115200 baud, through the shared serial adapters.</summary>
-public sealed class Pn532NfcProvider : INfcProvider, INfcReaderRequester, INfcReleasable, IAsyncDisposable
+public sealed class Pn532NfcProvider : INfcProvider, INfcReaderRequester, INfcReleasable, INfcSerialProbe, IAsyncDisposable
 {
     public const int BaudRate = 115200;
+
+    /// <summary>
+    /// How long the auto-detection probe (<see cref="ProbeAsync"/>) waits for SAMConfiguration's ACK and response.
+    /// </summary>
+    public static readonly TimeSpan ProbeTimeout = TimeSpan.FromMilliseconds(100);
     private readonly ISerialPortFactory _ports;
     // One gate covers lifecycle and complete RF exchanges (including temporary register/timing settings).
     private readonly SemaphoreSlim _gate = new(1, 1);
@@ -103,6 +108,39 @@ public sealed class Pn532NfcProvider : INfcProvider, INfcReaderRequester, INfcRe
             if (ex is TimeoutException or IOException)
                 throw new NfcConnectionLostException($"PN532 on {portId} at {BaudRate} baud: {ex.Message} Check HSU / UART mode and the serial connection.", ex);
             throw;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Whether a PN532 is on the port: opens it at <see cref="BaudRate"/> and sends the wake preamble with
+    /// SAMConfiguration (the first command of a connection). An ACK and response within <see cref="ProbeTimeout"/>
+    /// means a PN532, and the port stays open for ConnectAsync; anything else closes it again.
+    /// </summary>
+    public async Task<bool> ProbeAsync(string portId, CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            await ResetCoreAsync();
+            System.Diagnostics.Debug.WriteLine($"PN532: probing {portId} at {BaudRate} baud.");
+            var uart = new Pn532Uart(await _ports.OpenAsync(portId, BaudRate, cancellationToken));
+            try
+            {
+                await uart.CommandAsync(0x14, [0x01, 0x14, 0x00], ProbeTimeout, cancellationToken);
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested && ex is TimeoutException or NfcException or IOException)
+            {
+                // CommandAsync has closed the port.
+                System.Diagnostics.Debug.WriteLine($"PN532: no answer on {portId} at {BaudRate} baud: {ex.Message}");
+                await uart.DisposeAsync();
+                return false;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"PN532: answered on {portId}.");
+            _uart = uart;
+            _portId = portId;
+            return true;
         }
         finally { _gate.Release(); }
     }
