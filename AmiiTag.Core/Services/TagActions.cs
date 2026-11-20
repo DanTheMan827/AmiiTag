@@ -1051,17 +1051,59 @@ public sealed class TagActions
     }
 
     /// <summary>
-    /// Runs a device operation with a cancellable progress dialog; errors are shown to the user.
+    /// How long a device operation may go without finishing or reporting progress before it's given up on. The drivers
+    /// time out their own commands well before this; it's a backstop so a blocking dialog can't stay up for good.
     /// </summary>
-    public async Task<T?> WithProgressAsync<T>(string title, Func<IProgress<TransferProgress>, CancellationToken, Task<T>> operation)
+    public static readonly TimeSpan OperationStallTimeout = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// Runs a device operation behind a progress dialog that blocks the app until it finishes; errors are shown to the
+    /// user. Once a command has started on a device it can't be cancelled, so there's no Cancel button unless
+    /// <paramref name="cancellable"/>; the dialog closes when the operation succeeds, fails or times out (its own
+    /// timeouts, or <see cref="OperationStallTimeout"/> without progress).
+    /// </summary>
+    public async Task<T?> WithProgressAsync<T>(string title, Func<IProgress<TransferProgress>, CancellationToken, Task<T>> operation, bool cancellable = false)
     {
-        using var cts = new CancellationTokenSource();
-        var dialog = _dialogs.ShowProgress("Please Wait", title, cts);
+        using var cancel = new CancellationTokenSource();
+        using var stalled = new CancellationTokenSource(OperationStallTimeout);
+        using var token = CancellationTokenSource.CreateLinkedTokenSource(cancel.Token, stalled.Token);
+        var dialog = _dialogs.ShowProgress("Please Wait", title, cancellable ? cancel : null);
         try
         {
             var progress = new Progress<TransferProgress>(p =>
-                dialog.Update(p.Total > 0 ? $"{title} ({p.Current}/{p.Total})" : title, p.Total > 0 ? p.Fraction : null));
-            return await operation(progress, cts.Token);
+            {
+                // Progress means it's still going: the stall clock starts over (a report can arrive after the end).
+                try
+                {
+                    stalled.CancelAfter(OperationStallTimeout);
+                }
+                catch (ObjectDisposedException)
+                {
+                }
+
+                dialog.Update(p.Total > 0 ? $"{title} ({p.Current}/{p.Total})" : title, p.Total > 0 ? p.Fraction : null);
+            });
+
+            // A driver that doesn't watch the token still can't keep the dialog up: past the stall timeout the
+            // operation is left to finish (or fail) on its own, unobserved.
+            var running = operation(progress, token.Token);
+            var gaveUp = new TaskCompletionSource();
+            using (stalled.Token.Register(() => gaveUp.TrySetResult()))
+            {
+                if (await Task.WhenAny(running, gaveUp.Task) != running)
+                {
+                    _ = running.ContinueWith(t => _ = t.Exception, TaskScheduler.Default);
+                    throw new OperationCanceledException(stalled.Token);
+                }
+            }
+
+            return await running;
+        }
+        catch (OperationCanceledException) when (stalled.IsCancellationRequested && !cancel.IsCancellationRequested)
+        {
+            await dialog.DisposeAsync();
+            await _dialogs.AlertAsync("The device stopped responding", $"{title} didn't finish. Check the device is nearby and switched on, then try again.");
+            return default;
         }
         catch (OperationCanceledException)
         {
