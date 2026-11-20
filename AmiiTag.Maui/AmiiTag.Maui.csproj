@@ -23,7 +23,7 @@
     <!-- Display name -->
     <ApplicationTitle>AmiiTag</ApplicationTitle>
     <!-- App Identifier -->
-    <ApplicationId>com.dantheman827.amiitag-net</ApplicationId>
+    <ApplicationId>com.DanTheMan827.AmiiTag</ApplicationId>
     <Company>DanTheMan827</Company>
     <Authors>DanTheMan827</Authors>
     <!-- Versions -->
@@ -98,7 +98,7 @@
     <CodesignKey>Apple Development: Created via API (TS6T446TZK)</CodesignKey>
     <CodesignEntitlements>Platforms\iOS\Entitlements.plist</CodesignEntitlements>
     <ProvisioningType>automatic</ProvisioningType>
-    <CodesignProvision>VS: com.dantheman827.amiitag-net Development</CodesignProvision>
+    <CodesignProvision>AmiiTag</CodesignProvision>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net10.0-ios|AnyCPU'">
     <MtouchLink>SdkOnly</MtouchLink>
@@ -140,9 +140,7 @@
       App icon: the AmiiTag mark (appiconfg.svg, from icon-transparent.svg) on black. Scaled to half the icon so it
       stays inside Android's adaptive icon safe zone (the circle masks crop anything past two thirds).
     -->
-	<MauiIcon Include="Resources\AppIcon\appicon.svg"
-		ForegroundFile="Resources\AppIcon\appiconfg.svg"
-		Color="#000000">
+	<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#000000">
 		<ForegroundScale>0.8</ForegroundScale>
 		<ForegroundScale Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">0.5</ForegroundScale>
 	</MauiIcon>
