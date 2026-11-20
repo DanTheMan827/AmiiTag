@@ -382,4 +382,68 @@ public class N2EliteTests
             }
         }
     }
+
+    [Fact]
+    public async Task ShortReads_AreRetriedAfterReselecting()
+    {
+        var tag = new N2EliteSimulator(30);
+        var flaky = new FlakyConnection(new SimulatedTagConnection(tag)) { CutFastReads = { 20, 21 } };
+        var client = new N2EliteClient(flaky);
+
+        var banks = await client.ReadBankSummariesAsync(30);
+
+        Assert.Equal(30, banks.Count);
+        Assert.Equal(2, flaky.Reselects);
+    }
+
+    [Fact]
+    public async Task ShortReads_FailAfterTheLastAttempt()
+    {
+        var tag = new N2EliteSimulator(4);
+        var flaky = new FlakyConnection(new SimulatedTagConnection(tag)) { CutFastReads = { 2, 3, 4 } };
+        var client = new N2EliteClient(flaky);
+
+        var error = await Assert.ThrowsAsync<TagException>(() => client.ReadBankSummariesAsync(4));
+        Assert.Contains("Short read", error.Message);
+        Assert.Equal(N2EliteClient.ReadAttempts - 1, flaky.Reselects);
+    }
+
+    /// <summary>
+    /// Cuts chosen N2_FAST_READ answers short (1-based count of FAST_READs), as a garbled RF frame can.
+    /// </summary>
+    private sealed class FlakyConnection(SimulatedTagConnection inner) : INfcTagConnection, INfcReselectable
+    {
+        private int _fastReads;
+
+        public HashSet<int> CutFastReads { get; } = [];
+
+        public int Reselects { get; private set; }
+
+        public byte[] Uid => inner.Uid;
+
+        public int MaxFastReadPages => inner.MaxFastReadPages;
+
+        public async Task<byte[]> TransceiveAsync(byte[] command, CancellationToken cancellationToken = default)
+        {
+            var response = await inner.TransceiveAsync(command, cancellationToken);
+            return command[0] == N2EliteClient.CmdFastRead && CutFastReads.Contains(++_fastReads) ? response[..(response.Length / 2)] : response;
+        }
+
+        public Task<byte[]> TransceiveAsync(byte[] command, TimeSpan responseTimeout, CancellationToken cancellationToken = default) =>
+            TransceiveAsync(command, cancellationToken);
+
+        public Task SendAsync(byte[] command, CancellationToken cancellationToken = default) => TransceiveAsync(command, cancellationToken);
+
+        public Task ReselectAsync(CancellationToken cancellationToken = default)
+        {
+            Reselects++;
+            return Task.CompletedTask;
+        }
+
+        public void SetStatus(string message) => inner.SetStatus(message);
+
+        public Task CloseAsync(string? errorMessage = null) => inner.CloseAsync(errorMessage);
+
+        public ValueTask DisposeAsync() => inner.DisposeAsync();
+    }
 }

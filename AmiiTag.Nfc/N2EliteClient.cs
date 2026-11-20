@@ -184,19 +184,64 @@ public sealed class N2EliteClient
         {
             var last = Math.Min(endPage, page + pagesPerRead - 1);
             var expected = (last - page + 1) * 4;
-            var data = await _connection.TransceiveAsync([CmdFastRead, (byte)page, (byte)last, (byte)bank], cancellationToken);
-            if (data.Length < expected)
-            {
-                throw new TagException(data.Length == 1
-                    ? $"The N2 Elite refused to read bank {bank + 1} (NAK 0x{data[0]:X}). Is it locked?"
-                    : $"Short read from bank {bank + 1} (pages 0x{page:X2}-0x{last:X2}).");
-            }
-
+            var data = await ReadChunkAsync(bank, page, last, expected, cancellationToken);
             Array.Copy(data, 0, output, (page - startPage) * 4, expected);
             progress?.Report((double)(last - startPage + 1) / total);
         }
 
         return output;
+    }
+
+    /// <summary>
+    /// How many times one N2_FAST_READ is tried before a read fails.
+    /// </summary>
+    public const int ReadAttempts = 3;
+
+    /// <summary>
+    /// One N2_FAST_READ, retried when the answer is cut short or garbled on the way (it happens over RF now and then,
+    /// more with long reads like 128 bytes): the tag is reselected first where the reader can, since an RF error can
+    /// leave it idle. Reads change nothing, so retrying is safe. A NAK (the N2 refusing) fails straight away, and so
+    /// does a reselect that fails or finds a different tag.
+    /// </summary>
+    private async Task<byte[]> ReadChunkAsync(int bank, int page, int last, int expected, CancellationToken cancellationToken)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Exception failure;
+            try
+            {
+                var data = await _connection.TransceiveAsync([CmdFastRead, (byte)page, (byte)last, (byte)bank], cancellationToken);
+                if (data.Length >= expected)
+                {
+                    return data;
+                }
+
+                if (data.Length == 1)
+                {
+                    throw new TagException($"The N2 Elite refused to read bank {bank + 1} (NAK 0x{data[0]:X}). Is it locked?");
+                }
+
+                failure = new TagException($"Short read from bank {bank + 1} (pages 0x{page:X2}-0x{last:X2}): {data.Length} of {expected} bytes.");
+            }
+            catch (NfcException ex) when (ex is not NfcCommandNotSupportedException)
+            {
+                failure = ex;
+            }
+
+            var reselectable = _connection as INfcReselectable;
+            if (attempt >= ReadAttempts || (failure is NfcConnectionLostException && reselectable is not { CanReselect: true }))
+            {
+                throw failure;
+            }
+
+            System.Diagnostics.Debug.WriteLine($"N2 Elite: {failure.Message} (attempt {attempt} of {ReadAttempts}); retrying.");
+            await Task.Delay(50 * attempt, cancellationToken);
+            if (reselectable is { CanReselect: true })
+            {
+                await reselectable.ReselectAsync(cancellationToken);
+            }
+        }
     }
 
     /// <summary>

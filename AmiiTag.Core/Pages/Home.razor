@@ -8,6 +8,7 @@
 @inject NfcService Nfc
 @inject HomeScreenState Screen
 @inject FlipperEmulationService Flipper
+@inject N2EliteService N2
 @implements IDisposable
 
 @* Dropped files are recognised by their contents: keys, amiibo, lock-ons, UID/signature pairs. *@
@@ -118,7 +119,14 @@
     // In a browser this opens its device picker straight away (it needs this click as the user gesture).
     private Task OpenDevices() => Actions.OpenBluetoothDevicesAsync();
 
-    private Task OpenN2Elite() => Navigator.NavigateAsync(AppRoutes.N2Elite());
+    // A full scan every time (unlocking the N2 if needed); the screen opens once an N2 has been read.
+    private async Task OpenN2Elite()
+    {
+        if (await N2.ScanAsync())
+        {
+            await Navigator.NavigateAsync(AppRoutes.N2Elite());
+        }
+    }
     private Task EmulateN2() => Flipper.EmulateAsync(new N2EliteSimulator(){IsLocked = true}, "N2 Emulation");
 
     private Task OpenSettings() => Navigator.NavigateAsync(AppRoutes.Settings());

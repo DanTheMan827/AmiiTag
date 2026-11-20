@@ -52,7 +52,7 @@ public sealed class N2EliteService
 
 
     /// <summary>
-    /// Reads the N2's settings and the start of every bank.
+    /// Rereads the N2's settings and the start of every bank (an N2 that's already unlocked).
     /// </summary>
     public async Task<bool> RefreshAsync()
     {
@@ -67,6 +67,107 @@ public sealed class N2EliteService
         Banks = result.banks;
         Changed?.Invoke(this, EventArgs.Empty);
         return true;
+    }
+
+    /// <summary>
+    /// What Manage N2 Elite does: forgets any N2 read before, then reads the tag on the reader as an unlocked N2. If it
+    /// doesn't answer as one (a locked N2 answers like a plain NTAG215), goes through the unlock flow and reads it again.
+    /// Only a tag that still isn't an N2 after that is reported as not found.
+    /// </summary>
+    public async Task<bool> ScanAsync()
+    {
+        Forget();
+
+        var read = await TryReadAsync();
+        if (read == null)
+        {
+            // Cancelled, or an NFC error that's already been shown.
+            return false;
+        }
+
+        if (read.Info == null)
+        {
+            if (await UnlockCoreAsync() == null)
+            {
+                return false;
+            }
+
+            read = await TryReadAsync();
+            if (read == null)
+            {
+                return false;
+            }
+
+            if (read.Info == null)
+            {
+                await _dialogs.AlertAsync(
+                    "No N2 Elite found",
+                    "The tag didn't answer as an N2 Elite, even after unlocking. Check it's an N2 Elite or Amiiqo, and keep it still on the reader.");
+                return false;
+            }
+        }
+
+        Info = read.Info;
+        Banks = read.Banks;
+        Changed?.Invoke(this, EventArgs.Empty);
+        return true;
+    }
+
+    private sealed record N2Read(N2EliteInfo? Info, IReadOnlyList<N2EliteBank> Banks);
+
+    /// <summary>
+    /// One read of the tag on the reader: null when cancelled or failed (the error already shown); no Info when the tag
+    /// isn't an unlocked N2.
+    /// </summary>
+    private Task<N2Read?> TryReadAsync() =>
+        _nfc.RunAsync<N2Read?>(HoldPrompt, async (connection, progress, ct) =>
+        {
+            var info = await N2EliteClient.DetectAsync(connection, ct);
+            if (info == null)
+            {
+                return new N2Read(null, []);
+            }
+
+            var banks = await new N2EliteClient(connection).ReadBankSummariesAsync(info.UsableBanks, progress, ct);
+            connection.SetStatus("N2 Elite read");
+            return new N2Read(info, banks);
+        });
+
+    /// <summary>
+    /// The unlock flow: the user holds the N2's button while the unlock commands are sent. Null when they back out (or
+    /// the reader couldn't connect, already shown); otherwise whether the commands went through. A failure there isn't
+    /// reported, since the read after it says whether there's an N2.
+    /// </summary>
+    private async Task<bool?> UnlockCoreAsync()
+    {
+        if (!await _dialogs.ConfirmAsync(
+                "Unlock N2 Elite",
+                "The tag didn't answer as an unlocked N2 Elite, so it may be locked. Keep it on the reader, then press and hold its button. Keep holding it until unlocking is done.",
+                "I'm Holding It", "Cancel"))
+        {
+            return null;
+        }
+
+        var unlocked = await _nfc.RunAsync<bool?>("Keep holding the button...", async (connection, _, ct) =>
+        {
+            try
+            {
+                await new N2EliteClient(connection).UnlockAsync(token => Task.Delay(TimeSpan.FromSeconds(3), token), ct);
+                return true;
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                System.Diagnostics.Debug.WriteLine($"N2 Elite: unlock failed: {ex.Message}");
+                return false;
+            }
+        });
+
+        if (unlocked == true)
+        {
+            await _dialogs.AlertAsync("Unlocked", "You can let go of the button.");
+        }
+
+        return unlocked;
     }
 
     public void Forget()
@@ -219,35 +320,6 @@ public sealed class N2EliteService
     }
 
     /// <summary>
-    /// Unlocks a locked N2: the user holds its button while the unlock commands are sent. A locked N2 answers like a
-    /// plain NTAG215, so this doesn't check which N2 it is.
-    /// </summary>
-    public async Task<bool> UnlockAsync()
-    {
-        if (!await _dialogs.ConfirmAsync(
-                "Unlock N2 Elite",
-                "Put the N2 Elite on the reader, then press and hold its button. Keep holding it, and keep it on the reader, until unlocking is done.",
-                "I'm Holding It", "Cancel"))
-        {
-            return false;
-        }
-
-        var ok = await _nfc.RunAsync("Keep holding the button...", async (connection, _, ct) =>
-        {
-            await new N2EliteClient(connection).UnlockAsync(token => Task.Delay(TimeSpan.FromSeconds(3), token), ct);
-            return true;
-        }, "N2 Elite unlocked");
-
-        if (ok)
-        {
-            await _dialogs.AlertAsync("Unlocked", "You can let go of the button.");
-            await RefreshAsync();
-        }
-
-        return ok;
-    }
-
-    /// <summary>
     /// Reads every enabled bank and saves them as a zip of .bin files.
     /// </summary>
     public async Task BackupAllAsync()
@@ -293,11 +365,12 @@ public sealed class N2EliteService
     }
 
     /// <summary>
-    /// Writes a tag to an N2 Elite from elsewhere in the app: reads the N2 to list its banks, then writes the chosen one.
+    /// Writes a tag to an N2 Elite from elsewhere in the app: scans the N2 (unlocking it if needed) to list its banks, then
+    /// writes the chosen one.
     /// </summary>
     public async Task WriteToChosenBankAsync(TagDump dump)
     {
-        if (!await RefreshAsync())
+        if (!await ScanAsync())
         {
             return;
         }
@@ -339,7 +412,7 @@ public sealed class N2EliteService
 
     private static async Task<N2EliteInfo> DetectOrThrowAsync(INfcTagConnection connection, CancellationToken ct) =>
         await N2EliteClient.DetectAsync(connection, ct)
-        ?? throw new TagException("No N2 Elite answered. If it's locked it answers like a normal tag: unlock it first.");
+        ?? throw new TagException("No N2 Elite answered. Hold the N2 Elite still on the reader, or scan it again from Manage N2 Elite if it's been locked.");
 
     private static string SafeFileName(string name)
     {
