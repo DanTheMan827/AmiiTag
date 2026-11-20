@@ -39,6 +39,13 @@ namespace AmiiTag.Maui
             builder.ConfigureMauiHandlers(handlers => handlers.AddHandler<AmiiTag.Maui.Pages.NativePageRefreshView, AmiiTag.Maui.Pages.NativePageRefreshHandler>());
 #endif
 #if WINDOWS
+            // WebView2 keeps its browser data in "<exe name>.WebView2" beside the exe unless told otherwise; keep it with
+            // the app's other data instead, so nothing appears next to the exe wherever it's run from.
+            if (string.IsNullOrEmpty(Environment.GetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER")))
+            {
+                Environment.SetEnvironmentVariable("WEBVIEW2_USER_DATA_FOLDER", Path.Combine(FileSystem.AppDataDirectory, "WebView2"));
+            }
+
             builder.ConfigureLifecycleEvents(events => events.AddWindows(windows =>
                 windows.OnWindowCreated(window => WindowsBackdrop.Apply(window))));
 #endif

@@ -66,13 +66,49 @@
       <_AmiiTagMissingCount>@(_AmiiTagMissing-&gt;Count())</_AmiiTagMissingCount>
     </PropertyGroup>
     <Message Importance="high" Text="AmiiTag: added $(_AmiiTagMissingCount) file(s) from the build output that the publish was missing." />
+
+    <!--
+      An unpackaged WinUI app reads its compiled XAML and resources from resources.pri, or failing that <exe name>.pri.
+      The build only makes $(AssemblyName).pri, so a renamed exe (AmiiTag.exe, a download's name...) found nothing and
+      crashed at startup in Microsoft.UI.Xaml.dll. A copy named resources.pri works whatever the exe is called.
+    -->
+    <ItemGroup Condition="Exists('$(OutDir)$(AssemblyName).pri')">
+      <ResolvedFileToPublish Remove="@(ResolvedFileToPublish)" Condition="'%(ResolvedFileToPublish.RelativePath)' == 'resources.pri'" />
+      <ResolvedFileToPublish Include="$(OutDir)$(AssemblyName).pri" RelativePath="resources.pri" TargetPath="resources.pri" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="false" />
+    </ItemGroup>
     <Error Condition="!Exists('$(OutDir)wwwroot\index.html')" Text="wwwroot wasn't found in $(OutDir); the published app would have no pages." />
     <Error Condition="!Exists('$(OutDir)Microsoft.UI.Xaml.dll')" Text="The Windows App SDK runtime isn't in $(OutDir) (Microsoft.UI.Xaml.dll); the published app wouldn't start." />
   </Target>
   <!--
-    Static web assets are published marked ExcludeFromSingleFile (they're meant to be served from disk). Bundle them too,
-    so the single file exe carries wwwroot (it's served from the extraction folder, see Pages\AppBlazorWebView.cs).
+    Static web assets (the stylesheets, scripts and other files under wwwroot/_content, and the scoped CSS bundles) never
+    reach the single file exe on their own: they aren't publish items at all. The static web assets SDK copies them
+    straight into the publish folder (CopyStaticWebAssetsToPublishDirectory), before the bundle is made from the publish
+    items, so the exe extracted a wwwroot with only index.html and _framework, and pages had no styles or scripts.
+    For a single file publish they're turned into publish items instead, so they're bundled (and extracted with
+    everything else; the app serves wwwroot from the extraction folder, see Pages\AppBlazorWebView.cs), and the SDK's
+    own loose copies are skipped. The precompressed .gz/.br copies are left out: the WebView reads the plain files.
   -->
+  <Target Name="AmiiTagBundleStaticWebAssets" AfterTargets="_SplitPublishStaticWebAssetsByCopyOptions" Condition="'$(PublishSingleFile)' == 'true' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
+    <ItemGroup>
+      <_AmiiTagStaticWebAsset Include="@(_PublishStaticWebAssetsTargetPath)" Condition="'%(Extension)' != '.gz' And '%(Extension)' != '.br'" RelativePath="%(TargetPath)" />
+      <ResolvedFileToPublish Remove="@(_AmiiTagStaticWebAsset)" MatchOnMetadata="RelativePath" MatchOnMetadataOptions="PathLike" />
+      <ResolvedFileToPublish Include="@(_AmiiTagStaticWebAsset)" RelativePath="%(_AmiiTagStaticWebAsset.TargetPath)" CopyToPublishDirectory="PreserveNewest" ExcludeFromSingleFile="false" />
+      <_PublishStaticWebAssetsPreserveNewest Remove="@(_PublishStaticWebAssetsPreserveNewest)" />
+      <_PublishStaticWebAssetsCopyAlways Remove="@(_PublishStaticWebAssetsCopyAlways)" />
+      <_PublishStaticWebAssetsIfDifferent Remove="@(_PublishStaticWebAssetsIfDifferent)" />
+    </ItemGroup>
+    <PropertyGroup>
+      <_AmiiTagStaticWebAssetCount>@(_AmiiTagStaticWebAsset->Count())</_AmiiTagStaticWebAssetCount>
+    </PropertyGroup>
+    <Message Importance="high" Text="AmiiTag: bundling $(_AmiiTagStaticWebAssetCount) static web asset(s) into the exe." />
+    <Error Condition="'$(_AmiiTagStaticWebAssetCount)' == '0'" Text="No static web assets were found to bundle; the exe's pages would have no styles or scripts." />
+  </Target>
+  <!--
+    The SDK runs CopyStaticWebAssetsToPublishDirectory just before copying the publish folder, which is after the bundle
+    is made; run it (and so AmiiTagBundleStaticWebAssets) before the bundle's file list is taken. It doesn't run again.
+  -->
+  <Target Name="AmiiTagResolveStaticWebAssetsBeforeBundle" BeforeTargets="_ComputeFilesToBundle" DependsOnTargets="CopyStaticWebAssetsToPublishDirectory" Condition="'$(PublishSingleFile)' == 'true' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'" />
+  <!-- Anything else under wwwroot that a package or the SDK marked to stay out of the bundle goes in too. -->
   <Target Name="AmiiTagBundleWwwroot" BeforeTargets="_ComputeFilesToBundle;GenerateSingleFileBundle" Condition="'$(PublishSingleFile)' == 'true' And $([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">
     <ItemGroup>
       <ResolvedFileToPublish Condition="$([System.String]::Copy('%(ResolvedFileToPublish.RelativePath)').Replace('/', '\').ToLowerInvariant().StartsWith('wwwroot\'))">

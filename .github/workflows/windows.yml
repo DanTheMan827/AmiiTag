@@ -1,4 +1,4 @@
-# The Windows app: unpackaged, self-contained, zipped, for x64 and ARM64, Debug and Release.
+# The Windows app as one self-contained exe, for x64 and ARM64, Debug and Release.
 name: Windows
 
 on:
@@ -33,4 +33,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: AmiiTag-windows-${{ matrix.runtime }}-${{ matrix.configuration }}
-          path: artifacts/windows/AmiiTag-windows-${{ matrix.runtime }}-${{ matrix.configuration }}.zip
+          path: artifacts/windows/AmiiTag-windows-${{ matrix.runtime }}-${{ matrix.configuration }}.exe
+          if-no-files-found: error
