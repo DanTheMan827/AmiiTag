@@ -98,7 +98,7 @@
       <_PublishStaticWebAssetsIfDifferent Remove="@(_PublishStaticWebAssetsIfDifferent)" />
     </ItemGroup>
     <PropertyGroup>
-      <_AmiiTagStaticWebAssetCount>@(_AmiiTagStaticWebAsset->Count())</_AmiiTagStaticWebAssetCount>
+      <_AmiiTagStaticWebAssetCount>@(_AmiiTagStaticWebAsset-&gt;Count())</_AmiiTagStaticWebAssetCount>
     </PropertyGroup>
     <Message Importance="high" Text="AmiiTag: bundling $(_AmiiTagStaticWebAssetCount) static web asset(s) into the exe." />
     <Error Condition="'$(_AmiiTagStaticWebAssetCount)' == '0'" Text="No static web assets were found to bundle; the exe's pages would have no styles or scripts." />
@@ -134,7 +134,7 @@
     <CodesignKey>Apple Development: Created via API (TS6T446TZK)</CodesignKey>
     <CodesignEntitlements>Platforms\iOS\Entitlements.plist</CodesignEntitlements>
     <ProvisioningType>automatic</ProvisioningType>
-    <CodesignProvision>AmiiTag</CodesignProvision>
+    <CodesignProvision>VS: com.DanTheMan827.AmiiTag Development</CodesignProvision>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Debug|net10.0-ios|AnyCPU'">
     <MtouchLink>SdkOnly</MtouchLink>
