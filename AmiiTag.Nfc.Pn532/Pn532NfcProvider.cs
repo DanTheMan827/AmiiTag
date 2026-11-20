@@ -1,9 +1,54 @@
 namespace AmiiTag.Nfc.Pn532;
 
-/// <summary>PN532 in HSU/UART mode, at its power-on 115200 baud, through the shared serial adapters.</summary>
-public sealed class Pn532NfcProvider : INfcProvider, INfcReaderRequester, INfcReleasable, INfcSerialProbe, IAsyncDisposable
+/// <summary>
+/// PN532 in HSU/UART mode through the shared serial adapters: found at its power-on 115200 baud, then switched to
+/// <see cref="BaudRate"/> (SetSerialBaudRate, UM0701-02 7.2.13) when that's faster. The PN532 keeps a switched rate until
+/// it loses power, so it's put back to 115200 on release, and a later connection also tries the switched rate.
+/// </summary>
+public sealed class Pn532NfcProvider : INfcProvider, INfcReaderRequester, INfcReleasable, INfcSerialProbe, INfcBaudRateSetting, IAsyncDisposable
 {
-    public const int BaudRate = 115200;
+    public const int PowerOnBaudRate = 115200;
+    public const int FastBaudRate = 921600;
+
+    /// <summary>
+    /// The speeds offered in Settings (the same as the MFRC522's). 1,288,000 is left out: few USB serial adapters can
+    /// produce it.
+    /// </summary>
+    public static readonly IReadOnlyList<int> SettingsBaudRates = [115200, 230400, 460800, 921600];
+
+    // SetSerialBaudRate's BR codes.
+    private static readonly Dictionary<int, byte> SerialSpeeds = new()
+    {
+        [9600] = 0x00, [19200] = 0x01, [38400] = 0x02, [57600] = 0x03, [115200] = 0x04,
+        [230400] = 0x05, [460800] = 0x06, [921600] = 0x07, [1288000] = 0x08,
+    };
+
+    // The speed asked for (stays at the power-on rate until set; the app applies the Settings speed), and the speed the
+    // PN532 is at as far as this provider knows.
+    private int _targetBaudRate = PowerOnBaudRate;
+    private int _linkBaudRate = PowerOnBaudRate;
+
+    // The port the PN532 was last opened on: still known after an error or cancellation closed it, so release can
+    // reopen it to put a switched PN532 back to its power-on rate.
+    private string? _lastPortId;
+
+    /// <summary>
+    /// The speed to switch the PN532 to once it's found.
+    /// </summary>
+    public int BaudRate
+    {
+        get => _targetBaudRate;
+        set => _targetBaudRate = SerialSpeeds.ContainsKey(value) ? value : PowerOnBaudRate;
+    }
+
+    int INfcBaudRateSetting.DefaultBaudRate => FastBaudRate;
+
+    public IReadOnlyList<int> SupportedBaudRates => SettingsBaudRates;
+
+    /// <summary>
+    /// The speed the serial link runs at now.
+    /// </summary>
+    public int LinkBaudRate => _linkBaudRate;
 
     /// <summary>
     /// How long the auto-detection probe (<see cref="ProbeAsync"/>) waits for SAMConfiguration's ACK and response.
@@ -52,10 +97,13 @@ public sealed class Pn532NfcProvider : INfcProvider, INfcReaderRequester, INfcRe
             if (_uart == null || _uart.IsClosed || _portId != portId)
             {
                 await ResetCoreAsync();
-                System.Diagnostics.Debug.WriteLine($"PN532: opening {portId} at {BaudRate} baud (8N1).");
-                _uart = new Pn532Uart(await _ports.OpenAsync(portId, BaudRate, cancellationToken));
-                _portId = portId;
-                await _uart.WakeAsync(cancellationToken);
+                await OpenCoreAsync(portId, cancellationToken);
+            }
+
+            // Also when the port was left open by ProbeAsync (at the power-on rate), or the speed was changed since.
+            if (_linkBaudRate != _targetBaudRate)
+            {
+                await SwitchBaudRateAsync(portId, _targetBaudRate, cancellationToken);
             }
 
             // Reapply settings on each connection: a power blip can reset a PN532 while its USB adapter stays open.
@@ -106,14 +154,14 @@ public sealed class Pn532NfcProvider : INfcProvider, INfcReaderRequester, INfcRe
         {
             await ResetCoreAsync();
             if (ex is TimeoutException or IOException)
-                throw new NfcConnectionLostException($"PN532 on {portId} at {BaudRate} baud: {ex.Message} Check HSU / UART mode and the serial connection.", ex);
+                throw new NfcConnectionLostException($"PN532 on {portId} at {_linkBaudRate} baud: {ex.Message} Check HSU / UART mode and the serial connection.", ex);
             throw;
         }
         finally { _gate.Release(); }
     }
 
     /// <summary>
-    /// Whether a PN532 is on the port: opens it at <see cref="BaudRate"/> and sends the wake preamble with
+    /// Whether a PN532 is on the port: opens it at <see cref="PowerOnBaudRate"/> (then a rate it may have been left at) and sends the wake preamble with
     /// SAMConfiguration (the first command of a connection). An ACK and response within <see cref="ProbeTimeout"/>
     /// means a PN532, and the port stays open for ConnectAsync; anything else closes it again.
     /// </summary>
@@ -123,26 +171,129 @@ public sealed class Pn532NfcProvider : INfcProvider, INfcReaderRequester, INfcRe
         try
         {
             await ResetCoreAsync();
-            System.Diagnostics.Debug.WriteLine($"PN532: probing {portId} at {BaudRate} baud.");
-            var uart = new Pn532Uart(await _ports.OpenAsync(portId, BaudRate, cancellationToken));
+
+            // The power-on rate first; then a switched rate a PN532 may still be at (it keeps one until power off).
+            foreach (var rate in new[] { PowerOnBaudRate, _linkBaudRate, _targetBaudRate }.Distinct())
+            {
+                System.Diagnostics.Debug.WriteLine($"PN532: probing {portId} at {rate} baud.");
+                var uart = new Pn532Uart(await _ports.OpenAsync(portId, rate, cancellationToken));
+                try
+                {
+                    await uart.CommandAsync(0x14, [0x01, 0x14, 0x00], ProbeTimeout, cancellationToken);
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested && ex is TimeoutException or NfcException or IOException)
+                {
+                    // CommandAsync has closed the port.
+                    System.Diagnostics.Debug.WriteLine($"PN532: no answer on {portId} at {rate} baud: {ex.Message}");
+                    await uart.DisposeAsync();
+                    continue;
+                }
+
+                System.Diagnostics.Debug.WriteLine($"PN532: answered on {portId} at {rate} baud.");
+                _uart = uart;
+                _portId = portId;
+                _lastPortId = portId;
+                _linkBaudRate = rate;
+                return true;
+            }
+
+            return false;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Opens the port and wakes the PN532. At the power-on rate (the usual case) that's all; when it may have been left
+    /// at a switched rate, each candidate rate is tried with SAMConfiguration until one answers.
+    /// </summary>
+    private async Task OpenCoreAsync(string portId, CancellationToken cancellationToken)
+    {
+        var rates = new[] { _linkBaudRate, PowerOnBaudRate, _targetBaudRate }.Distinct().ToList();
+        if (rates.Count == 1)
+        {
+            System.Diagnostics.Debug.WriteLine($"PN532: opening {portId} at {_linkBaudRate} baud (8N1).");
+            _uart = new Pn532Uart(await _ports.OpenAsync(portId, _linkBaudRate, cancellationToken));
+            _portId = portId;
+            _lastPortId = portId;
+            await _uart.WakeAsync(cancellationToken);
+            return;
+        }
+
+        Exception? failure = null;
+        foreach (var rate in rates)
+        {
+            System.Diagnostics.Debug.WriteLine($"PN532: opening {portId} at {rate} baud (8N1).");
+            var uart = new Pn532Uart(await _ports.OpenAsync(portId, rate, cancellationToken));
             try
             {
-                await uart.CommandAsync(0x14, [0x01, 0x14, 0x00], ProbeTimeout, cancellationToken);
+                await uart.WakeAsync(cancellationToken);
+                await uart.CommandAsync(0x14, [0x01, 0x14, 0x00], TimeSpan.FromMilliseconds(500), cancellationToken);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested && ex is TimeoutException or NfcException or IOException)
             {
-                // CommandAsync has closed the port.
-                System.Diagnostics.Debug.WriteLine($"PN532: no answer on {portId} at {BaudRate} baud: {ex.Message}");
+                failure = ex;
                 await uart.DisposeAsync();
-                return false;
+                continue;
             }
 
-            System.Diagnostics.Debug.WriteLine($"PN532: answered on {portId}.");
             _uart = uart;
             _portId = portId;
-            return true;
+            _lastPortId = portId;
+            _linkBaudRate = rate;
+            return;
         }
-        finally { _gate.Release(); }
+
+        throw failure!;
+    }
+
+    /// <summary>
+    /// SetSerialBaudRate: the PN532 acknowledges and answers at the current rate, the host confirms with an ACK, and both
+    /// sides change. A PN532 that refuses stays at the current rate; one that switched but can't be heard at the new
+    /// rate (an adapter that can't do it) is stuck there until it loses power, which the error says.
+    /// </summary>
+    private async Task SwitchBaudRateAsync(string portId, int rate, CancellationToken cancellationToken)
+    {
+        if (!SerialSpeeds.TryGetValue(rate, out var code))
+        {
+            return;
+        }
+
+        try
+        {
+            await _uart!.CommandAsync(0x10, [code], cancellationToken: cancellationToken);
+            await _uart.SendAckAsync(cancellationToken);
+
+            // Let the ACK leave the adapter before the port is closed; the PN532 changes rate after it.
+            await Task.Delay(20, cancellationToken);
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested && ex is TimeoutException or NfcException or IOException)
+        {
+            System.Diagnostics.Debug.WriteLine($"PN532: couldn't switch to {rate} baud, staying at {_linkBaudRate}: {ex.Message}");
+            await ResetCoreAsync();
+            _targetBaudRate = _linkBaudRate;
+            await OpenCoreAsync(portId, cancellationToken);
+            return;
+        }
+
+        var previous = _linkBaudRate;
+        await _uart.DisposeAsync();
+        _uart = null;
+        _linkBaudRate = rate;
+        try
+        {
+            _uart = new Pn532Uart(await _ports.OpenAsync(portId, rate, cancellationToken));
+            _portId = portId;
+            _lastPortId = portId;
+            await _uart.CommandAsync(0x02, [], TimeSpan.FromMilliseconds(500), cancellationToken);
+            System.Diagnostics.Debug.WriteLine($"PN532: switched {portId} from {previous} to {rate} baud.");
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested && ex is TimeoutException or NfcException or IOException)
+        {
+            await ResetCoreAsync();
+            throw new NfcConnectionLostException(
+                $"The PN532 didn't answer after switching to {rate:N0} baud; the USB serial adapter may not support that speed. " +
+                "Unplug the reader to reset it, and pick a lower speed.", ex);
+        }
     }
 
     private static byte[] SelectionUid(byte[] uid) => uid.Length switch
@@ -299,9 +450,54 @@ public sealed class Pn532NfcProvider : INfcProvider, INfcReaderRequester, INfcRe
                 try { await CommandAsync(0x32, [0x01, 0x00], CancellationToken.None); }
                 catch { }
             }
+
+            await RestorePowerOnRateAsync();
             await ResetCoreAsync();
         }
         finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Puts a PN532 left at a switched rate back to 115200, so whatever opens the port next finds it there. Reopens the
+    /// port when an error or a cancelled command has closed it (the PN532 keeps its rate regardless). Best effort: the
+    /// reader may already be gone.
+    /// </summary>
+    private async Task RestorePowerOnRateAsync()
+    {
+        if (_linkBaudRate == PowerOnBaudRate || _lastPortId is not { } portId || !SerialSpeeds.TryGetValue(PowerOnBaudRate, out var code))
+        {
+            return;
+        }
+
+        using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var uart = _uart is { IsClosed: false } open ? open : null;
+        try
+        {
+            if (uart == null)
+            {
+                uart = new Pn532Uart(await _ports.OpenAsync(portId, _linkBaudRate, timeout.Token));
+
+                // Drains anything late from an interrupted exchange first.
+                await uart.WakeAsync(timeout.Token);
+            }
+
+            await uart.CommandAsync(0x10, [code], TimeSpan.FromMilliseconds(500), timeout.Token);
+            await uart.SendAckAsync(timeout.Token);
+            await Task.Delay(20, timeout.Token);
+            _linkBaudRate = PowerOnBaudRate;
+            System.Diagnostics.Debug.WriteLine($"PN532: {portId} back at {PowerOnBaudRate} baud.");
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"PN532: couldn't put {portId} back at {PowerOnBaudRate} baud: {ex.Message}");
+        }
+        finally
+        {
+            if (uart != null && !ReferenceEquals(uart, _uart))
+            {
+                await uart.DisposeAsync();
+            }
+        }
     }
 
     public async ValueTask DisposeAsync() => await ReleaseAsync();

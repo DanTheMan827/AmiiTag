@@ -442,6 +442,7 @@ public sealed class NfcService
         }
         catch (OperationCanceledException)
         {
+            System.Diagnostics.Debug.WriteLine($"NFC ({provider.DisplayName}): cancelled{(connection == null ? " before a tag was connected" : string.Empty)} ({prompt})");
             return default;
         }
         catch (Exception ex)

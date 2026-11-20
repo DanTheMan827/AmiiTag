@@ -37,13 +37,13 @@ public sealed class AutoDetectSerialNfcProvider : INfcProvider, INfcReaderReques
 
     public bool CanRequestReader => _primary is INfcReaderRequester { CanRequestReader: true };
 
-    // The MFRC522's link speed setting (the PN532 has a fixed rate), so Settings offers it here too.
+    // The link speed both readers are switched to once found (each from its own power-on rate), so Settings offers it here.
     public int BaudRate
     {
-        get => (_primary as INfcBaudRateSetting)?.BaudRate ?? 0;
+        get => (_primary as INfcBaudRateSetting)?.BaudRate ?? (_fallback as INfcBaudRateSetting)?.BaudRate ?? 0;
         set
         {
-            if (_primary is INfcBaudRateSetting serial)
+            foreach (var serial in new[] { _primary, _fallback }.OfType<INfcBaudRateSetting>())
             {
                 serial.BaudRate = value;
             }

@@ -30,6 +30,82 @@ public sealed class Pn532Tests
     }
 
     [Fact]
+    public async Task ChosenBaudRate_IsSwitchedToAfterConnecting_AndBackOnRelease()
+    {
+        var ports = new Ports();
+        var chips = new List<Chip>();
+        ports.CreateChip = () =>
+        {
+            var chip = new Chip { LowVbat = chips.Count == 0 };
+            chips.Add(chip);
+            return chip;
+        };
+        await using var provider = new Pn532NfcProvider(ports) { BaudRate = 921600 };
+
+        await using (await provider.ConnectAsync(new NfcConnectOptions()))
+        {
+            // SetSerialBaudRate (BR 7 = 921600) at 115200, confirmed with the host's ACK, then the port reopened.
+            Assert.Contains(chips[0].Commands, c => c.Command == 0x10 && c.Data.SequenceEqual(new byte[] { 7 }));
+            Assert.Contains(chips[0].Writes, w => w.SequenceEqual(new byte[] { 0, 0, 0xFF, 0, 0xFF, 0 }));
+            Assert.Equal(2, chips.Count);
+            Assert.Equal(921600, ports.LastRate);
+            Assert.Equal(921600, provider.LinkBaudRate);
+        }
+
+        await provider.ReleaseAsync();
+        Assert.Contains(chips[1].Commands, c => c.Command == 0x10 && c.Data.SequenceEqual(new byte[] { 4 }));
+        Assert.Equal(115200, provider.LinkBaudRate);
+    }
+
+    [Fact]
+    public async Task ChosenBaudRate_IsSwitchedTo_AfterTheAutoDetectionProbe()
+    {
+        var ports = new Ports();
+        var chips = new List<Chip>();
+        ports.CreateChip = () =>
+        {
+            var chip = new Chip();
+            chips.Add(chip);
+            return chip;
+        };
+        await using var provider = new Pn532NfcProvider(ports) { BaudRate = 460800 };
+
+        Assert.True(await provider.ProbeAsync("COM7"));
+        Assert.Equal(115200, provider.LinkBaudRate);
+
+        // The probe's port is reused, then switched (BR 6 = 460800).
+        await using var tag = await provider.ConnectAsync(new NfcConnectOptions { ReaderId = "COM7" });
+        Assert.Contains(chips[0].Commands, c => c.Command == 0x10 && c.Data.SequenceEqual(new byte[] { 6 }));
+        Assert.Equal(460800, ports.LastRate);
+        Assert.Equal(460800, provider.LinkBaudRate);
+    }
+
+    [Fact]
+    public async Task Release_AfterACancelledConnect_StillRestoresThePowerOnRate()
+    {
+        var ports = new Ports();
+        var chips = new List<Chip>();
+        ports.CreateChip = () =>
+        {
+            var chip = new Chip { EmptyPolls = int.MaxValue };
+            chips.Add(chip);
+            return chip;
+        };
+        await using var provider = new Pn532NfcProvider(ports) { BaudRate = 921600 };
+
+        // Cancelled while polling for a tag (Ctrl+C): the port is closed with the PN532 still at 921600.
+        using var cancel = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => provider.ConnectAsync(new NfcConnectOptions(), cancel.Token));
+        Assert.Equal(921600, provider.LinkBaudRate);
+
+        // Release reopens it at that rate to switch it back (BR 4 = 115200).
+        await provider.ReleaseAsync();
+        Assert.Equal(921600, ports.LastRate);
+        Assert.Contains(chips[^1].Commands, c => c.Command == 0x10 && c.Data.SequenceEqual(new byte[] { 4 }));
+        Assert.Equal(115200, provider.LinkBaudRate);
+    }
+
+    [Fact]
     public async Task Reconnect_WakesModuleThatResetWithoutDisconnectingAdapter()
     {
         var ports = new Ports();

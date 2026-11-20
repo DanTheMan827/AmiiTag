@@ -41,6 +41,25 @@ public sealed class Pn532Uart : IAsyncDisposable
     }
 
     /// <summary>
+    /// Sends an ACK frame to the PN532 (the host's confirmation that completes SetSerialBaudRate).
+    /// </summary>
+    public async Task SendAckAsync(CancellationToken cancellationToken = default)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            ObjectDisposedException.ThrowIf(_closed, this);
+            await _port.WriteAsync([0x00, 0x00, 0xFF, 0x00, 0xFF, 0x00], cancellationToken);
+        }
+        catch
+        {
+            await CloseCoreAsync();
+            throw;
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
     /// Validates both ACK and response, including extended frames. A failed or interrupted exchange closes the
     /// stream, so a late response can never be consumed by the next command. The provider reopens on next connect.
     /// </summary>

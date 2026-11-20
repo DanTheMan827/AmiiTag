@@ -36,6 +36,7 @@ public sealed class IosNfcProvider : INfcProvider
             var session = new NFCTagReaderSession(NFCPollingOption.Iso14443, sessionDelegate, null);
             sessionDelegate.Session = session;
             session.AlertMessage = options.Prompt;
+            Log($"beginning a session ({options.Prompt})");
             session.BeginSession();
         });
 
@@ -47,6 +48,8 @@ public sealed class IosNfcProvider : INfcProvider
 
         return await sessionDelegate.Connected.Task;
     }
+
+    private static void Log(string message) => System.Diagnostics.Debug.WriteLine($"iOS NFC: {message}");
 
     private sealed class SessionDelegate : NFCTagReaderSessionDelegate
     {
@@ -62,12 +65,12 @@ public sealed class IosNfcProvider : INfcProvider
             get; private set;
         }
 
-        public override void DidBecomeActive(NFCTagReaderSession session)
-        {
-        }
+        public override void DidBecomeActive(NFCTagReaderSession session) => Log("session active, polling");
 
         public override void DidInvalidate(NFCTagReaderSession session, NSError error)
         {
+            Log($"session invalidated: {error.Domain} {error.Code} {error.LocalizedDescription}" +
+                (Connection == null ? " (before a tag was connected)" : string.Empty));
             Connection?.MarkInvalidated(error);
 
             if (error.Code == UserCanceled || error.Code == SessionTimeout)
@@ -82,9 +85,11 @@ public sealed class IosNfcProvider : INfcProvider
 
         public override void DidDetectTags(NFCTagReaderSession session, INFCTag[] tags)
         {
+            Log($"detected {tags.Length} tag(s): {string.Join(", ", tags.Select(t => t.Type.ToString()))}");
             var tag = tags.FirstOrDefault();
             if (tag == null || tag.Type != NFCTagType.MiFare)
             {
+                Log("rejected: not a MIFARE family tag");
                 session.InvalidateSession("Invalid tag type.");
                 return;
             }
@@ -93,18 +98,22 @@ public sealed class IosNfcProvider : INfcProvider
             var mifare = Runtime.GetINativeObject<INFCMiFareTag>(tag.Handle, false);
             if (mifare == null)
             {
+                Log("rejected: the tag doesn't implement NFCMiFareTag");
                 session.InvalidateSession("Invalid tag type.");
                 return;
             }
 
+            Log($"MIFARE family {mifare.MifareFamily}, UID {Convert.ToHexString(mifare.Identifier?.ToArray() ?? [])}; connecting");
             session.ConnectTo(tag, error =>
             {
                 if (error != null)
                 {
+                    Log($"connect failed: {error.Domain} {error.Code} {error.LocalizedDescription}");
                     session.InvalidateSession(error.LocalizedDescription);
                     return;
                 }
 
+                Log("connected");
                 Connection = new IosTagConnection(session, tag, mifare);
                 Connected.TrySetResult(Connection);
             });
@@ -165,6 +174,11 @@ internal sealed class IosTagConnection : INfcTagConnection, INfcReselectable
             ThrowIfClosed();
             _tag.SendMiFareCommand(NSData.FromArray(command), (data, error) =>
             {
+                if (error != null)
+                {
+                    System.Diagnostics.Debug.WriteLine($"iOS NFC: command {Convert.ToHexString(command.AsSpan(0, Math.Min(command.Length, 3)))}... failed: {error.Domain} {error.Code} {error.LocalizedDescription}");
+                }
+
                 if (error == null)
                 {
                     completion.TrySetResult(data?.ToArray() ?? Array.Empty<byte>());

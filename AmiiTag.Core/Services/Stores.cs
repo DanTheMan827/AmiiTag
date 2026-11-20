@@ -353,7 +353,7 @@ public sealed class AppSettings
     public bool RandomizeGeneratedUid { get; set; } = false;
 
     /// <summary>
-    /// UART speed for an MFRC522 serial reader (it's switched to this from its power-on 9600).
+    /// UART speed for a serial reader: an MFRC522 or PN532 is switched to this from its power-on rate (9600 / 115200).
     /// </summary>
     public int Mfrc522BaudRate { get; set; } = 921600;
 
