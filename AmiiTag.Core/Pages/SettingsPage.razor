@@ -10,6 +10,7 @@
 @inject AppState State
 @inject AppEnvironment Environment
 @inject TagActions Actions
+@inject IAppNavigator Navigator
 
 <AppPage OnRefresh="RefreshReaders" Title="Settings" OnFilesDropped="Actions.ImportKeysAsync" DropLabel="Drop key files to load them">
     <h2 class="section-title">Keys</h2>
@@ -110,11 +111,20 @@
         </div>
     </div>
 
+    <h2 class="section-title">About</h2>
+    <div class="card">
+        <div class="button-row">
+            <button type="button" class="pill-button" @onclick="OpenLicenses">Licenses</button>
+        </div>
+    </div>
+
     <p class="footnote">Running on @Environment.Platform.</p>
 </AppPage>
 
 @code {
     private AppSettings? _settings;
+
+    private Task OpenLicenses() => Navigator.NavigateAsync(AppRoutes.Licenses());
     private INfcProvider? _selectedProvider;
     private IReadOnlyList<NfcReaderInfo> _readers = [];
     private IReadOnlyList<INfcProvider> _nfcProviders = [];

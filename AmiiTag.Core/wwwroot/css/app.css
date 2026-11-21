@@ -868,6 +868,35 @@ h1:focus {
     box-shadow: var(--shadow-md);
 }
 
+/* ------------------------------------------------------------------ Licenses */
+
+.licenses-intro {
+    margin: 8px 4px 16px;
+    text-align: left;
+}
+
+.license-title {
+    margin: 4px 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+}
+
+.license-text {
+    margin: 0;
+    font-family: inherit;
+    font-size: 12px;
+    line-height: 1.45;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    color: var(--text-secondary);
+}
+
+.license-separator {
+    margin: 18px 0;
+    border: 0;
+    border-top: 1px solid var(--card-border);
+}
+
 /* ------------------------------------------------------------------ Settings */
 
 .card {

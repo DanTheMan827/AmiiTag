@@ -7,8 +7,6 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DanTheMan827.ShaSync", "Dan
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DanTheMan827.Helpers", "DanTheMan827.Helpers\DanTheMan827.Helpers.csproj", "{E88C2C6B-A18F-439E-ABA3-C1A3120FD4F2}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "libamiibo", "libamiibo\libamiibo\libamiibo.csproj", "{6A89DFAF-E485-4DE0-8068-580B6A7D4AE6}"
-EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DanTheMan827.ShaSync.TestApp", "DanTheMan827.ShaSync.TestApp\DanTheMan827.ShaSync.TestApp.csproj", "{8BBCB51C-EC1B-4E37-9771-EE671B228FD6}"
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Maui", "AmiiTag.Maui\AmiiTag.Maui.csproj", "{02C19B2C-1FF5-41C4-8F1E-C926F6B68E9C}"
@@ -41,6 +39,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Nfc.Pn532", "AmiiTa
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.NfcRelay", "AmiiTag.NfcRelay\AmiiTag.NfcRelay.csproj", "{1644F843-DEE0-4760-8EE0-85CF8261B448}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "AmiiTag.Licenses", "AmiiTag.Licenses\AmiiTag.Licenses.csproj", "{1D7FC34A-7EBD-4590-B23E-5A912A299E04}"
+EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AmiiTag.Core.Tests", "AmiiTag.Core.Tests\AmiiTag.Core.Tests.csproj", "{516B979F-2852-4784-9AB8-9C76094B6B4C}"
 EndProject
 Global
@@ -57,6 +57,10 @@ Global
 		{395C5E91-C386-480D-A1B9-FA460193146A}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{395C5E91-C386-480D-A1B9-FA460193146A}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{395C5E91-C386-480D-A1B9-FA460193146A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1D7FC34A-7EBD-4590-B23E-5A912A299E04}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1D7FC34A-7EBD-4590-B23E-5A912A299E04}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1D7FC34A-7EBD-4590-B23E-5A912A299E04}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1D7FC34A-7EBD-4590-B23E-5A912A299E04}.Release|Any CPU.Build.0 = Release|Any CPU
 		{1644F843-DEE0-4760-8EE0-85CF8261B448}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{1644F843-DEE0-4760-8EE0-85CF8261B448}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{1644F843-DEE0-4760-8EE0-85CF8261B448}.Release|Any CPU.ActiveCfg = Release|Any CPU
@@ -77,10 +81,6 @@ Global
 		{E88C2C6B-A18F-439E-ABA3-C1A3120FD4F2}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{E88C2C6B-A18F-439E-ABA3-C1A3120FD4F2}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{E88C2C6B-A18F-439E-ABA3-C1A3120FD4F2}.Release|Any CPU.Build.0 = Release|Any CPU
-		{6A89DFAF-E485-4DE0-8068-580B6A7D4AE6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{6A89DFAF-E485-4DE0-8068-580B6A7D4AE6}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{6A89DFAF-E485-4DE0-8068-580B6A7D4AE6}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{6A89DFAF-E485-4DE0-8068-580B6A7D4AE6}.Release|Any CPU.Build.0 = Release|Any CPU
 		{8BBCB51C-EC1B-4E37-9771-EE671B228FD6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{8BBCB51C-EC1B-4E37-9771-EE671B228FD6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8BBCB51C-EC1B-4E37-9771-EE671B228FD6}.Release|Any CPU.ActiveCfg = Release|Any CPU

@@ -164,7 +164,6 @@
     <TrimmerRootAssembly Include="AmiiTag.Bluetooth" />
     <TrimmerRootAssembly Include="DanTheMan827.Helpers" />
     <TrimmerRootAssembly Include="DanTheMan827.ShaSync" />
-    <TrimmerRootAssembly Include="libamiibo" />
     <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components" />
     <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.Web" />
     <TrimmerRootAssembly Include="Microsoft.AspNetCore.Components.WebView" />

@@ -22,6 +22,7 @@
     <ProjectReference Include="..\AmiiTag.Nfc.Mfrc522\AmiiTag.Nfc.Mfrc522.csproj" />
     <ProjectReference Include="..\AmiiTag.Nfc.Pn532\AmiiTag.Nfc.Pn532.csproj" />
     <ProjectReference Include="..\AmiiTag.Nfc.Flipper\AmiiTag.Nfc.Flipper.csproj" />
+    <ProjectReference Include="..\AmiiTag.Licenses\AmiiTag.Licenses.csproj" />
   </ItemGroup>
 
 </Project>

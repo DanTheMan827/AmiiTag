@@ -1,3 +1,4 @@
+using AmiiTag.Licenses;
 using AmiiTag.Nfc;
 using AmiiTag.Nfc.Flipper;
 using AmiiTag.Nfc.Mfrc522;
@@ -5,6 +6,7 @@ using AmiiTag.Nfc.Pn532;
 using AmiiTag.NfcRelay;
 
 // amiitag-nfc-relay [COM port] [--baud <rate>] [--timeout <ms>] [--log <file>]
+// amiitag-nfc-relay --licenses
 //
 // The tag on a serial NFC reader (MFRC522 or PN532, detected the same way as the app) is emulated by a Flipper Zero
 // running the NFC Bridge app: the Flipper does anticollision with the real tag's UID, every frame its reader sends is
@@ -30,6 +32,9 @@ for (var i = 0; i < args.Length; i++)
         case "--log" when i + 1 < args.Length:
             logPath = args[++i];
             break;
+        case "--licenses":
+            PrintLicenses();
+            return 0;
         case "-h" or "--help" or "/?":
             Console.WriteLine("Usage: amiitag-nfc-relay [COM port] [--baud <rate>] [--timeout <ms>] [--log <file>]");
             Console.WriteLine();
@@ -37,6 +42,7 @@ for (var i = 0; i < args.Length; i++)
             Console.WriteLine($"  --baud     the reader's serial speed once found: {string.Join(", ", Pn532NfcProvider.SettingsBaudRates)} (default {Pn532NfcProvider.FastBaudRate})");
             Console.WriteLine("  --timeout  how long the Flipper waits for the real tag's answer (default 250 ms)");
             Console.WriteLine("  --log      also write the traffic to this file");
+            Console.WriteLine("  --licenses print the licenses of the third-party software included");
             return 0;
         case var value when !value.StartsWith('-') && portArgument == null:
             portArgument = value;
@@ -242,6 +248,23 @@ static async Task<byte[]?> TryTransceiveAsync(INfcTagConnection tag, byte[] comm
         }
 
         return null;
+    }
+}
+
+// AmiiTag itself, then every third-party license, sorted by name.
+static void PrintLicenses()
+{
+    const string Separator = "----------------------------------------";
+    Console.OutputEncoding = System.Text.Encoding.UTF8;
+    Console.WriteLine("AmiiTag NFC relay");
+    Console.WriteLine("https://github.com/DanTheMan827/AmiiTag");
+    Console.WriteLine("License: no license has been chosen yet.");
+    foreach (var (_, text) in ThirdPartyLicenses.GetAll().OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase))
+    {
+        Console.WriteLine();
+        Console.WriteLine(Separator);
+        Console.WriteLine();
+        Console.WriteLine(text);
     }
 }
 

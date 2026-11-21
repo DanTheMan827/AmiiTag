@@ -81,4 +81,7 @@ public static class AppRoutes
 
     public static AppRoute Settings() =>
         new(typeof(SettingsPage), "Settings", "settings", NoParameters, RoutePresentation.Modal);
+
+    public static AppRoute Licenses() =>
+        new(typeof(LicensesPage), "Licenses", "licenses", NoParameters);
 }

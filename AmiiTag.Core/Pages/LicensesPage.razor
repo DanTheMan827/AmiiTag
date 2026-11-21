@@ -1,0 +1,36 @@
+@page "/licenses"
+@using AmiiTag.Licenses
+
+@* Settings > Licenses: the third-party software AmiiTag ships, sorted by name, each with its license. *@
+
+<AppPage Title="Licenses">
+    <p class="footnote licenses-intro">AmiiTag includes the following third-party software.</p>
+
+    <div class="card licenses">
+        @for (var i = 0; i < _licenses.Count; i++)
+        {
+            var (title, body) = _licenses[i];
+            if (i > 0)
+            {
+                <hr class="license-separator" />
+            }
+
+            <section class="license">
+                <h3 class="license-title">@title</h3>
+                <pre class="license-text">@body</pre>
+            </section>
+        }
+    </div>
+</AppPage>
+
+@code {
+    // Sorted by key (the file name), ignoring case; each shows its first line as the title and the rest below it.
+    private readonly IReadOnlyList<(string Title, string Body)> _licenses = ThirdPartyLicenses.GetAll()
+        .OrderBy(item => item.Key, StringComparer.OrdinalIgnoreCase)
+        .Select(item =>
+        {
+            var split = item.Value.IndexOf('\n');
+            return split < 0 ? (item.Value, string.Empty) : (item.Value[..split], item.Value[(split + 1)..]);
+        })
+        .ToList();
+}

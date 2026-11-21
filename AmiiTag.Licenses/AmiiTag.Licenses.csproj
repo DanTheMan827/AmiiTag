@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The licenses of the third-party software AmiiTag ships: one text file per project in licenses/, embedded and read
+       with ThirdPartyLicenses.GetAll(). Each file starts with the project name, URL, license and what it's used for. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>AmiiTag.Licenses</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="licenses\*.txt" LogicalName="licenses/%(Filename)%(Extension)" />
+  </ItemGroup>
+
+</Project>
