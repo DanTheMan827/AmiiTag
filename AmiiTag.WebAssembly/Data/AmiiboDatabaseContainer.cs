@@ -3,7 +3,9 @@ using System.Text;
 using System.Text.Json;
 using AmiiTag.AmiiboData;
 using AmiiTag.Core;
+using AmiiTag.Core.Data;
 using AmiiTag.Core.Interfaces;
+using Microsoft.AspNetCore.Components.WebAssembly.Http;
 using Microsoft.JSInterop;
 
 namespace AmiiTag.WebAssembly.Data;
@@ -14,16 +16,16 @@ namespace AmiiTag.WebAssembly.Data;
 /// IndexedDB cache keyed by its hash, and is downloaded only when that hash isn't cached yet. After an update, cached
 /// files no source lists any more are removed. The loaded database is also saved in a compact binary form
 /// (<see cref="AmiiboDatabaseSnapshot"/>) under a key made from the manifests; while they're unchanged it's loaded from
-/// that, skipping the JSON parsing that makes a full import slow in the browser.
+/// that, skipping the JSON parsing that makes a full import slow in the browser. Which databases, in what order, comes
+/// from databases.json in the web app's own folder (<see cref="DatabaseSources"/>); the last copy fetched is kept in
+/// local storage for when it can't be, and the built-in list is used when there's neither.
 /// </summary>
-public sealed class AmiiboDatabaseContainer(AmiiboDatabase database, IJSRuntime js) : IDatabaseContainer
+public sealed class AmiiboDatabaseContainer(AmiiboDatabase database, IJSRuntime js, IAppPaths paths) : IDatabaseContainer
 {
-    private static readonly string[] UpdateUrls =
-    [
-        "https://dantheman827.github.io/AmiiboData",
-        "https://dantheman827.github.io/UnofficialAmiiboDB",
-    ];
+    private const string ListStorageKey = "amiitag.databases";
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private IReadOnlyList<DatabaseSource> _sources = DatabaseSources.BuiltIn;
+    private string[] UpdateUrls => _sources.Select(source => source.Url).ToArray();
     public AmiiboDatabase Database { get; } = database;
     public bool IsLoaded { get; private set; }
     public bool LoadsRemotely => true;
@@ -50,6 +52,7 @@ public sealed class AmiiboDatabaseContainer(AmiiboDatabase database, IJSRuntime 
         await _gate.WaitAsync(cancellationToken);
         try
         {
+            _sources = await LoadSourcesAsync(cancellationToken);
             var manifests = new Dictionary<string, byte[]>();
             var cached = false;
             AmiiboDatabase staged;
@@ -170,6 +173,56 @@ public sealed class AmiiboDatabaseContainer(AmiiboDatabase database, IJSRuntime 
         }
 
         return staged;
+    }
+
+    /// <summary>
+    /// databases.json from the web app's own folder (bypassing the HTTP cache), kept in local storage; else the copy
+    /// kept last time; else the built-in list.
+    /// </summary>
+    private async Task<IReadOnlyList<DatabaseSource>> LoadSourcesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            using var http = new HttpClient { BaseAddress = new Uri(paths.BaseAddress) };
+            using var request = new HttpRequestMessage(HttpMethod.Get, DatabaseSources.FileName);
+            request.SetBrowserRequestCache(BrowserRequestCache.NoCache);
+            using var response = await http.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            if (DatabaseSources.Parse(await response.Content.ReadAsByteArrayAsync(cancellationToken)) is { } fetched)
+            {
+                try
+                {
+                    await js.InvokeVoidAsync("localStorage.setItem", cancellationToken, ListStorageKey,
+                        Encoding.UTF8.GetString(DatabaseSources.Serialize(fetched)));
+                }
+                catch (JSException)
+                {
+                    // No local storage (private browsing, blocked): the list is just fetched every time.
+                }
+
+                return fetched;
+            }
+
+            Console.WriteLine($"AmiiTag: {DatabaseSources.FileName} isn't a usable list; using the last one kept.");
+        }
+        catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException && !cancellationToken.IsCancellationRequested)
+        {
+            Console.WriteLine($"AmiiTag: couldn't fetch {DatabaseSources.FileName} ({ex.Message}); using the last one kept.");
+        }
+
+        try
+        {
+            if (await js.InvokeAsync<string?>("localStorage.getItem", cancellationToken, ListStorageKey) is { } kept &&
+                DatabaseSources.Parse(Encoding.UTF8.GetBytes(kept)) is { } cached)
+            {
+                return cached;
+            }
+        }
+        catch (JSException)
+        {
+        }
+
+        return DatabaseSources.BuiltIn;
     }
 
     private static string ManifestUrl(string source) => new Uri(new Uri(source.TrimEnd('/') + "/"), "sha1sum.json").AbsoluteUri;

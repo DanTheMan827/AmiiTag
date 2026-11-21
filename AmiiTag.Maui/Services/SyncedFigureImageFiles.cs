@@ -11,11 +11,12 @@ namespace AmiiTag.Maui.Services;
 public sealed class SyncedFigureImageFiles : IFileProvider
 {
     public const string UrlPrefix = "figure-images/";
-    private readonly string[] _imageFolders;
+    private readonly Func<IEnumerable<string>> _sourceFolders;
 
-    public SyncedFigureImageFiles(IEnumerable<string> sourceFolders)
+    /// <param name="sourceFolders">The databases' folders, asked on each request (the list of databases can change).</param>
+    public SyncedFigureImageFiles(Func<IEnumerable<string>> sourceFolders)
     {
-        _imageFolders = sourceFolders.Select(folder => Path.Combine(folder, "images")).ToArray();
+        _sourceFolders = sourceFolders;
     }
 
     public string? GetImageUrl(string fileName)
@@ -35,9 +36,9 @@ public sealed class SyncedFigureImageFiles : IFileProvider
         var name = path[UrlPrefix.Length..];
         if (!IsIconName(name)) return new NotFoundFileInfo(subpath);
 
-        foreach (var folder in _imageFolders)
+        foreach (var folder in _sourceFolders())
         {
-            var file = new FileInfo(Path.Combine(folder, name));
+            var file = new FileInfo(Path.Combine(folder, "images", name));
             if (file.Exists) return new PhysicalFileInfo(file);
         }
         return new NotFoundFileInfo(name);
