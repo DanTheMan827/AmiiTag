@@ -27,6 +27,7 @@ See the [screenshot gallery](screenshots/README.md) for a tour of the main workf
 
 | Platform | Support |
 | --- | --- |
+| [Web](https://dantheman827.github.io/AmiiTag/) | Supported for browsers that support WebBluetooth and WebSerial |
 | Windows | Supported |
 | Android | Supported |
 | iPhone and iPad | Supported for users who can build and sign the app with an Apple Developer account |
