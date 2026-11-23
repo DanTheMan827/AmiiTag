@@ -149,6 +149,10 @@
     <MtouchLink>SdkOnly</MtouchLink>
 	<UseInterpreter>true</UseInterpreter>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)' == 'Release' and '$(TargetFramework)' == 'net10.0-maccatalyst'">
+    <MtouchLink>SdkOnly</MtouchLink>
+    <UseInterpreter>true</UseInterpreter>
+  </PropertyGroup>
 
   <!--
     Android Release trims every assembly marked trimmable (its default), which includes the Blazor ones; they're kept
