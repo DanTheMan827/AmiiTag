@@ -404,3 +404,6 @@ locked-secret.bin
 
 # AmiiTag's Windows single file publish profiles (no secrets in them)
 !AmiiTag.Maui/Properties/PublishProfiles/*.pubxml
+
+# macOS
+.DS_Store

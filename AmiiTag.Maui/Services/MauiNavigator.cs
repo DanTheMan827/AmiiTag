@@ -116,7 +116,7 @@ public sealed class MauiNavigator : IAppNavigator
         // (back button, swipe from the edge to go back) and Windows' back arrow always leads back to the main screen.
         // Android/Mac: modal routes are sheets.
         var asSheet = route.Presentation == RoutePresentation.Modal &&
-                      DeviceInfo.Platform != DevicePlatform.WinUI && DeviceInfo.Platform != DevicePlatform.iOS;
+                      DeviceInfo.Platform != DevicePlatform.WinUI && DeviceInfo.Platform != DevicePlatform.iOS && DeviceInfo.Platform != DevicePlatform.macOS && DeviceInfo.Platform != DevicePlatform.MacCatalyst;
         if (asSheet)
         {
             var sheet = CreateNavigationPage(page);

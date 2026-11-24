@@ -71,7 +71,7 @@ namespace AmiiTag.Maui
             builder.Services.AddSingleton<AmiiTag.Nfc.Flipper.IFlipperTransportProvider>(_ =>
                 new CompositeFlipperTransportProvider(new WinUsbFlipperTransportProvider(), new HidFlipperTransportProvider()));
 #elif MACCATALYST
-            builder.Services.AddSingleton<AmiiTag.Nfc.Flipper.IFlipperTransportProvider, HidFlipperTransportProvider>();
+            //builder.Services.AddSingleton<AmiiTag.Nfc.Flipper.IFlipperTransportProvider, HidFlipperTransportProvider>();
 #endif
 
             // Native context menus where they can open at the pointer (Mac uses the page's own menu).
@@ -102,6 +102,13 @@ namespace AmiiTag.Maui
             builder.Services.AddSingleton<INfcProvider, AmiiTag.Maui.NfcProviders.IosNfcProvider>();
 #elif WINDOWS
             builder.Services.AddSingleton<INfcProvider, AmiiTag.Nfc.PcSc.PcscNfcProvider>();
+            builder.Services.AddSingleton<AmiiTag.Nfc.ISerialPortFactory, AmiiTag.Maui.NfcProviders.SystemSerialPortFactory>();
+            // Serial readers: one choice in Settings, with the chip detected on connection (PN532, else MFRC522).
+            builder.Services.AddSingleton<AmiiTag.Nfc.Mfrc522.Mfrc522NfcProvider>();
+            builder.Services.AddSingleton<AmiiTag.Nfc.Pn532.Pn532NfcProvider>();
+            builder.Services.AddSingleton<INfcProvider>(sp => new AmiiTag.Nfc.AutoDetectSerialNfcProvider(
+                sp.GetRequiredService<AmiiTag.Nfc.Mfrc522.Mfrc522NfcProvider>(), sp.GetRequiredService<AmiiTag.Nfc.Pn532.Pn532NfcProvider>()));
+#elif MACCATALYST
             builder.Services.AddSingleton<AmiiTag.Nfc.ISerialPortFactory, AmiiTag.Maui.NfcProviders.SystemSerialPortFactory>();
             // Serial readers: one choice in Settings, with the chip detected on connection (PN532, else MFRC522).
             builder.Services.AddSingleton<AmiiTag.Nfc.Mfrc522.Mfrc522NfcProvider>();
