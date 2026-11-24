@@ -31,7 +31,7 @@ See the [screenshot gallery](screenshots/README.md) for a tour of the main workf
 | Windows | Supported |
 | Android | Supported |
 | iPhone and iPad | Supported for users who can build and sign the app with an Apple Developer account |
-| macOS | Supported for users who can build and sign the app with an Apple Developer account |
+| macOS | Unsigned, so it will have to be manually approved from the system security settings |
 
 Apple builds require an active Apple Developer account and the appropriate signing configuration. AmiiTag is not distributed through this project as a pre-signed Apple application.
 
