@@ -110,7 +110,7 @@ public sealed class PixlException : BleException
 /// Only one file can be open at a time (opening another closes it), so file operations are serialised here.
 /// The device also offers an AmiiboLink compatible mode (it then advertises as "amiibolink" and is handled as one).
 /// </remarks>
-public sealed class PixlDevice : TagDeviceBase, IFileTagDevice
+public class PixlDevice : TagDeviceBase, IFileTagDevice
 {
     public const byte CmdGetVersion = 0x01;
     public const byte CmdEnterDfu = 0x02;
@@ -178,6 +178,10 @@ public sealed class PixlDevice : TagDeviceBase, IFileTagDevice
     /// </summary>
     public TimeSpan ProbeTimeout { get; init; } = TimeSpan.FromSeconds(3);
 
+    protected virtual int RequestedMtu => 250;
+
+    protected virtual int ProtocolFramePayload => MaxFramePayload;
+
     public override async Task<bool> InitializeAsync(CancellationToken cancellationToken = default)
     {
         _write = await TryGetCharacteristicAsync(BleUuids.NordicUartService, BleUuids.NordicUartWrite, cancellationToken);
@@ -188,8 +192,10 @@ public sealed class PixlDevice : TagDeviceBase, IFileTagDevice
         }
 
         // The firmware is built for an MTU of 250. Where the platform reports a smaller one, keep frames inside it.
-        var mtu = await Connection.RequestMtuAsync(250, cancellationToken);
-        _framePayload = mtu > 0 ? Math.Clamp(mtu - 3 - HeaderLength, 16, MaxFramePayload) : MaxFramePayload;
+        var mtu = await Connection.RequestMtuAsync(RequestedMtu, cancellationToken);
+        _framePayload = mtu > 0
+            ? Math.Clamp(mtu - 3 - HeaderLength, 16, ProtocolFramePayload)
+            : ProtocolFramePayload;
 
         _responses = new BleNotificationQueue(notify);
         await notify.StartNotificationsAsync(cancellationToken);

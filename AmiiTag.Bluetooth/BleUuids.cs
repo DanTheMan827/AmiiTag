@@ -34,7 +34,8 @@ public static class BleUuids
     {
         Services = [NordicUartService, LegacyPuckService, AmiiboLinkV2AdvertisedService],
         Names = ["amiibolink", "AmiLoop", "Pixl.js"],
-        NamePrefixes = ["Puck.js", "Pixl", "Flask", "Slide"],
+        NamePrefixes = ["Puck.js", "Pixl", "Flask", "Slide", "Flashiibo", "Flashbo"],
+        NameContains = ["Flashiibo", "Flashbo"],
         OptionalServices = [NordicUartService, LegacyPuckService],
     };
 
