@@ -17,7 +17,14 @@ AmiiTag is a cross-platform app for reading, writing, organizing, and managing a
 - View game compatibility and usage details.
 - Save, load, and manage tag files.
 - Manage v3 lock-ons and maintain a lock-on library.
-- Connect to and manage supported Bluetooth devices, including Pixl.js, Puck.js, AmiiboLink, AmiLoop, along with the Flask / Slide from [bluuplabs](https://bluuplabs.com/).
+- Connect to and manage supported Bluetooth devices:
+  - AmiiboLink
+  - AmiLoop
+  - Flashiibo
+  - Flask by [bluuplabs](https://bluuplabs.com/)
+  - Pixl.js
+  - Puck.js
+  - Slide by [bluuplabs](https://bluuplabs.com/)
 - Connect to and manage N2 Elite banks.
 - Use compatible USB NFC readers on supported desktop platforms.
 
