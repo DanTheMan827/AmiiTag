@@ -182,6 +182,11 @@ public class PixlDevice : TagDeviceBase, IFileTagDevice
 
     protected virtual int ProtocolFramePayload => MaxFramePayload;
 
+    /// <summary>
+    /// Whether the second capacity value in a drive record is used space. Pixl.js reports free space instead.
+    /// </summary>
+    protected virtual bool DriveCapacityValueIsUsed => false;
+
     public override async Task<bool> InitializeAsync(CancellationToken cancellationToken = default)
     {
         _write = await TryGetCharacteristicAsync(BleUuids.NordicUartService, BleUuids.NordicUartWrite, cancellationToken);
@@ -238,7 +243,8 @@ public class PixlDevice : TagDeviceBase, IFileTagDevice
             var label = (char)reader.Byte();
             var name = reader.String();
             var total = reader.UInt32();
-            var free = reader.UInt32();
+            var capacityValue = reader.UInt32();
+            var free = DriveCapacityValueIsUsed ? Math.Max(0, (long)total - capacityValue) : capacityValue;
             drives.Add(new PixlDrive(label, name, status == 0, total, free));
         }
 

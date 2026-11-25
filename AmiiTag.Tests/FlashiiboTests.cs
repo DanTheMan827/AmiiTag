@@ -31,6 +31,24 @@ public sealed class FlashiiboTests
     }
 
     [Fact]
+    public async Task ProDriveUsageTreatsSecondCapacityAsUsedBytes()
+    {
+        var sim = new PixlSimulator("Flashiibo Pro")
+        {
+            DriveSize = 10_000,
+            ReportUsedCapacity = true,
+        };
+        sim.AddFile("E:/amiibo/test.bin", new byte[1_500]);
+        var device = new FlashiiboDevice(sim);
+        Assert.True(await device.InitializeAsync());
+
+        var drive = Assert.Single(await device.GetDrivesAsync());
+        Assert.Equal(10_000, drive.TotalBytes);
+        Assert.Equal(1_500, drive.UsedBytes);
+        Assert.Equal(8_500, drive.FreeBytes);
+    }
+
+    [Fact]
     public async Task FactoryCreatesFobDriverAndUsesCompanionCommands()
     {
         var sim = new FobSimulator();

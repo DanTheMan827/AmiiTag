@@ -149,6 +149,8 @@ public sealed class PixlSimulator : SimulatedUartDevice
 
     public long DriveSize { get; set; } = 2 * 1024 * 1024;
 
+    public bool ReportUsedCapacity { get; set; }
+
     /// <summary>
     /// Commands answered with 0xFF (unsupported), as old firmware would.
     /// </summary>
@@ -280,7 +282,8 @@ public sealed class PixlSimulator : SimulatedUartDevice
             case 0x10:
             {
                 var used = _files.Values.Sum(f => (long)f.Length);
-                return (0, [1, 0, (byte)'E', .. Str("External Flash"), .. U32((uint)DriveSize), .. U32((uint)(DriveSize - used))]);
+                var capacityValue = ReportUsedCapacity ? used : DriveSize - used;
+                return (0, [1, 0, (byte)'E', .. Str("External Flash"), .. U32((uint)DriveSize), .. U32((uint)capacityValue)]);
             }
 
             case 0x11:

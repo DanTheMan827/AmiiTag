@@ -16,4 +16,7 @@ public sealed class FlashiiboDevice : PixlDevice
     protected override int RequestedMtu => 517;
 
     protected override int ProtocolFramePayload => 178;
+
+    // Unlike Pixl.js, Flashiibo Pro reports total bytes followed by used bytes in each drive record.
+    protected override bool DriveCapacityValueIsUsed => true;
 }
