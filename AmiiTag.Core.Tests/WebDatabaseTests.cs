@@ -21,6 +21,22 @@ public sealed class WebDatabaseTests : BunitContext
     private static bool Cached(JSRuntimeInvocation invocation) => (bool)invocation.Arguments[1]!;
     private const string ImageUrl = "icon_00000000-00000002.png?imagehash";
 
+    public WebDatabaseTests() =>
+        JSInterop.Setup<string?>("localStorage.getItem", "amiitag.databases").SetResult(null);
+
+    private static AmiiboDatabaseContainer Container(AmiiboDatabase database, IJSRuntime js) =>
+        new(database, js, new TestAppPaths());
+
+    private sealed class TestAppPaths : IAppPaths
+    {
+        public string UserData => string.Empty;
+        public string KeyFile => string.Empty;
+        public string DatabaseBase => string.Empty;
+        public string Signatures => string.Empty;
+        public string Settings => string.Empty;
+        public string BaseAddress => "https://app.test/";
+    }
+
     private void Setup(bool cacheOnly)
     {
         JSInterop.Setup<byte[]>("amiitag.assets.readManifest", i => Cached(i) == cacheOnly).SetResult(Manifest);
@@ -41,7 +57,7 @@ public sealed class WebDatabaseTests : BunitContext
     {
         Setup(false);
         var database = new AmiiboDatabase();
-        var container = new AmiiboDatabaseContainer(database, JSInterop.JSRuntime);
+        var container = Container(database, JSInterop.JSRuntime);
         await container.LoadData();
         Assert.True(container.IsLoaded); Assert.Single(database.Figures);
         Assert.Equal(2, JSInterop.Invocations["amiitag.assets.commitManifest"].Count);
@@ -58,7 +74,7 @@ public sealed class WebDatabaseTests : BunitContext
     public async Task DatabaseFilesAreReadByTheirHashedUrls()
     {
         Setup(false);
-        await new AmiiboDatabaseContainer(new AmiiboDatabase(), JSInterop.JSRuntime).LoadData();
+        await Container(new AmiiboDatabase(), JSInterop.JSRuntime).LoadData();
         var files = JSInterop.Invocations["amiitag.assets.readFile"].Select(Url).ToList();
         Assert.Contains(files, url => url.EndsWith("/database/amiibo.json?dbhash"));
         Assert.Contains(files, url => url.EndsWith("/database/games_info.json?gameshash"));
@@ -71,7 +87,7 @@ public sealed class WebDatabaseTests : BunitContext
         JSInterop.Setup<byte[]>("amiitag.assets.readManifest", i => !Cached(i)).SetException(new JSException("offline"));
         JSInterop.Setup<byte[]>("amiitag.assets.readFile", i => !Cached(i)).SetException(new JSException("offline"));
         var database = new AmiiboDatabase();
-        var container = new AmiiboDatabaseContainer(database, JSInterop.JSRuntime);
+        var container = Container(database, JSInterop.JSRuntime);
         await container.LoadData();
         Assert.True(container.IsLoaded); Assert.Single(database.Figures);
         Assert.Empty(JSInterop.Invocations["amiitag.assets.commitManifest"]);
@@ -84,7 +100,7 @@ public sealed class WebDatabaseTests : BunitContext
     {
         Setup(false);
         var database = new AmiiboDatabase();
-        var container = new AmiiboDatabaseContainer(database, JSInterop.JSRuntime);
+        var container = Container(database, JSInterop.JSRuntime);
         await container.LoadData(); var original = Assert.Single(database.Figures).Value;
         JSInterop.Setup<byte[]>("amiitag.assets.readManifest", _ => true).SetException(new JSException("offline and no cache"));
         JSInterop.Setup<byte[]>("amiitag.assets.readFile", _ => true).SetException(new JSException("offline and no cache"));
@@ -96,7 +112,7 @@ public sealed class WebDatabaseTests : BunitContext
     public async Task CancelledImportDoesNotStartAnOfflineRetry()
     {
         JSInterop.Setup<byte[]>("amiitag.assets.readManifest", _ => true).SetException(new OperationCanceledException());
-        var container = new AmiiboDatabaseContainer(new AmiiboDatabase(), JSInterop.JSRuntime);
+        var container = Container(new AmiiboDatabase(), JSInterop.JSRuntime);
         await Assert.ThrowsAsync<OperationCanceledException>(() => container.LoadData());
         Assert.Single(JSInterop.Invocations["amiitag.assets.readManifest"]);
         Assert.False(container.IsLoaded);
@@ -107,19 +123,20 @@ public sealed class WebDatabaseTests : BunitContext
     {
         Setup(false);
         var first = new AmiiboDatabase();
-        await new AmiiboDatabaseContainer(first, JSInterop.JSRuntime).LoadData();
+        await Container(first, JSInterop.JSRuntime).LoadData();
         var write = Assert.Single(JSInterop.Invocations["amiitag.assets.writeSnapshot"]);
         var key = (string)write.Arguments[0]!;
         var bytes = (byte[])write.Arguments[1]!;
 
         using var next = new BunitContext();
+        next.JSInterop.Setup<string?>("localStorage.getItem", "amiitag.databases").SetResult(null);
         next.JSInterop.Setup<byte[]>("amiitag.assets.readManifest", _ => true).SetResult(Manifest);
         next.JSInterop.Setup<byte[]?>("amiitag.assets.readSnapshot", i => (string)i.Arguments[0]! == key).SetResult(bytes);
         next.JSInterop.Setup<string[]>("amiitag.assets.uncached", _ => true).SetResult([]);
         next.JSInterop.Setup<int>("amiitag.assets.retain", _ => true).SetResult(0);
         next.JSInterop.SetupVoid("amiitag.assets.commitManifest", _ => true).SetVoidResult();
         var second = new AmiiboDatabase();
-        await new AmiiboDatabaseContainer(second, next.JSInterop.JSRuntime).LoadData();
+        await Container(second, next.JSInterop.JSRuntime).LoadData();
         Assert.Empty(next.JSInterop.Invocations["amiitag.assets.readFile"]);
         var original = Assert.Single(first.Figures);
         var loaded = Assert.Single(second.Figures);
@@ -143,7 +160,7 @@ public sealed class WebDatabaseTests : BunitContext
     {
         Setup(false);
         var reports = new List<ProgressInfo>();
-        await new AmiiboDatabaseContainer(new AmiiboDatabase(), JSInterop.JSRuntime)
+        await Container(new AmiiboDatabase(), JSInterop.JSRuntime)
             .UpdateData(info => { reports.Add(info); return Task.CompletedTask; });
         Assert.NotEmpty(reports);
         Assert.All(reports, info => Assert.True(info.Total > 0));
@@ -186,7 +203,7 @@ public sealed class WebDatabaseTests : BunitContext
         await storage.WriteAsync("settings", bytes);
         Assert.IsType<byte[]>(Assert.Single(JSInterop.Invocations["amiitag.storage.write"]).Arguments[1]);
         Setup(false);
-        var database = new AmiiboDatabase(); await new AmiiboDatabaseContainer(database, JSInterop.JSRuntime).LoadData();
+        var database = new AmiiboDatabase(); await Container(database, JSInterop.JSRuntime).LoadData();
         JSInterop.Setup<string?>("amiitag.assets.imageUrl", _ => true).SetResult("blob:https://app/image");
         JSInterop.SetupVoid("amiitag.assets.releaseImageUrls").SetVoidResult();
         await using var provider = new WebFigureImageProvider(JSInterop.JSRuntime);

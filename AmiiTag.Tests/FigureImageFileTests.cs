@@ -21,7 +21,7 @@ public class FigureImageFileTests : IDisposable
     public async Task StaticUrlStreamsTheOriginalImageBytes()
     {
         SaveIcon("official", [0x89, 0x50, 0x4E, 0x47]);
-        var files = new SyncedFigureImageFiles([Source("official")]);
+        var files = new SyncedFigureImageFiles(() => [Source("official")]);
         var url = files.GetImageUrl(Icon)!;
         Assert.StartsWith("/figure-images/" + Icon + "?v=", url);
         Assert.DoesNotContain("base64", url);
@@ -36,7 +36,7 @@ public class FigureImageFileTests : IDisposable
     [Fact]
     public void ImagesSyncedAfterTheWebViewWasCreatedBecomeAvailable()
     {
-        var files = new SyncedFigureImageFiles([Source("official")]);
+        var files = new SyncedFigureImageFiles(() => [Source("official")]);
         Assert.Null(files.GetImageUrl(Icon));
         Assert.False(Directory.Exists(Source("official")));
         SaveIcon("official", [1, 2, 3]);
@@ -48,7 +48,7 @@ public class FigureImageFileTests : IDisposable
     public void UpdatedImagesProduceANewUrlWithoutAnEncodedImageCache()
     {
         var path = SaveIcon("official", [1, 2]);
-        var files = new SyncedFigureImageFiles([Source("official")]);
+        var files = new SyncedFigureImageFiles(() => [Source("official")]);
         var original = files.GetImageUrl(Icon);
         File.WriteAllBytes(path, [3, 4, 5]);
         Assert.NotEqual(original, files.GetImageUrl(Icon));
@@ -59,7 +59,7 @@ public class FigureImageFileTests : IDisposable
     [Fact]
     public void SourcePriorityAndMissingImageFallbackArePreserved()
     {
-        var files = new SyncedFigureImageFiles([Source("official"), Source("unofficial")]);
+        var files = new SyncedFigureImageFiles(() => [Source("official"), Source("unofficial")]);
         Assert.Null(files.GetImageUrl(Icon));
         SaveIcon("unofficial", [2]);
         Assert.Contains("unofficial", files.GetFileInfo("figure-images/" + Icon).PhysicalPath);
@@ -79,7 +79,7 @@ public class FigureImageFileTests : IDisposable
     public void OnlyFlatIconPngPathsAreExposed(string request)
     {
         SaveIcon("official", [1]);
-        var files = new SyncedFigureImageFiles([Source("official")]);
+        var files = new SyncedFigureImageFiles(() => [Source("official")]);
         Assert.False(files.GetFileInfo(request).Exists);
         Assert.False(files.GetDirectoryContents("figure-images").Exists);
     }
@@ -87,7 +87,7 @@ public class FigureImageFileTests : IDisposable
     [Fact]
     public void NormalBlazorAssetsStillResolveThroughTheCompositeProvider()
     {
-        var images = new SyncedFigureImageFiles([Source("official")]);
+        var images = new SyncedFigureImageFiles(() => [Source("official")]);
         var webRoot = Path.Combine(_root, "wwwroot");
         Directory.CreateDirectory(webRoot);
         File.WriteAllText(Path.Combine(webRoot, "index.html"), "host page");

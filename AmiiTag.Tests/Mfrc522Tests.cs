@@ -169,7 +169,7 @@ public class Mfrc522Tests
         var (provider, _, chip) = Create(Ntag215Simulator.CreateBlank());
         chip.ChipConnected = false;
 
-        var error = await Assert.ThrowsAsync<NfcException>(() => ConnectAsync(provider));
+        var error = await Assert.ThrowsAsync<NfcReaderNotFoundException>(() => ConnectAsync(provider));
         Assert.Contains("No MFRC522 answered on COM7", error.Message);
         Assert.DoesNotContain("firmware", error.Message, StringComparison.OrdinalIgnoreCase);
         Assert.DoesNotContain("flash", error.Message, StringComparison.OrdinalIgnoreCase);
@@ -180,7 +180,7 @@ public class Mfrc522Tests
     {
         var (provider, _, chip) = Create(Ntag215Simulator.CreateBlank());
         chip.Version = 0x00;
-        await Assert.ThrowsAsync<NfcException>(() => ConnectAsync(provider));
+        await Assert.ThrowsAsync<NfcReaderNotFoundException>(() => ConnectAsync(provider));
     }
 
     // ---------------------------------------------------------------- Finding tags
