@@ -75,6 +75,7 @@ public sealed class BleScanFilter
     public IReadOnlyList<Guid> Services { get; init; } = [];
     public IReadOnlyList<string> Names { get; init; } = [];
     public IReadOnlyList<string> NamePrefixes { get; init; } = [];
+    public IReadOnlyList<string> NameContains { get; init; } = [];
 
     /// <summary>
     /// Services that must be accessible after connecting even though they aren't used to filter (WebBluetooth).
@@ -95,7 +96,8 @@ public sealed class BleScanFilter
         }
 
         return Names.Any(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase)) ||
-               NamePrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase));
+               NamePrefixes.Any(p => name.StartsWith(p, StringComparison.OrdinalIgnoreCase)) ||
+               NameContains.Any(p => name.Contains(p, StringComparison.OrdinalIgnoreCase));
     }
 }
 

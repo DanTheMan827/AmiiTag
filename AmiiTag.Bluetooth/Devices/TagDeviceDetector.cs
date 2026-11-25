@@ -49,6 +49,10 @@ public sealed class TagDeviceDetector
         return TagDeviceKind.Unknown;
     }
 
+    private static bool HasFlashiiboName(string? name) =>
+        name?.Contains("Flashiibo", StringComparison.OrdinalIgnoreCase) == true ||
+        name?.Contains("Flashbo", StringComparison.OrdinalIgnoreCase) == true;
+
     public static string Describe(TagDeviceKind kind) => kind switch
     {
         TagDeviceKind.Puck => "Puck",
@@ -56,6 +60,8 @@ public sealed class TagDeviceDetector
         TagDeviceKind.AmiiboLink => "AmiiboLink",
         TagDeviceKind.AmiLoop => "AmiLoop",
         TagDeviceKind.Pixl => "Pixl.js",
+        TagDeviceKind.Flashiibo => "Flashiibo",
+        TagDeviceKind.FlashiiboFob => "Flashiibo Fob",
         TagDeviceKind.Flask => "Flask",
         TagDeviceKind.Slide => "Slide",
         _ => "Unknown device",
@@ -93,7 +99,7 @@ public sealed class TagDeviceDetector
         }
 
         await SafeDisconnectAsync(connection);
-        throw new BleException($"{device.DisplayName} didn't respond like a puck, Flask, Slide, Pixl.js, AmiiboLink or AmiLoop.");
+        throw new BleException($"{device.DisplayName} didn't respond like a supported Bluetooth tag device.");
     }
 
     private async Task<TagDeviceBase?> DetectAsync(IBleConnection connection, TagDeviceKind hint, IProgress<string>? status, CancellationToken cancellationToken)
@@ -139,6 +145,30 @@ public sealed class TagDeviceDetector
         if (!await connection.HasServiceAsync(BleUuids.NordicUartService, cancellationToken))
         {
             return null;
+        }
+
+        // Both products may advertise a name containing "Flashiibo", despite using incompatible protocols. Probe the
+        // Pro's harmless version command first. Only send the Fob handshake if that gets no valid Pro response: its
+        // first byte is the Pro protocol's enter-DFU command, so it must never be the first probe sent to a Pro.
+        if (HasFlashiiboName(connection.Device.Name))
+        {
+            status?.Report("Checking for Flashiibo...");
+            var flashiibo = new FlashiiboDevice(connection) { ProbeTimeout = PixlProbeTimeout };
+            if (await flashiibo.InitializeAsync(cancellationToken))
+            {
+                return flashiibo;
+            }
+
+            flashiibo.Detach();
+
+            status?.Report("Checking for Flashiibo Fob...");
+            var fob = new FlashiiboFobDevice(connection) { HandshakeTimeout = FlashiiboFobProbeTimeout };
+            if (await fob.InitializeAsync(cancellationToken))
+            {
+                return fob;
+            }
+
+            fob.Detach();
         }
 
         // The devices with binary protocols first, each probe answered only by its own kind; the Espruino ones (puck,
@@ -309,6 +339,8 @@ public sealed class TagDeviceDetector
         TagDeviceKind.AmiiboLink => new AmiiboLinkDevice(connection),
         TagDeviceKind.AmiLoop => new AmiLoopDevice(connection),
         TagDeviceKind.Pixl => new PixlDevice(connection),
+        TagDeviceKind.Flashiibo => new FlashiiboDevice(connection),
+        TagDeviceKind.FlashiiboFob => new FlashiiboFobDevice(connection),
         TagDeviceKind.Flask or TagDeviceKind.Slide => new FlaskDevice(connection, kind),
         _ => throw new ArgumentOutOfRangeException(nameof(kind)),
     };
@@ -318,6 +350,11 @@ public sealed class TagDeviceDetector
     /// within a connection interval or two; anything else never does, so a short wait keeps detecting the others quick.
     /// </summary>
     public TimeSpan PixlProbeTimeout { get; init; } = TimeSpan.FromMilliseconds(100);
+
+    /// <summary>
+    /// How long to wait for a Flashiibo Fob handshake while distinguishing the two Flashiibo protocols.
+    /// </summary>
+    public TimeSpan FlashiiboFobProbeTimeout { get; init; } = TimeSpan.FromMilliseconds(100);
 
     /// <summary>
     /// How long to wait for the Espruino console to answer during detection.

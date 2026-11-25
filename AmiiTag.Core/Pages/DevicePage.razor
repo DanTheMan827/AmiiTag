@@ -30,6 +30,9 @@
     case AmiLoopDevice loop when loop.IsConnected:
         <AmiLoopDeviceControls @key="loop" Device="loop" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
         break;
+    case FlashiiboFobDevice fob when fob.IsConnected:
+        <FlashiiboFobDeviceControls @key="fob" Device="fob" OnOpeningChild="OpeningChild" OnDisconnect="Disconnect" />
+        break;
     default:
         <AppPage Title="Device">
             <p class="empty-state">This device isn't connected.</p>

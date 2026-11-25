@@ -18,6 +18,12 @@ public enum TagDeviceKind
     /// <summary>A Pixl.js (solosky/pixl.js) managed through its BLE file system protocol.</summary>
     Pixl,
 
+    /// <summary>A Flashiibo Pro managed through its BLE file system protocol.</summary>
+    Flashiibo,
+
+    /// <summary>A Flashiibo Fob, which accepts one 540-byte tag over its packet protocol.</summary>
+    FlashiiboFob,
+
     /// <summary>A Flask: Espruino running the Flask app, driven through its JavaScript console.</summary>
     Flask,
 

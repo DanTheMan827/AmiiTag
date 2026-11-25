@@ -21,7 +21,7 @@ public abstract class UartPacketDeviceBase : TagDeviceBase
     /// </summary>
     protected int NegotiatedMtu { get; private set; }
 
-    protected async Task<bool> SetupUartAsync(CancellationToken cancellationToken)
+    protected async Task<bool> SetupUartAsync(CancellationToken cancellationToken, int requestedMtu = 247)
     {
         _write = await TryGetCharacteristicAsync(BleUuids.NordicUartService, BleUuids.NordicUartWrite, cancellationToken);
         var notify = await TryGetCharacteristicAsync(BleUuids.NordicUartService, BleUuids.NordicUartNotify, cancellationToken);
@@ -30,8 +30,8 @@ public abstract class UartPacketDeviceBase : TagDeviceBase
             return false;
         }
 
-        // AmiLoop packets are up to 135 bytes; ask for room so they aren't split into long writes.
-        NegotiatedMtu = await Connection.RequestMtuAsync(247, cancellationToken);
+        // Packet devices need enough room for a complete command in one characteristic write.
+        NegotiatedMtu = await Connection.RequestMtuAsync(requestedMtu, cancellationToken);
 
         _responses = new BleNotificationQueue(notify);
         await notify.StartNotificationsAsync(cancellationToken);
@@ -41,7 +41,11 @@ public abstract class UartPacketDeviceBase : TagDeviceBase
     /// <summary>
     /// Writes one packet and waits for the device's acknowledgement notification.
     /// </summary>
-    protected async Task<byte[]> SendAndWaitAsync(byte[] packet, CancellationToken cancellationToken, TimeSpan? timeout = null)
+    protected async Task<byte[]> SendAndWaitAsync(
+        byte[] packet,
+        CancellationToken cancellationToken,
+        TimeSpan? timeout = null,
+        bool requireNonEmpty = false)
     {
         var responses = _responses ?? throw new BleException("The device isn't connected.");
         await _lock.WaitAsync(cancellationToken);
@@ -49,7 +53,14 @@ public abstract class UartPacketDeviceBase : TagDeviceBase
         {
             responses.Clear();
             await _write!.WriteAsync(packet, true, cancellationToken);
-            return await responses.ReceiveAsync(timeout ?? AckTimeout, cancellationToken);
+            byte[] response;
+            do
+            {
+                response = await responses.ReceiveAsync(timeout ?? AckTimeout, cancellationToken);
+            }
+            while (requireNonEmpty && response.Length == 0);
+
+            return response;
         }
         finally
         {
