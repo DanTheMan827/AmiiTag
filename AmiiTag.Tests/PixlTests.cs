@@ -79,6 +79,21 @@ public class PixlTests
         Assert.Equal("E:/", drive.RootPath);
     }
 
+    [Fact]
+    public async Task DriveListCaptureReportsTotalAndFreeBytes()
+    {
+        // 91 4D 1D 00 total, B8 13 1D 00 free from a real Pixl.js drive-list response.
+        var sim = new PixlSimulator { DriveSize = 0x001D4D91 };
+        sim.AddFile("E:/amiibo/used.bin", new byte[0x39D9]);
+        var device = new PixlDevice(sim);
+        Assert.True(await device.InitializeAsync());
+
+        var drive = Assert.Single(await device.GetDrivesAsync());
+        Assert.Equal(0x001D4D91, drive.TotalBytes);
+        Assert.Equal(0x001D13B8, drive.FreeBytes);
+        Assert.Equal(0x39D9, drive.UsedBytes);
+    }
+
     [Theory]
     [InlineData(247)]
     [InlineData(185)]
