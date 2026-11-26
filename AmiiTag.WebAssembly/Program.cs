@@ -31,6 +31,7 @@ builder.Services.AddSingleton(sp => new AppEnvironment()
 {
     Platform = AppEnvironment.PlatformType.WebAssembly,
     IsIosBrowser = InvokeCheck(sp, "amiitag.isIosDevice"),
+    IsMobileSafari = InvokeCheck(sp, "amiitag.isMobileSafari"),
     HasWebBluetooth = InvokeCheck(sp, "amiitag.bluetooth.isSupported"),
 });
 builder.Services.AddSingleton<BlazorDialogService>();

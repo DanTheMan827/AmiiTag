@@ -551,7 +551,7 @@ public sealed class TagActions
         {
             if (_capabilities.Messages.SuggestsBeacio)
             {
-                if (await _dialogs.ConfirmAsync("Bluetooth unavailable", _capabilities.Messages.NoBluetooth, "Get Beacio", "OK"))
+                if (await _dialogs.ConfirmAsync("Bluetooth in Safari", _capabilities.Messages.NoBluetooth, "Get Beacio", "OK"))
                 {
                     await _navigator.OpenExternalAsync(PlatformMessages.BeacioUrl);
                 }

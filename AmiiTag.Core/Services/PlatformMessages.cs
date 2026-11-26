@@ -9,9 +9,9 @@ namespace AmiiTag.Core.Services;
 public sealed class PlatformMessages
 {
     /// <summary>
-    /// Beacio on the App Store: a Safari extension that adds Web Bluetooth to Safari on iPhone and iPad.
+    /// Beacio on the App Store: a free app whose Safari extension adds Web Bluetooth to Safari on iPhone and iPad.
     /// </summary>
-    public const string BeacioUrl = "https://apps.apple.com/app/id6761301368";
+    public const string BeacioUrl = "https://apps.apple.com/us/app/beacio/id6761301368";
 
     private readonly AppEnvironment _environment;
 
@@ -23,10 +23,10 @@ public sealed class PlatformMessages
     public AppEnvironment.PlatformType Platform => _environment.Platform;
 
     /// <summary>
-    /// The web version in a browser on an iPhone or iPad without Web Bluetooth: Beacio (see <see cref="BeacioUrl"/>)
-    /// adds it to Safari.
+    /// The web version in Safari on an iPhone or iPad, with no Web Bluetooth detected: Beacio (see <see cref="BeacioUrl"/>)
+    /// adds it. The main menu then still shows its Bluetooth button, which explains this instead of opening a picker.
     /// </summary>
-    public bool SuggestsBeacio => _environment.Platform == AppEnvironment.PlatformType.WebAssembly && _environment.IsIosBrowser &&
+    public bool SuggestsBeacio => _environment.Platform == AppEnvironment.PlatformType.WebAssembly && _environment.IsMobileSafari &&
         !_environment.HasWebBluetooth;
 
     /// <summary>
@@ -56,8 +56,8 @@ public sealed class PlatformMessages
         AppEnvironment.PlatformType.MacCatalyst => "Bluetooth is off or unavailable. Turn on Bluetooth in System Settings, and allow AmiiTag to use it.",
         AppEnvironment.PlatformType.Windows => "Bluetooth is off or unavailable. Turn on Bluetooth in Settings, or connect a Bluetooth adapter.",
         AppEnvironment.PlatformType.WebAssembly when SuggestsBeacio =>
-            "This browser doesn't support Web Bluetooth. The Beacio Safari extension adds it to Safari on iPhone and iPad: " +
-            "install Beacio from the App Store, then open AmiiTag in Safari.",
+            "Safari doesn't natively have Web Bluetooth. You can download the free Beacio app from the App Store to add " +
+            "support through a Safari extension.",
         AppEnvironment.PlatformType.WebAssembly when !_environment.HasWebBluetooth =>
             "This browser doesn't support Web Bluetooth. Open AmiiTag in a browser that supports Web Bluetooth to use Bluetooth devices.",
         // Web Bluetooth is there, but the browser reports no adapter (getAvailability).
