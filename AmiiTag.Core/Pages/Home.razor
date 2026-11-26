@@ -38,7 +38,8 @@
         {
             <BigButton OnClick="OpenN2Elite">Manage N2 Elite</BigButton>
         }
-        @if (Capabilities.HasBluetooth)
+        @* In Safari on iPhone/iPad without Web Bluetooth it's still shown: it explains how Beacio adds it. *@
+        @if (Capabilities.HasBluetooth || Capabilities.Messages.SuggestsBeacio)
         {
             <BigButton OnClick="OpenDevices">Connect Bluetooth Device</BigButton>
         }

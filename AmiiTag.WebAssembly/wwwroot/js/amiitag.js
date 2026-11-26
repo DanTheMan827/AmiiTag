@@ -26,6 +26,13 @@
             (/Macintosh/i.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
     };
 
+    // Safari itself on an iPhone or iPad (the browser that takes Safari extensions such as Beacio), not another browser
+    // there: those name themselves in the user agent (CriOS, FxiOS, EdgiOS...).
+    amiitag.isMobileSafari = function () {
+        const ua = navigator.userAgent;
+        return amiitag.isIosDevice() && /Safari\//.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS|OPT\/|GSA\/|YaBrowser|DuckDuckGo|Mercury|FocusiOS/i.test(ua);
+    };
+
     // Opens a link outside the app: a new tab, or this one when the browser blocks it (it's not always a tap away).
     amiitag.openExternal = function (url) {
         const opened = window.open(url, "_blank");
