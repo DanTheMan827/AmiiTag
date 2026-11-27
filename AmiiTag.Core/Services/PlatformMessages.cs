@@ -25,9 +25,10 @@ public sealed class PlatformMessages
     /// <summary>
     /// The web version in Safari on an iPhone or iPad, with no Web Bluetooth detected: Beacio (see <see cref="BeacioUrl"/>)
     /// adds it. The main menu then still shows its Bluetooth button, which explains this instead of opening a picker.
+    /// Not as a home screen app: Safari extensions don't run there, so Beacio can't help and the button stays hidden.
     /// </summary>
     public bool SuggestsBeacio => _environment.Platform == AppEnvironment.PlatformType.WebAssembly && _environment.IsMobileSafari &&
-        !_environment.HasWebBluetooth;
+        !_environment.IsIosStandalone && !_environment.HasWebBluetooth;
 
     /// <summary>
     /// Why NFC tags can't be read or written here, and what to do about it.

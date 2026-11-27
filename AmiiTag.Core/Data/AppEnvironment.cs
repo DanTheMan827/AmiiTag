@@ -25,6 +25,11 @@
         public bool IsMobileSafari { get; init; }
 
         /// <summary>
+        /// The web version running as an app added to the home screen on an iPhone or iPad (no Safari extensions there).
+        /// </summary>
+        public bool IsIosStandalone { get; init; }
+
+        /// <summary>
         /// The web version: the browser has Web Bluetooth (navigator.bluetooth), natively or added by an extension.
         /// </summary>
         public bool HasWebBluetooth { get; init; }
